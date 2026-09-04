@@ -37,6 +37,7 @@ function New-CollectorProvenanceSnapshot {
         [int]$ItemCount,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [object[]]$Items
     )
 

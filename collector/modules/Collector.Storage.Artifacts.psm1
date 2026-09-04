@@ -105,6 +105,7 @@ function Split-CollectorItems {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [object[]]$Items,
 
         [Parameter(Mandatory = $true)]
@@ -115,18 +116,23 @@ function Split-CollectorItems {
         throw 'BatchSize must be greater than zero.'
     }
 
-    $batches = @()
+    # Keep batches as an explicit collection object so an empty batch remains one
+    # batch instead of disappearing through PowerShell pipeline enumeration.
+    $batches = [System.Collections.Generic.List[object]]::new()
+
     if (-not $Items -or $Items.Count -eq 0) {
-        return $batches
+        $batches.Add([object][object[]]@())
+        Write-Output -NoEnumerate $batches
+        return
     }
 
     for ($index = 0; $index -lt $Items.Count; $index += $BatchSize) {
         $endIndex = [Math]::Min($index + $BatchSize - 1, $Items.Count - 1)
-        $batch = @($Items[$index..$endIndex])
-        $batches += ,$batch
+        $batch = [object[]]@($Items[$index..$endIndex])
+        $batches.Add([object]$batch)
     }
 
-    return $batches
+    Write-Output -NoEnumerate $batches
 }
 
 function Write-CollectorSnapshotArtifact {
