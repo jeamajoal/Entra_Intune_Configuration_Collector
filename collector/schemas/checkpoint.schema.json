@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Collector Checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string"
+    },
+    "section": {
+      "type": "string"
+    },
+    "family": {
+      "type": "string"
+    },
+    "updatedUtc": {
+      "type": "string"
+    },
+    "batches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Succeeded",
+              "Failed",
+              "InProgress",
+              "Missing"
+            ]
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "itemCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "successCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "artifactPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedUtc": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batchId",
+          "status",
+          "attempts",
+          "itemCount",
+          "successCount",
+          "failedCount",
+          "updatedUtc"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "runId",
+    "stage",
+    "section",
+    "family",
+    "updatedUtc",
+    "batches"
+  ]
+}
