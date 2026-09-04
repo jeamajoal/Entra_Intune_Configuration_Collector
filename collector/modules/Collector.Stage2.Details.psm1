@@ -36,8 +36,8 @@ function Publish-CollectorStage2Result {
         [pscustomobject]$Result
     )
 
-    if ($Context.ContainsKey('ResultSink') -and $Context.ResultSink) {
-        & $Context.ResultSink $Result
+    if ($Context.ContainsKey('PartialStageResults') -and $Context.PartialStageResults) {
+        $Context.PartialStageResults.Add($Result) | Out-Null
     }
 
     return $Result
