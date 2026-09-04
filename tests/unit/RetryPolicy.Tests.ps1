@@ -120,8 +120,21 @@ Describe 'Retry policy behavior' {
         }
         $metadata = Get-CollectorRetryMetadata -ErrorRecord (New-RetryErrorRecord -Response $response)
 
-        if (-not $metadata.RetryAfterSeconds -or [int]$metadata.RetryAfterSeconds -lt 1 -or [int]$metadata.RetryAfterSeconds -gt 31) {
+        if (-not $metadata.RetryAfterSeconds -or [double]$metadata.RetryAfterSeconds -lt 1 -or [double]$metadata.RetryAfterSeconds -gt 31) {
             throw ('Expected positive HTTP-date retry delay at most 31 seconds; actual ' + [string]$metadata.RetryAfterSeconds + '.')
+        }
+    }
+
+    It 'keeps distant HTTP-date Retry-After values wider than Int32 until the retry cap is applied' {
+        $retryAt = (Get-Date).ToUniversalTime().AddYears(80)
+        $response = [pscustomobject]@{
+            StatusCode = 429
+            Headers = @{ 'Retry-After' = $retryAt.ToString('R') }
+        }
+        $metadata = Get-CollectorRetryMetadata -ErrorRecord (New-RetryErrorRecord -Response $response)
+
+        if ([double]$metadata.RetryAfterSeconds -le [int]::MaxValue) {
+            throw ('Expected distant Retry-After to remain wider than Int32; actual ' + [string]$metadata.RetryAfterSeconds + '.')
         }
     }
 
