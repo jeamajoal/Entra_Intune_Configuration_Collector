@@ -24,7 +24,7 @@ Describe 'Graph token section dependency' {
         if ($result.status -ne 'Completed') {
             throw ('Expected on-prem-only run to complete; actual ' + [string]$result.status + '.')
         }
-        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 1 -Exactly -ParameterFilter {
+        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 1 -Exactly -Scope It -ParameterFilter {
             @($Sections) -join ',' -eq 'onprem-ad-gpo'
         }
 
@@ -52,7 +52,7 @@ Describe 'Graph token section dependency' {
         if (-not $threw) {
             throw 'Expected Graph-backed execution without a token to fail.'
         }
-        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly
+        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly -Scope It
     }
 
     It 'rejects mixed on-prem and Graph selection without GraphToken' {
@@ -70,7 +70,7 @@ Describe 'Graph token section dependency' {
         if (-not $threw) {
             throw 'Expected mixed Graph/on-prem execution without a token to fail.'
         }
-        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly
+        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly -Scope It
     }
 
     It 'preserves Graph-backed execution when a token is supplied' {
