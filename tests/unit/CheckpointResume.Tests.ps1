@@ -58,8 +58,7 @@ Describe 'Checkpoint resume behavior' {
 
         $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'Succeeded' -Attempts 1 -ItemCount 2 -SuccessCount 2 -FailedCount 0 -ArtifactPath 'artifact.json' -ErrorMessage $null
 
-        Mock -ModuleName 'Collector.Storage.Checkpoints' -CommandName Invoke-CollectorAtomicFileReplace -MockWith { throw 'simulated replacement failure' }
-
+        $lockStream = [System.IO.File]::Open($checkpointPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
         $threw = $false
         try {
             Save-CollectorCheckpoint -RunPath $script:testRoot -Checkpoint $checkpoint | Out-Null
@@ -67,9 +66,12 @@ Describe 'Checkpoint resume behavior' {
         catch {
             $threw = $true
         }
+        finally {
+            $lockStream.Dispose()
+        }
 
         if (-not $threw) {
-            throw 'Expected simulated atomic replacement failure to surface.'
+            throw 'Expected atomic replacement to fail while the existing checkpoint is exclusively locked.'
         }
 
         $persistedAfter = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
@@ -77,9 +79,9 @@ Describe 'Checkpoint resume behavior' {
             throw 'Expected prior valid checkpoint to remain unchanged after failed replacement.'
         }
 
-        $temporaryFiles = @(Get-ChildItem -LiteralPath (Split-Path -Path $checkpointPath -Parent) -Force -File | Where-Object { $_.Name -like '*.tmp' })
+        $temporaryFiles = @(Get-ChildItem -LiteralPath (Split-Path -Path $checkpointPath -Parent) -Force -File | Where-Object { $_.Name -like '*.tmp' -or $_.Name -like '*.bak' })
         if ($temporaryFiles.Count -ne 0) {
-            throw 'Expected failed atomic checkpoint write to clean up temporary files.'
+            throw 'Expected failed atomic checkpoint write to clean up temporary/backup files.'
         }
     }
 
@@ -97,9 +99,9 @@ Describe 'Checkpoint resume behavior' {
             throw 'Expected successful atomic replacement to persist one coherent Succeeded checkpoint state.'
         }
 
-        $temporaryFiles = @(Get-ChildItem -LiteralPath (Split-Path -Path $checkpointPath -Parent) -Force -File | Where-Object { $_.Name -like '*.tmp' })
+        $temporaryFiles = @(Get-ChildItem -LiteralPath (Split-Path -Path $checkpointPath -Parent) -Force -File | Where-Object { $_.Name -like '*.tmp' -or $_.Name -like '*.bak' })
         if ($temporaryFiles.Count -ne 0) {
-            throw 'Expected successful atomic checkpoint write to leave no temporary files.'
+            throw 'Expected successful atomic checkpoint write to leave no temporary/backup files.'
         }
     }
 
