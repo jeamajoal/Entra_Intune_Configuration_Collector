@@ -83,18 +83,24 @@ Representative Stage1 families and sources:
   - Get-ADGroup per domain in Get-ADForest.Domains
   - Get-GPO -All per domain in Get-ADForest.Domains
 
-Stage2 detail and Stage3 relationship execution can be run independently by stage and section, but both are gated by Stage1 artifacts for required section and family dependencies.
+Stage2 detail and Stage3 relationship execution can be run independently by stage and section, but both are gated by Stage1 evidence for required section and family dependencies.
 On-prem inventory records persist domain identity so Stage2 and Stage3 reuse the same domain context for domain-targeted cmdlets.
 
 ## Inventory-First Gating and Resume Semantics
 
-- Stage2 and Stage3 perform hard-fail inventory checks for required Stage1 artifacts.
+- Stage2 and Stage3 reject a required Stage1 family when its Stage1 checkpoint is missing or has no recorded batches.
+- Every recorded Stage1 checkpoint batch must be `Succeeded` before downstream enrichment can use that family.
+- Every recorded succeeded Stage1 batch must still reference an artifact that exists.
+- A lone `batch-*.json` file is not sufficient readiness evidence when the checkpoint proves another recorded batch failed, is in progress, is missing, or lost its artifact.
+- A legitimate zero-item Stage1 inventory remains representable as the normal succeeded empty batch and may satisfy the recorded-checkpoint readiness rule.
 - Checkpoints are written per stage/section/family.
 - Batch statuses: Succeeded, Failed, InProgress, Missing.
 - Checkpoint batch fields include attempts, counts, artifact path, and error.
 - Resume with ReprocessFailedOnly:
   - skips Succeeded batches only when artifact file exists,
   - reruns Failed, InProgress, Missing, and missing-artifact batches.
+
+Current limitation: Stage1 does not yet persist the expected total batch count or a family-completion marker before batch processing begins. Therefore a process interruption before a later expected batch is ever recorded cannot yet be distinguished from a genuinely complete one-batch family using checkpoint state alone. That is a separate follow-up boundary under Issue #1 and must not be misrepresented as solved by the recorded-batch gate.
 
 ## Artifact Contracts
 
@@ -143,6 +149,8 @@ For on-prem families, sourceName is cmdlet-specific and requestContext includes 
 
 Remaining deferred decisions after implementation candidate:
 
+- Stage1 family completion/batch-plan metadata sufficient to prove no expected batch was never recorded after interruption.
+- Stable Stage1 resume identity when the live source inventory changes ordering or membership between attempts.
 - Long-term retention and archival strategy for output snapshots.
 - Optional future parallelism model beyond current sequential batch orchestration.
 - Optional policy for explicit collector-side privacy transformations.

@@ -96,7 +96,7 @@ Stage2 detail collection:
 
 - Graph families are collected by id from Stage1 inventory.
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
-- Stage2 hard-fails if required Stage1 family artifacts are missing.
+- Stage2 hard-fails unless the required Stage1 family has checkpoint evidence for at least one recorded batch, every recorded batch is Succeeded, and every recorded succeeded batch still references an existing artifact.
 
 Stage3 relationship families:
 
@@ -106,7 +106,9 @@ Stage3 relationship families:
 - Delegated grants: delegatedGrants from /v1.0/oauth2PermissionGrants
 - PIM relationship edges: pimScheduleEdges derived from Stage1 PIM schedule instances
 - On-prem relationship families use persisted Stage1 domain context where cmdlets support domain targeting.
-- Stage3 hard-fails if required Stage1 family artifacts are missing.
+- Stage3 applies the same recorded-checkpoint and referenced-artifact readiness rule to every required Stage1 dependency family.
+
+The presence of a single Stage1 `batch-*.json` file is not sufficient inventory-first evidence when the persisted checkpoint shows another recorded batch failed, is still in progress, is marked missing, or references an artifact that no longer exists. Issue #4 intentionally does not yet claim that Stage1 records the expected total batch count before processing begins; interruption before a later batch is ever recorded remains a separate follow-up boundary.
 
 ## Output Layout
 
