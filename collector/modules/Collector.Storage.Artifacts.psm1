@@ -272,8 +272,12 @@ function Test-CollectorInventoryArtifacts {
         return $false
     }
 
+    if ($checkpoint.PSObject.Properties.Match('plan').Count -eq 0 -or $null -eq $checkpoint.plan -or -not [bool]$checkpoint.plan.completed) {
+        return $false
+    }
+
     $batches = @($checkpoint.batches)
-    if ($batches.Count -eq 0) {
+    if ($batches.Count -eq 0 -or $batches.Count -ne [int]$checkpoint.plan.expectedBatchCount -or @($checkpoint.plan.batches).Count -ne [int]$checkpoint.plan.expectedBatchCount) {
         return $false
     }
 
