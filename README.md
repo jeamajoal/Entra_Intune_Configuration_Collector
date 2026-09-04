@@ -64,9 +64,9 @@ pwsh ./collector/Invoke-Collector.ps1 `
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
 - Sections: entra-apps, entra-pim, intune-core, onprem-ad-gpo. Default is all sections.
 - Resume: resume using the run marker or latest run folder under OutputRoot.
-- ReprocessFailedOnly: during resume, skip succeeded batches only when snapshot file exists; rerun failed, in-progress, missing, or missing-artifact batches.
+- ReprocessFailedOnly: during resume, skip a succeeded batch only when the persisted family plan is compatible and its snapshot still exists; rerun failed, in-progress, missing, or missing-artifact batches.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
-- BatchSize: batch size for snapshot partitioning. Default 100.
+- BatchSize: batch size for snapshot partitioning. Default 100. A different BatchSize is an incompatible resume plan and is rejected rather than reinterpreting existing batch IDs.
 - MaxRetries: retry count for transient Graph failures. Default 5.
 - BaseBackoffSeconds: base exponential backoff delay. Default 2.
 - MaxBackoffSeconds: backoff upper bound and Retry-After cap. Default 30.
@@ -96,7 +96,8 @@ Stage2 detail collection:
 
 - Graph families are collected by id from Stage1 inventory.
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
-- Stage2 hard-fails unless the required Stage1 family has checkpoint evidence for at least one recorded batch, every recorded batch is Succeeded, and every recorded succeeded batch still references an existing artifact.
+- Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
+- Stage2 persists its own plan before processing so resume cannot silently reuse numeric batch IDs after Stage1 input, order, membership, or BatchSize changes.
 
 Stage3 relationship families:
 
@@ -106,9 +107,9 @@ Stage3 relationship families:
 - Delegated grants: delegatedGrants from /v1.0/oauth2PermissionGrants
 - PIM relationship edges: pimScheduleEdges derived from Stage1 PIM schedule instances
 - On-prem relationship families use persisted Stage1 domain context where cmdlets support domain targeting.
-- Stage3 applies the same recorded-checkpoint and referenced-artifact readiness rule to every required Stage1 dependency family.
+- Stage3 applies the same completed Stage1 plan readiness rule to every required dependency and persists its own compatible resume plan before processing relationship batches.
 
-The presence of a single Stage1 `batch-*.json` file is not sufficient inventory-first evidence when the persisted checkpoint shows another recorded batch failed, is still in progress, is marked missing, or references an artifact that no longer exists. Issue #4 intentionally does not yet claim that Stage1 records the expected total batch count before processing begins; interruption before a later batch is ever recorded remains a separate follow-up boundary.
+A lone Stage1 `batch-*.json` file is not sufficient inventory-first evidence. Readiness requires a completed Stage1 family plan whose expected batch count matches the checkpoint, with every expected batch Succeeded and every referenced artifact present. Plans include BatchSize, ordered source identity, per-batch fingerprints, expected batch count, and completion state. Reorder, membership change, or BatchSize change is rejected during resume instead of silently associating prior numeric batch IDs with different work. A legitimate zero-item family is represented as one successful completed empty batch.
 
 ## Output Layout
 
@@ -136,6 +137,8 @@ output/
 		manifest/
 			run-manifest.json
 ```
+
+`run-manifest.json` is cumulative for the lifetime of a runId. Its top-level `stageResults` and `failures` retain evidence from prior resumed invocations, while `checkpointSummary` reflects the current persisted checkpoint state. `parameters`, `status`, and `completedUtc` represent the latest invocation for compatibility. The `invocations` array records each invocation's parameters, start/completion timestamps, status, stage results, and failures. The original top-level `startedUtc` is never reset by `-Resume`.
 
 Each snapshot file includes provenance envelope fields:
 
