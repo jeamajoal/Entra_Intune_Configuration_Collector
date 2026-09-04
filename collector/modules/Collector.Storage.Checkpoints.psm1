@@ -19,6 +19,29 @@ function Get-CollectorCheckpointPath {
     Join-Path -Path $RunPath -ChildPath (Join-Path -Path (Join-Path -Path 'checkpoints' -ChildPath $Stage) -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json')))
 }
 
+function Get-CollectorCheckpointCanonicalArtifactPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Stage,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Section,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Family,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BatchId
+    )
+
+    $relativePath = Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath (Join-Path -Path $Family -ChildPath ('batch-{0}.json' -f $BatchId)))
+    return [System.IO.Path]::GetFullPath((Join-Path -Path $RunPath -ChildPath $relativePath))
+}
+
 function New-CollectorCheckpointDocument {
     [CmdletBinding()]
     param(
@@ -95,6 +118,12 @@ function Get-CollectorCheckpoint {
     $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
     if (-not $checkpoint.batches) {
         $checkpoint | Add-Member -MemberType NoteProperty -Name batches -Value @() -Force
+    }
+
+    foreach ($batch in @($checkpoint.batches)) {
+        if ($batch -and -not [string]::IsNullOrWhiteSpace([string]$batch.artifactPath)) {
+            $batch.artifactPath = Get-CollectorCheckpointCanonicalArtifactPath -RunPath $RunPath -Stage ([string]$checkpoint.stage) -Section ([string]$checkpoint.section) -Family ([string]$checkpoint.family) -BatchId ([string]$batch.batchId)
+        }
     }
 
     return $checkpoint
