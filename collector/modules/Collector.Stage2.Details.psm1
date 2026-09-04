@@ -92,6 +92,9 @@ function Invoke-CollectorStage2GraphFamily {
         $batches = @(@())
     }
 
+    $checkpoint = Initialize-CollectorCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize $Context.BatchSize -Resume:$Context.Resume
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
+
     $result.batchCount = $batches.Count
     $batchNumber = 0
 
@@ -186,6 +189,9 @@ function Invoke-CollectorStage2GraphFamily {
         }
     }
 
+    $checkpoint = Complete-CollectorCheckpointPlan -Checkpoint $checkpoint
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
+
     return $result
 }
 
@@ -223,6 +229,9 @@ function Invoke-CollectorStage2OnPremFamily {
     if ($batches.Count -eq 0) {
         $batches = @(@())
     }
+
+    $checkpoint = Initialize-CollectorCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize $Context.BatchSize -Resume:$Context.Resume
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
 
     $result.batchCount = $batches.Count
     $batchNumber = 0
@@ -303,6 +312,9 @@ function Invoke-CollectorStage2OnPremFamily {
             $result.errors += $_.Exception.Message
         }
     }
+
+    $checkpoint = Complete-CollectorCheckpointPlan -Checkpoint $checkpoint
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
 
     return $result
 }
