@@ -101,6 +101,40 @@ function Resolve-CollectorOnPremDomainContext {
     return $null
 }
 
+function Get-CollectorDomainAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DomainContext,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DistinguishedName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($DomainContext)) {
+        throw 'Unable to resolve persisted domain context for ACL collection.'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($DistinguishedName)) {
+        throw 'Unable to resolve distinguished name for ACL collection.'
+    }
+
+    $driveName = 'CollectorAD' + [Guid]::NewGuid().ToString('N')
+    try {
+        New-PSDrive -Name $driveName -PSProvider ActiveDirectory -Root '//RootDSE/' -Server $DomainContext -Scope Local -ErrorAction Stop | Out-Null
+        $path = '{0}:\{1}' -f $driveName, $DistinguishedName
+        $acl = Get-Acl -LiteralPath $path -ErrorAction Stop
+
+        [pscustomobject]@{
+            Path = $path
+            Acl = $acl
+        }
+    }
+    finally {
+        Remove-PSDrive -Name $driveName -Scope Local -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Get-CollectorOnPremProvenanceProfile {
     [CmdletBinding()]
     param(
@@ -406,21 +440,17 @@ function Invoke-CollectorOnPremRelationshipFamily {
                 $domainContext = $null
                 try {
                     $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $domainItem
-                    if ($domainContext) {
-                        $domain = Get-ADDomain -Identity $domainName -Server $domainContext
+                    if (-not $domainContext) {
+                        $domainContext = [string]$domainName
                     }
-                    else {
-                        $domain = Get-ADDomain -Identity $domainName
-                    }
-
-                    $path = 'AD:\{0}' -f $domain.DistinguishedName
-                    $acl = Get-Acl -Path $path
+                    $domain = Get-ADDomain -Identity $domainName -Server $domainContext
+                    $aclRead = Get-CollectorDomainAcl -DomainContext $domainContext -DistinguishedName ([string]$domain.DistinguishedName)
                     $results += [pscustomobject]@{
                         domain = $domainName
-                        domainContext = if ($domainContext) { [string]$domainContext } else { [string]$domainName }
-                        path = $path
-                        owner = $acl.Owner
-                        access = @($acl.Access)
+                        domainContext = [string]$domainContext
+                        path = $aclRead.Path
+                        owner = $aclRead.Acl.Owner
+                        access = @($aclRead.Acl.Access)
                     }
                 }
                 catch {
@@ -445,14 +475,16 @@ function Invoke-CollectorOnPremRelationshipFamily {
                 $domainContext = $null
                 try {
                     $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $ouItem
-                    $path = 'AD:\{0}' -f $ouDn
-                    $acl = Get-Acl -Path $path
+                    if (-not $domainContext) {
+                        throw 'Unable to resolve persisted domain context for OU ACL collection.'
+                    }
+                    $aclRead = Get-CollectorDomainAcl -DomainContext $domainContext -DistinguishedName ([string]$ouDn)
                     $results += [pscustomobject]@{
                         distinguishedName = $ouDn
-                        domainContext = $domainContext
-                        path = $path
-                        owner = $acl.Owner
-                        access = @($acl.Access)
+                        domainContext = [string]$domainContext
+                        path = $aclRead.Path
+                        owner = $aclRead.Acl.Owner
+                        access = @($aclRead.Acl.Access)
                     }
                 }
                 catch {
