@@ -46,6 +46,27 @@ function New-CollectorCheckpointDocument {
     }
 }
 
+function Invoke-CollectorAtomicFileReplace {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourcePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BackupPath
+    )
+
+    if (Test-Path -LiteralPath $DestinationPath) {
+        [System.IO.File]::Replace($SourcePath, $DestinationPath, $BackupPath, $true)
+        return
+    }
+
+    [System.IO.File]::Move($SourcePath, $DestinationPath)
+}
+
 function Get-CollectorCheckpoint {
     [CmdletBinding()]
     param(
@@ -67,11 +88,11 @@ function Get-CollectorCheckpoint {
 
     $checkpointPath = Get-CollectorCheckpointPath -RunPath $RunPath -Stage $Stage -Section $Section -Family $Family
 
-    if (-not (Test-Path -Path $checkpointPath)) {
+    if (-not (Test-Path -LiteralPath $checkpointPath)) {
         return New-CollectorCheckpointDocument -RunId $RunId -Stage $Stage -Section $Section -Family $Family
     }
 
-    $checkpoint = Get-Content -Path $checkpointPath -Raw | ConvertFrom-Json
+    $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
     if (-not $checkpoint.batches) {
         $checkpoint | Add-Member -MemberType NoteProperty -Name batches -Value @() -Force
     }
@@ -92,12 +113,29 @@ function Save-CollectorCheckpoint {
     $checkpointPath = Get-CollectorCheckpointPath -RunPath $RunPath -Stage $Checkpoint.stage -Section $Checkpoint.section -Family $Checkpoint.family
     $checkpointDirectory = Split-Path -Path $checkpointPath -Parent
 
-    if (-not (Test-Path -Path $checkpointDirectory)) {
+    if (-not (Test-Path -LiteralPath $checkpointDirectory)) {
         New-Item -Path $checkpointDirectory -ItemType Directory -Force | Out-Null
     }
 
     $Checkpoint.updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
-    $Checkpoint | ConvertTo-Json -Depth 20 | Set-Content -Path $checkpointPath -Encoding UTF8
+    $checkpointJson = $Checkpoint | ConvertTo-Json -Depth 20
+    $uniqueSuffix = [Guid]::NewGuid().ToString('N')
+    $fileName = [System.IO.Path]::GetFileName($checkpointPath)
+    $tempPath = Join-Path -Path $checkpointDirectory -ChildPath ('.{0}.{1}.tmp' -f $fileName, $uniqueSuffix)
+    $backupPath = Join-Path -Path $checkpointDirectory -ChildPath ('.{0}.{1}.bak' -f $fileName, $uniqueSuffix)
+
+    try {
+        [System.IO.File]::WriteAllText($tempPath, $checkpointJson, [System.Text.UTF8Encoding]::new($false))
+        Get-Content -LiteralPath $tempPath -Raw | ConvertFrom-Json | Out-Null
+        Invoke-CollectorAtomicFileReplace -SourcePath $tempPath -DestinationPath $checkpointPath -BackupPath $backupPath
+    }
+    finally {
+        foreach ($temporaryPath in @($tempPath, $backupPath)) {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 
     return $checkpointPath
 }
@@ -205,7 +243,7 @@ function Get-CollectorBatchExecutionDecision {
 
     $artifactExists = $false
     if ($existingBatch.artifactPath) {
-        $artifactExists = Test-Path -Path $existingBatch.artifactPath
+        $artifactExists = Test-Path -LiteralPath $existingBatch.artifactPath
     }
 
     if ($existingBatch.status -eq 'Succeeded' -and $artifactExists) {
@@ -247,11 +285,11 @@ function Get-CollectorCheckpointFiles {
     )
 
     $checkpointRoot = Join-Path -Path $RunPath -ChildPath 'checkpoints'
-    if (-not (Test-Path -Path $checkpointRoot)) {
+    if (-not (Test-Path -LiteralPath $checkpointRoot)) {
         return @()
     }
 
-    return @(Get-ChildItem -Path $checkpointRoot -Filter '*.json' -Recurse -File)
+    return @(Get-ChildItem -LiteralPath $checkpointRoot -Filter '*.json' -Recurse -File)
 }
 
 function Get-CollectorCheckpointSummary {
@@ -265,7 +303,7 @@ function Get-CollectorCheckpointSummary {
     $checkpointFiles = Get-CollectorCheckpointFiles -RunPath $RunPath
 
     foreach ($checkpointFile in $checkpointFiles) {
-        $checkpoint = Get-Content -Path $checkpointFile.FullName -Raw | ConvertFrom-Json
+        $checkpoint = Get-Content -LiteralPath $checkpointFile.FullName -Raw | ConvertFrom-Json
         $batchCount = @($checkpoint.batches).Count
         $succeededBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'Succeeded' }).Count
         $failedBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'Failed' }).Count

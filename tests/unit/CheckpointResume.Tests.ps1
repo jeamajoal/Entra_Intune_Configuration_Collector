@@ -8,8 +8,8 @@ Describe 'Checkpoint resume behavior' {
     }
 
     AfterEach {
-        if (Test-Path -Path $script:testRoot) {
-            Remove-Item -Path $script:testRoot -Recurse -Force
+        if (Test-Path -LiteralPath $script:testRoot) {
+            Remove-Item -LiteralPath $script:testRoot -Recurse -Force
         }
     }
 
@@ -43,6 +43,65 @@ Describe 'Checkpoint resume behavior' {
         $batch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001'
         if ([string]$batch.error -ne 'alias error text') {
             throw ('Expected Error alias to bind to ErrorMessage and preserve error field; actual: ' + [string]$batch.error)
+        }
+    }
+
+    It 'preserves the previous checkpoint when atomic replacement fails' {
+        $checkpoint = Get-CollectorCheckpoint -RunPath $script:testRoot -RunId 'run-atomic-failure' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
+        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'InProgress' -Attempts 1 -ItemCount 2 -SuccessCount 0 -FailedCount 0 -ArtifactPath $null -ErrorMessage $null
+        $checkpointPath = Save-CollectorCheckpoint -RunPath $script:testRoot -Checkpoint $checkpoint
+
+        $persistedBefore = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+        if ([string]@($persistedBefore.batches)[0].status -ne 'InProgress') {
+            throw 'Expected initial checkpoint state to be InProgress.'
+        }
+
+        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'Succeeded' -Attempts 1 -ItemCount 2 -SuccessCount 2 -FailedCount 0 -ArtifactPath 'artifact.json' -ErrorMessage $null
+
+        $lockStream = [System.IO.File]::Open($checkpointPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+        $threw = $false
+        try {
+            Save-CollectorCheckpoint -RunPath $script:testRoot -Checkpoint $checkpoint | Out-Null
+        }
+        catch {
+            $threw = $true
+        }
+        finally {
+            $lockStream.Dispose()
+        }
+
+        if (-not $threw) {
+            throw 'Expected atomic replacement to fail while the existing checkpoint is exclusively locked.'
+        }
+
+        $persistedAfter = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+        if ([string]@($persistedAfter.batches)[0].status -ne 'InProgress') {
+            throw 'Expected prior valid checkpoint to remain unchanged after failed replacement.'
+        }
+
+        $temporaryFiles = @(Get-ChildItem -LiteralPath (Split-Path -Path $checkpointPath -Parent) -Force -File | Where-Object { $_.Name -like '*.tmp' -or $_.Name -like '*.bak' })
+        if ($temporaryFiles.Count -ne 0) {
+            throw 'Expected failed atomic checkpoint write to clean up temporary/backup files.'
+        }
+    }
+
+    It 'replaces the checkpoint coherently on successful atomic write' {
+        $checkpoint = Get-CollectorCheckpoint -RunPath $script:testRoot -RunId 'run-atomic-success' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
+        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'InProgress' -Attempts 1 -ItemCount 2 -SuccessCount 0 -FailedCount 0 -ArtifactPath $null -ErrorMessage $null
+        $checkpointPath = Save-CollectorCheckpoint -RunPath $script:testRoot -Checkpoint $checkpoint
+
+        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'Succeeded' -Attempts 1 -ItemCount 2 -SuccessCount 2 -FailedCount 0 -ArtifactPath 'artifact.json' -ErrorMessage $null
+        Save-CollectorCheckpoint -RunPath $script:testRoot -Checkpoint $checkpoint | Out-Null
+
+        $persisted = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+        $batch = @($persisted.batches)[0]
+        if ([string]$batch.status -ne 'Succeeded' -or [int]$batch.successCount -ne 2) {
+            throw 'Expected successful atomic replacement to persist one coherent Succeeded checkpoint state.'
+        }
+
+        $temporaryFiles = @(Get-ChildItem -LiteralPath (Split-Path -Path $checkpointPath -Parent) -Force -File | Where-Object { $_.Name -like '*.tmp' -or $_.Name -like '*.bak' })
+        if ($temporaryFiles.Count -ne 0) {
+            throw 'Expected successful atomic checkpoint write to leave no temporary/backup files.'
         }
     }
 
