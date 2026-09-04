@@ -43,6 +43,10 @@ function Assert-ZeroItemFamilyArtifacts {
     if ([string]$batch.status -ne 'Succeeded' -or [int]$batch.itemCount -ne 0) {
         throw ('Expected succeeded zero-item checkpoint batch for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
     }
+
+    if (-not $checkpoint.plan -or -not [bool]$checkpoint.plan.completed -or [int]$checkpoint.plan.expectedBatchCount -ne 1) {
+        throw ('Expected completed one-batch zero-item plan for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
 }
 
 Describe 'Zero-item batch execution' {
