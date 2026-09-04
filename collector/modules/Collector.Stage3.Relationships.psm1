@@ -135,6 +135,9 @@ function Invoke-CollectorStage3BatchLoop {
         $Batches = @(@())
     }
 
+    $checkpoint = Initialize-CollectorCheckpointPlan -Checkpoint $checkpoint -Batches $Batches -BatchSize $Context.BatchSize -Resume:$Context.Resume
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
+
     $result.batchCount = $Batches.Count
     $batchNumber = 0
 
@@ -241,6 +244,9 @@ function Invoke-CollectorStage3BatchLoop {
             $result.errors += $_.Exception.Message
         }
     }
+
+    $checkpoint = Complete-CollectorCheckpointPlan -Checkpoint $checkpoint
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
 
     return $result
 }
