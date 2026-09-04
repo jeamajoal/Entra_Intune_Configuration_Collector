@@ -105,6 +105,7 @@ function Split-CollectorItems {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [object[]]$Items,
 
         [Parameter(Mandatory = $true)]
