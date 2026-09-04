@@ -94,7 +94,7 @@ function Get-CollectorRetryMetadata {
                 else {
                     $retryAfterDate = [datetimeoffset]::MinValue
                     if ([datetimeoffset]::TryParse([string]$retryAfterHeader, [ref]$retryAfterDate)) {
-                        $delaySeconds = [int][Math]::Ceiling(($retryAfterDate.UtcDateTime - (Get-Date).ToUniversalTime()).TotalSeconds)
+                        $delaySeconds = [Math]::Ceiling(($retryAfterDate.UtcDateTime - (Get-Date).ToUniversalTime()).TotalSeconds)
                         if ($delaySeconds -gt 0) {
                             $retryAfterSeconds = $delaySeconds
                         }
