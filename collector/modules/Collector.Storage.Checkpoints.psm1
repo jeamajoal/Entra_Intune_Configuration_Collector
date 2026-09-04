@@ -139,7 +139,8 @@ function Set-CollectorCheckpointBatch {
 
         [string]$ArtifactPath,
 
-        [string]$Error
+        [Alias('Error')]
+        [string]$ErrorMessage
     )
 
     $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $Checkpoint -BatchId $BatchId
@@ -152,7 +153,7 @@ function Set-CollectorCheckpointBatch {
             successCount = $SuccessCount
             failedCount = $FailedCount
             artifactPath = $ArtifactPath
-            error = $Error
+            error = $ErrorMessage
             updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
         }
         $Checkpoint.batches += $existingBatch
@@ -165,7 +166,7 @@ function Set-CollectorCheckpointBatch {
     $existingBatch.successCount = $SuccessCount
     $existingBatch.failedCount = $FailedCount
     $existingBatch.artifactPath = $ArtifactPath
-    $existingBatch.error = $Error
+    $existingBatch.error = $ErrorMessage
     $existingBatch.updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
 
     return $Checkpoint
