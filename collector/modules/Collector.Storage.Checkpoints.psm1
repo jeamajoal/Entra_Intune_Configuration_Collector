@@ -53,11 +53,14 @@ function Invoke-CollectorAtomicFileReplace {
         [string]$SourcePath,
 
         [Parameter(Mandatory = $true)]
-        [string]$DestinationPath
+        [string]$DestinationPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BackupPath
     )
 
     if (Test-Path -LiteralPath $DestinationPath) {
-        [System.IO.File]::Replace($SourcePath, $DestinationPath, $null, $true)
+        [System.IO.File]::Replace($SourcePath, $DestinationPath, $BackupPath, $true)
         return
     }
 
@@ -116,17 +119,21 @@ function Save-CollectorCheckpoint {
 
     $Checkpoint.updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
     $checkpointJson = $Checkpoint | ConvertTo-Json -Depth 20
-    $tempFileName = '.{0}.{1}.tmp' -f ([System.IO.Path]::GetFileName($checkpointPath)), ([Guid]::NewGuid().ToString('N'))
-    $tempPath = Join-Path -Path $checkpointDirectory -ChildPath $tempFileName
+    $uniqueSuffix = [Guid]::NewGuid().ToString('N')
+    $fileName = [System.IO.Path]::GetFileName($checkpointPath)
+    $tempPath = Join-Path -Path $checkpointDirectory -ChildPath ('.{0}.{1}.tmp' -f $fileName, $uniqueSuffix)
+    $backupPath = Join-Path -Path $checkpointDirectory -ChildPath ('.{0}.{1}.bak' -f $fileName, $uniqueSuffix)
 
     try {
         [System.IO.File]::WriteAllText($tempPath, $checkpointJson, [System.Text.UTF8Encoding]::new($false))
         Get-Content -LiteralPath $tempPath -Raw | ConvertFrom-Json | Out-Null
-        Invoke-CollectorAtomicFileReplace -SourcePath $tempPath -DestinationPath $checkpointPath
+        Invoke-CollectorAtomicFileReplace -SourcePath $tempPath -DestinationPath $checkpointPath -BackupPath $backupPath
     }
     finally {
-        if (Test-Path -LiteralPath $tempPath) {
-            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        foreach ($temporaryPath in @($tempPath, $backupPath)) {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
