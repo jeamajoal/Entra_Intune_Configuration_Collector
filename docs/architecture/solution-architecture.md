@@ -20,8 +20,6 @@ ACLs, memberships, and assignments are classified as metadata.
 
 ## Concretized Implementation Layout
 
-The previously deferred collector layout and naming are now concretized:
-
 - CLI entry: collector/Invoke-Collector.ps1
 - Orchestration: collector/modules/Collector.Orchestrator.psm1
 - Stage modules:
@@ -83,24 +81,38 @@ Representative Stage1 families and sources:
   - Get-ADGroup per domain in Get-ADForest.Domains
   - Get-GPO -All per domain in Get-ADForest.Domains
 
-Stage2 detail and Stage3 relationship execution can be run independently by stage and section, but both are gated by Stage1 evidence for required section and family dependencies.
+Stage2 detail and Stage3 relationship execution can be run independently by stage and section, but both are gated by completed Stage1 plan evidence for required section/family dependencies.
 On-prem inventory records persist domain identity so Stage2 and Stage3 reuse the same domain context for domain-targeted cmdlets.
 
 ## Inventory-First Gating and Resume Semantics
 
-- Stage2 and Stage3 reject a required Stage1 family when its Stage1 checkpoint is missing or has no recorded batches.
-- Every recorded Stage1 checkpoint batch must be `Succeeded` before downstream enrichment can use that family.
-- Every recorded succeeded Stage1 batch must still reference an artifact that exists.
-- A lone `batch-*.json` file is not sufficient readiness evidence when the checkpoint proves another recorded batch failed, is in progress, is missing, or lost its artifact.
-- A legitimate zero-item Stage1 inventory remains representable as the normal succeeded empty batch and may satisfy the recorded-checkpoint readiness rule.
 - Checkpoints are written per stage/section/family.
-- Batch statuses: Succeeded, Failed, InProgress, Missing.
-- Checkpoint batch fields include attempts, counts, artifact path, and error.
+- Batch statuses are Succeeded, Failed, InProgress, and Missing.
+- A family checkpoint persists plan version, BatchSize, expected batch count, ordered source fingerprint, per-batch fingerprints, and completion state before batch execution begins.
+- Stage2 and Stage3 reject a required Stage1 family unless its plan is complete, its expected/recorded batch counts agree, every expected batch is Succeeded, and every expected artifact exists.
+- A lone `batch-*.json` file is never sufficient readiness evidence.
+- Stage2 and Stage3 persist their own plans before downstream batch decisions, so refreshed Stage1 source identity cannot silently reuse stale successful downstream numeric batch IDs.
+- Reorder, membership change, BatchSize change, or other persisted plan incompatibility is rejected during resume rather than interpreted as the prior work.
+- A legitimate zero-item family is one expected successful empty batch and may complete normally.
 - Resume with ReprocessFailedOnly:
-  - skips Succeeded batches only when artifact file exists,
+  - skips Succeeded batches only when the persisted plan remains compatible and the artifact exists,
   - reruns Failed, InProgress, Missing, and missing-artifact batches.
+- Checkpoint writes use same-directory validated temporary files and atomic replacement so a failed replacement does not destroy the last valid checkpoint.
+- Persisted artifact paths are normalized from run/stage/section/family/batch identity rather than interpreted relative to process working directory.
 
-Current limitation: Stage1 does not yet persist the expected total batch count or a family-completion marker before batch processing begins. Therefore a process interruption before a later expected batch is ever recorded cannot yet be distinguished from a genuinely complete one-batch family using checkpoint state alone. That is a separate follow-up boundary under Issue #1 and must not be misrepresented as solved by the recorded-batch gate.
+## Manifest Lifetime and Resume History
+
+`output/<runId>/manifest/run-manifest.json` is the cumulative run-level execution record.
+
+- `runId` and top-level `startedUtc` identify the original run and are preserved across resume invocations.
+- top-level `stageResults` and `failures` accumulate durable evidence across the lifetime of the runId.
+- top-level `checkpointSummary` is refreshed from current persisted checkpoint state.
+- top-level `parameters`, `status`, and `completedUtc` represent the latest invocation for compatibility with the original manifest shape.
+- `invocations[]` records every invocation separately with its own started/completed timestamps, parameters, status, stage results, and failures.
+- a legacy manifest without `invocations` is promoted to one historical invocation when first resumed; its existing evidence is retained before the new invocation is appended.
+- resume fails rather than silently replacing a missing, unreadable, or wrong-run manifest for the selected runId.
+
+This separates cumulative run truth from invocation-specific truth while keeping one durable manifest per runId.
 
 ## Artifact Contracts
 
@@ -143,14 +155,13 @@ For on-prem families, sourceName is cmdlet-specific and requestContext includes 
 ## Failure Behavior
 
 - On-prem command absence or runtime failures are recorded as failed batches in checkpoints and manifest entries.
-- Failures are localized to section/family batches where possible and do not force a full process crash unless inventory-first gating fails.
+- Failures are localized to section/family batches where possible and do not force a full process crash unless inventory-first gating or orchestration integrity fails.
+- Historical failures remain visible in cumulative manifest state after a later successful resume invocation.
 
 ## Deferred Decisions
 
-Remaining deferred decisions after implementation candidate:
+Remaining deferred decisions after the current implementation:
 
-- Stage1 family completion/batch-plan metadata sufficient to prove no expected batch was never recorded after interruption.
-- Stable Stage1 resume identity when the live source inventory changes ordering or membership between attempts.
 - Long-term retention and archival strategy for output snapshots.
 - Optional future parallelism model beyond current sequential batch orchestration.
 - Optional policy for explicit collector-side privacy transformations.
