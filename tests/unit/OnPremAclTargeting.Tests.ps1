@@ -56,6 +56,14 @@ function global:Remove-PSDrive {
     $global:CollectorRemoveDriveCalls.Add([pscustomobject]@{ Name = $Name; Scope = $Scope }) | Out-Null
 }
 
+function Test-CollectorResultHasError {
+    param([object]$Result)
+
+    return $null -ne $Result -and
+        $Result.PSObject.Properties.Match('_collectorError').Count -gt 0 -and
+        -not [string]::IsNullOrWhiteSpace([string]$Result._collectorError)
+}
+
 Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
 
 Describe 'On-prem ACL domain targeting' {
@@ -84,7 +92,7 @@ Describe 'On-prem ACL domain targeting' {
             [pscustomobject]@{ id = 'alpha.test'; domainId = 'alpha.test' }
         ))
 
-        if ($result.Count -ne 1 -or $result[0]._collectorError) {
+        if ($result.Count -ne 1 -or (Test-CollectorResultHasError -Result $result[0])) {
             throw 'Expected one successful domain-root ACL result.'
         }
         if ($global:CollectorAdDomainCalls.Count -ne 1 -or $global:CollectorAdDomainCalls[0].Server -ne 'alpha.test') {
@@ -108,7 +116,8 @@ Describe 'On-prem ACL domain targeting' {
         )
 
         $results = @(Invoke-CollectorOnPremRelationshipFamily -Family 'ouAcl' -InventoryItems $items)
-        if ($results.Count -ne 2 -or @($results | Where-Object { $_._collectorError }).Count -ne 0) {
+        $errorResults = @($results | Where-Object { Test-CollectorResultHasError -Result $_ })
+        if ($results.Count -ne 2 -or $errorResults.Count -ne 0) {
             throw 'Expected two successful OU ACL results.'
         }
 
@@ -135,7 +144,7 @@ Describe 'On-prem ACL domain targeting' {
             [pscustomobject]@{ id = 'OU=Fail,DC=alpha,DC=test'; domainId = 'alpha.test' }
         ))
 
-        if ($result.Count -ne 1 -or -not $result[0]._collectorError) {
+        if ($result.Count -ne 1 -or -not (Test-CollectorResultHasError -Result $result[0])) {
             throw 'Expected ACL failure to remain attributable on the item.'
         }
         if ($global:CollectorNewDriveCalls.Count -ne 1 -or $global:CollectorRemoveDriveCalls.Count -ne 1) {
