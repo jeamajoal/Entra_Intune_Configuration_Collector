@@ -18,6 +18,14 @@ function global:Get-GPPermission {
     [pscustomobject]@{ Trustee = 'TEST\Trustee'; Permission = 'GpoRead' }
 }
 
+function Test-CollectorResultHasError {
+    param([object]$Result)
+
+    return $null -ne $Result -and
+        $Result.PSObject.Properties.Match('_collectorError').Count -gt 0 -and
+        -not [string]::IsNullOrWhiteSpace([string]$Result._collectorError)
+}
+
 Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
 
 Describe 'On-prem GPO permission identity' {
@@ -40,7 +48,7 @@ Describe 'On-prem GPO permission identity' {
             }
         ))
 
-        if ($result.Count -ne 1 -or $result[0]._collectorError) {
+        if ($result.Count -ne 1 -or (Test-CollectorResultHasError -Result $result[0])) {
             throw 'Expected one successful GPO permission result.'
         }
         if ($global:CollectorGpoPermissionCalls.Count -ne 1) {
@@ -68,7 +76,9 @@ Describe 'On-prem GPO permission identity' {
             [pscustomobject]@{ id = [string]$gpoId; displayName = 'After Rename'; domainId = 'alpha.test' }
         ))
 
-        if ($first[0]._collectorError -or $second[0]._collectorError -or $global:CollectorGpoPermissionCalls.Count -ne 2) {
+        $firstHasError = Test-CollectorResultHasError -Result $first[0]
+        $secondHasError = Test-CollectorResultHasError -Result $second[0]
+        if ($firstHasError -or $secondHasError -or $global:CollectorGpoPermissionCalls.Count -ne 2) {
             throw 'Expected both renamed GPO permission lookups to succeed.'
         }
         if ($global:CollectorGpoPermissionCalls[0].Guid -ne $gpoId -or $global:CollectorGpoPermissionCalls[1].Guid -ne $gpoId) {
