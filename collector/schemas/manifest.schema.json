@@ -4,75 +4,22 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "schemaVersion": {
-      "type": "string"
-    },
-    "runId": {
-      "type": "string"
-    },
-    "startedUtc": {
-      "type": "string"
-    },
-    "completedUtc": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
+    "schemaVersion": { "type": "string" },
+    "runId": { "type": "string" },
+    "startedUtc": { "type": "string" },
+    "completedUtc": { "type": ["string", "null"] },
     "status": {
       "type": "string",
-      "enum": [
-        "InProgress",
-        "Completed",
-        "CompletedWithErrors",
-        "Failed"
-      ]
+      "enum": ["InProgress", "Completed", "CompletedWithErrors", "Failed"]
     },
-    "parameters": {
-      "type": "object"
-    },
+    "parameters": { "type": "object" },
     "stageResults": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": true,
-        "properties": {
-          "stage": {
-            "type": "string"
-          },
-          "section": {
-            "type": "string"
-          },
-          "family": {
-            "type": "string"
-          },
-          "batchCount": {
-            "type": "integer"
-          },
-          "succeededBatches": {
-            "type": "integer"
-          },
-          "failedBatches": {
-            "type": "integer"
-          },
-          "skippedBatches": {
-            "type": "integer"
-          },
-          "itemCount": {
-            "type": "integer"
-          },
-          "errors": {
-            "type": "array"
-          }
-        }
-      }
+      "items": { "type": "object", "additionalProperties": true }
     },
     "checkpointSummary": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": true
-      }
+      "items": { "type": "object", "additionalProperties": true }
     },
     "failures": {
       "type": "array",
@@ -80,25 +27,47 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "stage": {
-            "type": "string"
+          "stage": { "type": "string" },
+          "section": { "type": "string" },
+          "family": { "type": "string" },
+          "error": { "type": "string" }
+        },
+        "required": ["stage", "section", "family", "error"]
+      }
+    },
+    "invocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "startedUtc": { "type": "string" },
+          "completedUtc": { "type": ["string", "null"] },
+          "status": {
+            "type": "string",
+            "enum": ["InProgress", "Completed", "CompletedWithErrors", "Failed"]
           },
-          "section": {
-            "type": "string"
+          "parameters": { "type": "object" },
+          "stageResults": {
+            "type": "array",
+            "items": { "type": "object", "additionalProperties": true }
           },
-          "family": {
-            "type": "string"
-          },
-          "error": {
-            "type": "string"
+          "failures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "stage": { "type": "string" },
+                "section": { "type": "string" },
+                "family": { "type": "string" },
+                "error": { "type": "string" }
+              },
+              "required": ["stage", "section", "family", "error"]
+            }
           }
         },
-        "required": [
-          "stage",
-          "section",
-          "family",
-          "error"
-        ]
+        "required": ["startedUtc", "completedUtc", "status", "parameters", "stageResults", "failures"]
       }
     }
   },
@@ -111,6 +80,7 @@
     "parameters",
     "stageResults",
     "checkpointSummary",
-    "failures"
+    "failures",
+    "invocations"
   ]
 }
