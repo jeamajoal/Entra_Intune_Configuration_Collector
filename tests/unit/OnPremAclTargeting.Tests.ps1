@@ -117,8 +117,8 @@ Describe 'On-prem ACL domain targeting' {
             throw ('Expected independent alpha/beta AD drive targets; actual ' + $servers + '.')
         }
 
-        $literalPaths = @($global:CollectorAclCalls | ForEach-Object { $_.LiteralPath })
-        if ($literalPaths[0] -notlike '*OU=Ops[1],DC=alpha,DC=test' -or $literalPaths[1] -notlike '*OU=Ops*,DC=beta,DC=test') {
+        $literalPaths = @($global:CollectorAclCalls | ForEach-Object { [string]$_.LiteralPath })
+        if (-not $literalPaths[0].EndsWith('OU=Ops[1],DC=alpha,DC=test') -or -not $literalPaths[1].EndsWith('OU=Ops*,DC=beta,DC=test')) {
             throw 'Expected persisted special-character DNs to be passed through LiteralPath unchanged.'
         }
         if (@($global:CollectorAclCalls | Where-Object { $_.Path }).Count -ne 0) {
