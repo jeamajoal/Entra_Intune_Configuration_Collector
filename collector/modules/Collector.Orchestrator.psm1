@@ -272,6 +272,7 @@ function Start-CollectorRun {
         BaseBackoffSeconds = $BaseBackoffSeconds
         MaxBackoffSeconds = $MaxBackoffSeconds
         ThrottleMilliseconds = $ThrottleMilliseconds
+        PartialStageResults = [System.Collections.Generic.List[object]]::new()
     }
 
     $parameters = New-CollectorInvocationParameters -GraphToken $GraphToken -OutputRoot $OutputRoot -Stages $resolvedStages -Sections $resolvedSections -RuntimeOptions $context
@@ -284,17 +285,10 @@ function Start-CollectorRun {
     $manifest.invocations += $invocation
     $manifestPath = Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest
 
-    $context.ResultSink = {
-        param([pscustomobject]$StageResult)
-
-        Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $StageResult
-        Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
-    }.GetNewClosure()
-
     try {
         foreach ($stage in $resolvedStages) {
             $stageResults = @()
-            $publishedBefore = @($invocation.stageResults).Count
+            $context.PartialStageResults.Clear()
 
             switch ($stage) {
                 'Stage1' {
@@ -310,14 +304,13 @@ function Start-CollectorRun {
                 }
             }
 
-            if (@($invocation.stageResults).Count -eq $publishedBefore) {
-                foreach ($stageResult in $stageResults) {
-                    Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
-                }
+            $resultsToPersist = if ($context.PartialStageResults.Count -gt 0) { @($context.PartialStageResults) } else { @($stageResults) }
+            foreach ($stageResult in $resultsToPersist) {
+                Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
+            }
 
-                if ($stageResults.Count -gt 0) {
-                    Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
-                }
+            if ($resultsToPersist.Count -gt 0) {
+                Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
             }
         }
 
@@ -326,6 +319,11 @@ function Start-CollectorRun {
         $manifest.status = $invocation.status
     }
     catch {
+        foreach ($stageResult in @($context.PartialStageResults)) {
+            Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
+        }
+        $context.PartialStageResults.Clear()
+
         $failure = [pscustomobject]@{
             stage = if ($_.Exception.Data['CollectorStage']) { [string]$_.Exception.Data['CollectorStage'] } else { 'orchestration' }
             section = if ($_.Exception.Data['CollectorSection']) { [string]$_.Exception.Data['CollectorSection'] } else { 'all' }
