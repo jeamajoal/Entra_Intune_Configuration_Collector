@@ -23,7 +23,7 @@ The implementation is inventory-first and resumable:
 Prerequisites:
 
 - PowerShell 7+ or Windows PowerShell 5.1.
-- A Microsoft Graph access token with permissions required by selected Graph endpoints.
+- A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `intune-core`). No Graph token is required for an `onprem-ad-gpo`-only run.
 - Optional on-prem cmdlets for onprem-ad-gpo section:
 	- ActiveDirectory module cmdlets (Get-ADForest, Get-ADOrganizationalUnit, Get-ADGroup, Get-ADDomain, Get-ADGroupMember)
 	- GroupPolicy cmdlets (Get-GPO, Get-GPPermission)
@@ -46,6 +46,14 @@ pwsh ./collector/Invoke-Collector.ps1 `
 	-Sections entra-apps,intune-core
 ```
 
+Run only the on-prem section without a Graph token:
+
+```powershell
+pwsh ./collector/Invoke-Collector.ps1 `
+	-OutputRoot ./output `
+	-Sections onprem-ad-gpo
+```
+
 Resume previous run and reprocess failed or missing batches only:
 
 ```powershell
@@ -59,7 +67,7 @@ pwsh ./collector/Invoke-Collector.ps1 `
 
 ## CLI Parameters
 
-- GraphToken (mandatory): bearer token used for Graph requests.
+- GraphToken: bearer token used for Graph requests. Required only when `entra-apps`, `entra-pim`, or `intune-core` is selected; optional for `onprem-ad-gpo`-only execution.
 - OutputRoot (mandatory): root output folder containing per-run artifacts.
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
 - Sections: entra-apps, entra-pim, intune-core, onprem-ad-gpo. Default is all sections.
