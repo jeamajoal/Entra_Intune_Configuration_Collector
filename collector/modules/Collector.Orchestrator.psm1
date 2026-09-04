@@ -11,42 +11,73 @@ $script:SupportedSections = @('entra-apps', 'entra-pim', 'intune-core', 'onprem-
 
 function Resolve-CollectorStages {
     [CmdletBinding()]
-    param([string[]]$Stages = @('All'))
+    param(
+        [string[]]$Stages = @('All')
+    )
 
-    if (-not $Stages -or $Stages.Count -eq 0 -or $Stages -contains 'All') {
+    if (-not $Stages -or $Stages.Count -eq 0) {
+        return @($script:SupportedStages)
+    }
+
+    if ($Stages -contains 'All') {
         return @($script:SupportedStages)
     }
 
     $resolved = @()
     foreach ($supportedStage in $script:SupportedStages) {
-        if ($Stages -contains $supportedStage) { $resolved += $supportedStage }
+        if ($Stages -contains $supportedStage) {
+            $resolved += $supportedStage
+        }
     }
-    if ($resolved.Count -eq 0) { throw 'No valid stage selection resolved. Supported values are All, Stage1, Stage2, Stage3.' }
+
+    if ($resolved.Count -eq 0) {
+        throw 'No valid stage selection resolved. Supported values are All, Stage1, Stage2, Stage3.'
+    }
+
     return $resolved
 }
 
 function Resolve-CollectorSections {
     [CmdletBinding()]
-    param([string[]]$Sections)
+    param(
+        [string[]]$Sections
+    )
 
-    if (-not $Sections -or $Sections.Count -eq 0) { return @($script:SupportedSections) }
+    if (-not $Sections -or $Sections.Count -eq 0) {
+        return @($script:SupportedSections)
+    }
 
     $resolved = @()
     foreach ($supportedSection in $script:SupportedSections) {
-        if ($Sections -contains $supportedSection) { $resolved += $supportedSection }
+        if ($Sections -contains $supportedSection) {
+            $resolved += $supportedSection
+        }
     }
-    if ($resolved.Count -eq 0) { throw 'No valid section selection resolved. Supported values are entra-apps, entra-pim, intune-core, onprem-ad-gpo.' }
+
+    if ($resolved.Count -eq 0) {
+        throw 'No valid section selection resolved. Supported values are entra-apps, entra-pim, intune-core, onprem-ad-gpo.'
+    }
+
     return $resolved
 }
 
 function New-CollectorInvocationParameters {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$GraphToken,
-        [Parameter(Mandatory = $true)][string]$OutputRoot,
-        [Parameter(Mandatory = $true)][string[]]$Stages,
-        [Parameter(Mandatory = $true)][string[]]$Sections,
-        [Parameter(Mandatory = $true)][hashtable]$RuntimeOptions
+        [Parameter(Mandatory = $true)]
+        [string]$GraphToken,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Stages,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Sections,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$RuntimeOptions
     )
 
     [pscustomobject]@{
@@ -68,8 +99,11 @@ function New-CollectorInvocationParameters {
 function New-CollectorRunManifest {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$RunId,
-        [Parameter(Mandatory = $true)][pscustomobject]$Parameters
+        [Parameter(Mandatory = $true)]
+        [string]$RunId,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Parameters
     )
 
     [pscustomobject]@{
@@ -89,21 +123,33 @@ function New-CollectorRunManifest {
 function Get-CollectorRunManifestForInvocation {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$RunPath,
-        [Parameter(Mandatory = $true)][string]$RunId,
-        [Parameter(Mandatory = $true)][pscustomobject]$Parameters,
+        [Parameter(Mandatory = $true)]
+        [string]$RunPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RunId,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Parameters,
+
         [switch]$Resume
     )
 
-    if (-not $Resume) { return New-CollectorRunManifest -RunId $RunId -Parameters $Parameters }
+    if (-not $Resume) {
+        return New-CollectorRunManifest -RunId $RunId -Parameters $Parameters
+    }
 
     $manifestPath = Get-CollectorManifestPath -RunPath $RunPath
     if (-not (Test-Path -LiteralPath $manifestPath)) {
         throw ('Resume requested for run {0}, but its run manifest is missing: {1}' -f $RunId, $manifestPath)
     }
 
-    try { $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json }
-    catch { throw ('Resume requested for run {0}, but its run manifest is unreadable: {1}' -f $RunId, $_.Exception.Message) }
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw ('Resume requested for run {0}, but its run manifest is unreadable: {1}' -f $RunId, $_.Exception.Message)
+    }
 
     if ([string]$manifest.runId -ne $RunId) {
         throw ('Resume manifest runId mismatch. Expected {0}; found {1}.' -f $RunId, [string]$manifest.runId)
@@ -133,7 +179,10 @@ function Get-CollectorRunManifestForInvocation {
 
 function New-CollectorInvocationRecord {
     [CmdletBinding()]
-    param([Parameter(Mandatory = $true)][pscustomobject]$Parameters)
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Parameters
+    )
 
     [pscustomobject]@{
         startedUtc = (Get-Date).ToUniversalTime().ToString('o')
@@ -148,9 +197,14 @@ function New-CollectorInvocationRecord {
 function Add-CollectorManifestStageResult {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][pscustomobject]$Manifest,
-        [Parameter(Mandatory = $true)][pscustomobject]$Invocation,
-        [Parameter(Mandatory = $true)][pscustomobject]$StageResult
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Manifest,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Invocation,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$StageResult
     )
 
     $Invocation.stageResults += $StageResult
@@ -160,9 +214,9 @@ function Add-CollectorManifestStageResult {
         foreach ($errorMessage in @($StageResult.errors)) {
             if (-not [string]::IsNullOrWhiteSpace([string]$errorMessage)) {
                 $failure = [pscustomobject]@{
-                    stage = [string]$StageResult.stage
-                    section = [string]$StageResult.section
-                    family = [string]$StageResult.family
+                    stage = $StageResult.stage
+                    section = $StageResult.section
+                    family = $StageResult.family
                     error = [string]$errorMessage
                 }
                 $Invocation.failures += $failure
@@ -175,17 +229,30 @@ function Add-CollectorManifestStageResult {
 function Start-CollectorRun {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$GraphToken,
-        [Parameter(Mandatory = $true)][string]$OutputRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$GraphToken,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputRoot,
+
         [string[]]$Stages = @('All'),
+
         [string[]]$Sections,
+
         [switch]$Resume,
+
         [switch]$ReprocessFailedOnly,
+
         [switch]$Force,
+
         [int]$BatchSize = 100,
+
         [int]$MaxRetries = 5,
+
         [double]$BaseBackoffSeconds = 2,
+
         [double]$MaxBackoffSeconds = 30,
+
         [int]$ThrottleMilliseconds = 100
     )
 
@@ -219,6 +286,7 @@ function Start-CollectorRun {
 
     $context.ResultSink = {
         param([pscustomobject]$StageResult)
+
         Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $StageResult
         Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
     }.GetNewClosure()
@@ -229,17 +297,24 @@ function Start-CollectorRun {
             $publishedBefore = @($invocation.stageResults).Count
 
             switch ($stage) {
-                'Stage1' { $stageResults = @(Invoke-CollectorStage1 -Context $context -Sections $resolvedSections) }
-                'Stage2' { $stageResults = @(Invoke-CollectorStage2 -Context $context -Sections $resolvedSections) }
-                'Stage3' { $stageResults = @(Invoke-CollectorStage3 -Context $context -Sections $resolvedSections) }
+                'Stage1' {
+                    $stageResults = @(Invoke-CollectorStage1 -Context $context -Sections $resolvedSections)
+                }
+
+                'Stage2' {
+                    $stageResults = @(Invoke-CollectorStage2 -Context $context -Sections $resolvedSections)
+                }
+
+                'Stage3' {
+                    $stageResults = @(Invoke-CollectorStage3 -Context $context -Sections $resolvedSections)
+                }
             }
 
-            # Stage2/Stage3 publish incrementally. Stage1 and mocked/alternate stage
-            # implementations fall back to publishing the returned collection here.
             if (@($invocation.stageResults).Count -eq $publishedBefore) {
                 foreach ($stageResult in $stageResults) {
                     Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
                 }
+
                 if ($stageResults.Count -gt 0) {
                     Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
                 }
@@ -251,14 +326,10 @@ function Start-CollectorRun {
         $manifest.status = $invocation.status
     }
     catch {
-        $failureStage = if ($_.Exception.Data['CollectorStage']) { [string]$_.Exception.Data['CollectorStage'] } else { 'orchestration' }
-        $failureSection = if ($_.Exception.Data['CollectorSection']) { [string]$_.Exception.Data['CollectorSection'] } else { 'all' }
-        $failureFamily = if ($_.Exception.Data['CollectorFamily']) { [string]$_.Exception.Data['CollectorFamily'] } else { 'all' }
-
         $failure = [pscustomobject]@{
-            stage = $failureStage
-            section = $failureSection
-            family = $failureFamily
+            stage = if ($_.Exception.Data['CollectorStage']) { [string]$_.Exception.Data['CollectorStage'] } else { 'orchestration' }
+            section = if ($_.Exception.Data['CollectorSection']) { [string]$_.Exception.Data['CollectorSection'] } else { 'all' }
+            family = if ($_.Exception.Data['CollectorFamily']) { [string]$_.Exception.Data['CollectorFamily'] } else { 'all' }
             error = $_.Exception.Message
         }
 
