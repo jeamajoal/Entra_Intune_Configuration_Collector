@@ -7,7 +7,7 @@ function New-CollectorDirectory {
         [string]$Path
     )
 
-    if (-not (Test-Path -Path $Path)) {
+    if (-not (Test-Path -LiteralPath $Path)) {
         New-Item -Path $Path -ItemType Directory -Force | Out-Null
     }
 
@@ -40,7 +40,7 @@ function Write-CollectorRunMarker {
         updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
     }
 
-    $marker | ConvertTo-Json -Depth 5 | Set-Content -Path $markerPath -Encoding UTF8
+    $marker | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $markerPath -Encoding UTF8
 }
 
 function Resolve-CollectorRun {
@@ -57,12 +57,12 @@ function Resolve-CollectorRun {
     $runId = $null
     if ($Resume) {
         $markerPath = Get-CollectorRunMarkerPath -OutputRoot $OutputRoot
-        if (Test-Path -Path $markerPath) {
+        if (Test-Path -LiteralPath $markerPath) {
             try {
-                $marker = Get-Content -Path $markerPath -Raw | ConvertFrom-Json
+                $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
                 if ($marker.runId) {
                     $markerRunPath = Join-Path -Path $OutputRoot -ChildPath $marker.runId
-                    if (Test-Path -Path $markerRunPath) {
+                    if (Test-Path -LiteralPath $markerRunPath) {
                         $runId = [string]$marker.runId
                     }
                 }
@@ -73,7 +73,7 @@ function Resolve-CollectorRun {
         }
 
         if (-not $runId) {
-            $candidateDirectories = @(Get-ChildItem -Path $OutputRoot -Directory | Sort-Object -Property LastWriteTimeUtc -Descending)
+            $candidateDirectories = @(Get-ChildItem -LiteralPath $OutputRoot -Directory | Sort-Object -Property LastWriteTimeUtc -Descending)
             if ($candidateDirectories.Count -gt 0) {
                 $runId = $candidateDirectories[0].Name
             }
@@ -116,8 +116,6 @@ function Split-CollectorItems {
         throw 'BatchSize must be greater than zero.'
     }
 
-    # Keep batches as an explicit collection object so an empty batch remains one
-    # batch instead of disappearing through PowerShell pipeline enumeration.
     $batches = [System.Collections.Generic.List[object]]::new()
 
     if (-not $Items -or $Items.Count -eq 0) {
@@ -133,6 +131,29 @@ function Split-CollectorItems {
     }
 
     Write-Output -NoEnumerate $batches
+}
+
+function Get-CollectorCanonicalArtifactPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Stage,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Section,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Family,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BatchId
+    )
+
+    $relativePath = Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath (Join-Path -Path $Family -ChildPath ('batch-{0}.json' -f $BatchId)))
+    return [System.IO.Path]::GetFullPath((Join-Path -Path $RunPath -ChildPath $relativePath))
 }
 
 function Write-CollectorSnapshotArtifact {
@@ -157,13 +178,12 @@ function Write-CollectorSnapshotArtifact {
         [object]$Snapshot
     )
 
-    $stageFolder = Join-Path -Path $RunPath -ChildPath (Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath $Family))
+    $batchId = '{0:D4}' -f $BatchNumber
+    $artifactPath = Get-CollectorCanonicalArtifactPath -RunPath $RunPath -Stage $Stage -Section $Section -Family $Family -BatchId $batchId
+    $stageFolder = Split-Path -Path $artifactPath -Parent
     New-CollectorDirectory -Path $stageFolder | Out-Null
 
-    $batchId = '{0:D4}' -f $BatchNumber
-    $artifactPath = Join-Path -Path $stageFolder -ChildPath ('batch-{0}.json' -f $batchId)
-
-    $Snapshot | ConvertTo-Json -Depth 50 | Set-Content -Path $artifactPath -Encoding UTF8
+    $Snapshot | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $artifactPath -Encoding UTF8
 
     [pscustomobject]@{
         batchId = $batchId
@@ -188,11 +208,11 @@ function Get-CollectorSnapshotFiles {
     )
 
     $familyPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath $Family))
-    if (-not (Test-Path -Path $familyPath)) {
+    if (-not (Test-Path -LiteralPath $familyPath)) {
         return @()
     }
 
-    return @(Get-ChildItem -Path $familyPath -Filter 'batch-*.json' -File | Sort-Object -Property Name)
+    return @(Get-ChildItem -LiteralPath $familyPath -Filter 'batch-*.json' -File | Sort-Object -Property Name)
 }
 
 function Get-CollectorSnapshotItems {
@@ -214,7 +234,7 @@ function Get-CollectorSnapshotItems {
     $items = @()
     $snapshotFiles = Get-CollectorSnapshotFiles -RunPath $RunPath -Stage $Stage -Section $Section -Family $Family
     foreach ($snapshotFile in $snapshotFiles) {
-        $snapshot = Get-Content -Path $snapshotFile.FullName -Raw | ConvertFrom-Json
+        $snapshot = Get-Content -LiteralPath $snapshotFile.FullName -Raw | ConvertFrom-Json
         if ($snapshot.items) {
             $items += @($snapshot.items)
         }
@@ -236,8 +256,6 @@ function Test-CollectorInventoryArtifacts {
         [string]$Family
     )
 
-    # Issue #4: Stage2/Stage3 may consume Stage1 only when the persisted
-    # checkpoint proves every recorded batch succeeded and its artifact remains.
     $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path (Join-Path -Path 'checkpoints' -ChildPath 'stage1') -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json')))
     if (-not (Test-Path -LiteralPath $checkpointPath)) {
         return $false
@@ -264,8 +282,12 @@ function Test-CollectorInventoryArtifacts {
             return $false
         }
 
-        $artifactPath = [string]$batch.artifactPath
-        if ([string]::IsNullOrWhiteSpace($artifactPath) -or -not (Test-Path -LiteralPath $artifactPath)) {
+        if ([string]::IsNullOrWhiteSpace([string]$batch.artifactPath)) {
+            return $false
+        }
+
+        $artifactPath = Get-CollectorCanonicalArtifactPath -RunPath $RunPath -Stage 'stage1' -Section $Section -Family $Family -BatchId ([string]$batch.batchId)
+        if (-not (Test-Path -LiteralPath $artifactPath)) {
             return $false
         }
     }
@@ -297,7 +319,7 @@ function Save-CollectorManifest {
     $manifestDirectory = Split-Path -Path $manifestPath -Parent
 
     New-CollectorDirectory -Path $manifestDirectory | Out-Null
-    $Manifest | ConvertTo-Json -Depth 30 | Set-Content -Path $manifestPath -Encoding UTF8
+    $Manifest | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
     return $manifestPath
 }
