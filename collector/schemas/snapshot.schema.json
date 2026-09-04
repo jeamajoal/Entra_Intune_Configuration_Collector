@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Collector Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string"
+    },
+    "section": {
+      "type": "string"
+    },
+    "family": {
+      "type": "string"
+    },
+    "batchId": {
+      "type": "string"
+    },
+    "collectedUtc": {
+      "type": "string"
+    },
+    "sourceType": {
+      "type": "string"
+    },
+    "sourceName": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "type": "string"
+    },
+    "isBeta": {
+      "type": "boolean"
+    },
+    "requestContext": {
+      "type": "object"
+    },
+    "itemCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "items": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "runId",
+    "stage",
+    "section",
+    "family",
+    "batchId",
+    "collectedUtc",
+    "sourceType",
+    "sourceName",
+    "apiVersion",
+    "isBeta",
+    "requestContext",
+    "itemCount",
+    "items"
+  ]
+}

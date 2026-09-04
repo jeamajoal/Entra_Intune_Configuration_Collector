@@ -2,15 +2,15 @@
 
 ## Current Repository State
 
-- This repository is in initialization state.
-- Product implementation code is not yet committed.
-- Durable architecture owner: docs/architecture/solution-architecture.md.
+- First implementation candidate for the staged PowerShell collector is committed under collector/.
+- Durable architecture owner remains docs/architecture/solution-architecture.md.
+- Canonical live execution and roadmap state remains GitHub Issue #1 and related issue threads.
 
 ## Engineering Intent for First Development Cycle
 
-- Build a staged PowerShell metadata collector for Entra, Intune, and on-prem AD or GPO.
-- Use inventory-first JSON snapshot collection, then metadata enrichment stages.
-- Support stage or section resume using checkpoint artifacts.
+- Preserve staged execution with Stage1 inventory, Stage2 detail, and Stage3 relationship collection.
+- Preserve inventory-first gating for Stage2 and Stage3.
+- Preserve stage-only and section-only execution with checkpoint-based resume and failed-only reprocessing.
 
 ## Scope Boundaries
 
