@@ -230,12 +230,41 @@ function Test-CollectorInventoryArtifacts {
         [string]$Family
     )
 
-    $files = Get-CollectorSnapshotFiles -RunPath $RunPath -Stage 'stage1' -Section $Section -Family $Family
-    if ($null -eq $files) {
+    # Issue #4: Stage2/Stage3 may consume Stage1 only when the persisted
+    # checkpoint proves every recorded batch succeeded and its artifact remains.
+    $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path (Join-Path -Path 'checkpoints' -ChildPath 'stage1') -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json')))
+    if (-not (Test-Path -LiteralPath $checkpointPath)) {
         return $false
     }
 
-    return @($files).Count -gt 0
+    try {
+        $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        return $false
+    }
+
+    if ([string]$checkpoint.stage -ne 'stage1' -or [string]$checkpoint.section -ne $Section -or [string]$checkpoint.family -ne $Family) {
+        return $false
+    }
+
+    $batches = @($checkpoint.batches)
+    if ($batches.Count -eq 0) {
+        return $false
+    }
+
+    foreach ($batch in $batches) {
+        if ([string]$batch.status -ne 'Succeeded') {
+            return $false
+        }
+
+        $artifactPath = [string]$batch.artifactPath
+        if ([string]::IsNullOrWhiteSpace($artifactPath) -or -not (Test-Path -LiteralPath $artifactPath)) {
+            return $false
+        }
+    }
+
+    return $true
 }
 
 function Get-CollectorManifestPath {
