@@ -36,7 +36,7 @@ function Publish-CollectorStage3Result {
         [pscustomobject]$Result
     )
 
-    if ($Context.ContainsKey('PartialStageResults') -and $Context.PartialStageResults) {
+    if ($Context.ContainsKey('PartialStageResults') -and $null -ne $Context.PartialStageResults) {
         $Context.PartialStageResults.Add($Result) | Out-Null
     }
 
