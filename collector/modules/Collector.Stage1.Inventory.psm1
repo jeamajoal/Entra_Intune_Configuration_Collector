@@ -85,6 +85,11 @@ function Invoke-CollectorStage1Family {
         $batches = @(@())
     }
 
+    # Persist the expected work identity before any batch state is mutated. This
+    # makes an interruption before a later batch is reached visibly incomplete.
+    $checkpoint = Initialize-CollectorCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize $Context.BatchSize -Resume:$Context.Resume
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
+
     $result.batchCount = $batches.Count
     $batchNumber = 0
 
@@ -143,6 +148,9 @@ function Invoke-CollectorStage1Family {
             $result.errors += $_.Exception.Message
         }
     }
+
+    $checkpoint = Complete-CollectorCheckpointPlan -Checkpoint $checkpoint
+    Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
 
     return $result
 }

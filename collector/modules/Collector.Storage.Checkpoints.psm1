@@ -42,6 +42,150 @@ function Get-CollectorCheckpointCanonicalArtifactPath {
     return [System.IO.Path]::GetFullPath((Join-Path -Path $RunPath -ChildPath $relativePath))
 }
 
+function Get-CollectorPlanHash {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Value)
+        $hashBytes = $sha256.ComputeHash($bytes)
+        return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function New-CollectorCheckpointPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Batches,
+
+        [Parameter(Mandatory = $true)]
+        [int]$BatchSize
+    )
+
+    $planBatches = @()
+    $batchNumber = 0
+
+    foreach ($batch in $Batches) {
+        $batchNumber++
+        $batchItems = [object[]]@($batch)
+        $serializedBatch = ConvertTo-Json -InputObject $batchItems -Depth 50 -Compress
+        if ([string]::IsNullOrWhiteSpace($serializedBatch)) {
+            $serializedBatch = '[]'
+        }
+
+        $planBatches += [pscustomobject]@{
+            batchId = '{0:D4}' -f $batchNumber
+            itemCount = $batchItems.Count
+            fingerprint = Get-CollectorPlanHash -Value $serializedBatch
+        }
+    }
+
+    $sourceMaterial = ConvertTo-Json -InputObject @($planBatches | Select-Object -Property batchId, itemCount, fingerprint) -Depth 10 -Compress
+    if ([string]::IsNullOrWhiteSpace($sourceMaterial)) {
+        $sourceMaterial = '[]'
+    }
+
+    [pscustomobject]@{
+        planVersion = '1.0'
+        batchSize = $BatchSize
+        expectedBatchCount = $planBatches.Count
+        sourceFingerprint = Get-CollectorPlanHash -Value $sourceMaterial
+        completed = $false
+        batches = @($planBatches)
+    }
+}
+
+function Initialize-CollectorCheckpointPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Checkpoint,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Batches,
+
+        [Parameter(Mandatory = $true)]
+        [int]$BatchSize,
+
+        [switch]$Resume
+    )
+
+    $currentPlan = New-CollectorCheckpointPlan -Batches $Batches -BatchSize $BatchSize
+    $hasPlan = $Checkpoint.PSObject.Properties.Match('plan').Count -gt 0 -and $null -ne $Checkpoint.plan
+
+    if ($Resume -and $hasPlan) {
+        $existingPlan = $Checkpoint.plan
+        $compatible = (
+            [string]$existingPlan.planVersion -eq [string]$currentPlan.planVersion -and
+            [int]$existingPlan.batchSize -eq [int]$currentPlan.batchSize -and
+            [int]$existingPlan.expectedBatchCount -eq [int]$currentPlan.expectedBatchCount -and
+            [string]$existingPlan.sourceFingerprint -eq [string]$currentPlan.sourceFingerprint
+        )
+
+        if (-not $compatible) {
+            throw ('Resume plan mismatch for {0}/{1}/{2}. Existing plan fingerprint or BatchSize does not match current input; stale numeric batch IDs will not be reused.' -f $Checkpoint.stage, $Checkpoint.section, $Checkpoint.family)
+        }
+    }
+    elseif ($Resume -and -not $hasPlan) {
+        $priorSucceeded = @($Checkpoint.batches | Where-Object { $_.status -eq 'Succeeded' }).Count
+        if ($priorSucceeded -gt 0) {
+            throw ('Resume checkpoint for {0}/{1}/{2} contains prior successful batches but no persisted plan identity. Start the family without -Resume so stale numeric batch IDs are not reused.' -f $Checkpoint.stage, $Checkpoint.section, $Checkpoint.family)
+        }
+
+        $Checkpoint.batches = @()
+    }
+    elseif (-not $Resume) {
+        $Checkpoint.batches = @()
+    }
+
+    if ($Checkpoint.PSObject.Properties.Match('plan').Count -eq 0) {
+        $Checkpoint | Add-Member -MemberType NoteProperty -Name plan -Value $currentPlan
+    }
+    else {
+        $Checkpoint.plan = $currentPlan
+    }
+
+    return $Checkpoint
+}
+
+function Complete-CollectorCheckpointPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Checkpoint
+    )
+
+    if ($Checkpoint.PSObject.Properties.Match('plan').Count -eq 0 -or $null -eq $Checkpoint.plan) {
+        return $Checkpoint
+    }
+
+    $isComplete = $true
+    foreach ($plannedBatch in @($Checkpoint.plan.batches)) {
+        $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $Checkpoint -BatchId ([string]$plannedBatch.batchId)
+        if (-not $existingBatch -or [string]$existingBatch.status -ne 'Succeeded' -or [string]::IsNullOrWhiteSpace([string]$existingBatch.artifactPath) -or -not (Test-Path -LiteralPath $existingBatch.artifactPath)) {
+            $isComplete = $false
+            break
+        }
+    }
+
+    if (@($Checkpoint.plan.batches).Count -ne [int]$Checkpoint.plan.expectedBatchCount -or @($Checkpoint.batches).Count -ne [int]$Checkpoint.plan.expectedBatchCount) {
+        $isComplete = $false
+    }
+
+    $Checkpoint.plan.completed = [bool]$isComplete
+    return $Checkpoint
+}
+
 function New-CollectorCheckpointDocument {
     [CmdletBinding()]
     param(
@@ -65,6 +209,7 @@ function New-CollectorCheckpointDocument {
         section = $Section
         family = $Family
         updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        plan = $null
         batches = @()
     }
 }
@@ -119,6 +264,9 @@ function Get-CollectorCheckpoint {
     if (-not $checkpoint.batches) {
         $checkpoint | Add-Member -MemberType NoteProperty -Name batches -Value @() -Force
     }
+    if ($checkpoint.PSObject.Properties.Match('plan').Count -eq 0) {
+        $checkpoint | Add-Member -MemberType NoteProperty -Name plan -Value $null
+    }
 
     foreach ($batch in @($checkpoint.batches)) {
         if ($batch -and -not [string]::IsNullOrWhiteSpace([string]$batch.artifactPath)) {
@@ -147,7 +295,7 @@ function Save-CollectorCheckpoint {
     }
 
     $Checkpoint.updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
-    $checkpointJson = $Checkpoint | ConvertTo-Json -Depth 20
+    $checkpointJson = $Checkpoint | ConvertTo-Json -Depth 30
     $uniqueSuffix = [Guid]::NewGuid().ToString('N')
     $fileName = [System.IO.Path]::GetFileName($checkpointPath)
     $tempPath = Join-Path -Path $checkpointDirectory -ChildPath ('.{0}.{1}.tmp' -f $fileName, $uniqueSuffix)
@@ -366,5 +514,7 @@ Export-ModuleMember -Function @(
     'Get-CollectorCheckpointBatch',
     'Set-CollectorCheckpointBatch',
     'Get-CollectorBatchExecutionDecision',
+    'Initialize-CollectorCheckpointPlan',
+    'Complete-CollectorCheckpointPlan',
     'Get-CollectorCheckpointSummary'
 )

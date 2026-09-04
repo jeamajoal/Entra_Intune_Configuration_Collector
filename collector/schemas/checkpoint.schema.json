@@ -22,6 +22,31 @@
     "updatedUtc": {
       "type": "string"
     },
+    "plan": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "planVersion": { "type": "string" },
+        "batchSize": { "type": "integer", "minimum": 1 },
+        "expectedBatchCount": { "type": "integer", "minimum": 0 },
+        "sourceFingerprint": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "batches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "batchId": { "type": "string" },
+              "itemCount": { "type": "integer", "minimum": 0 },
+              "fingerprint": { "type": "string" }
+            },
+            "required": ["batchId", "itemCount", "fingerprint"]
+          }
+        }
+      },
+      "required": ["planVersion", "batchSize", "expectedBatchCount", "sourceFingerprint", "completed", "batches"]
+    },
     "batches": {
       "type": "array",
       "items": {
@@ -91,6 +116,7 @@
     "section",
     "family",
     "updatedUtc",
+    "plan",
     "batches"
   ]
 }
