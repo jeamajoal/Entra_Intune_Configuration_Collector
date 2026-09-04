@@ -61,12 +61,9 @@ function Resolve-CollectorSections {
     return $resolved
 }
 
-function New-CollectorRunManifest {
+function New-CollectorInvocationParameters {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$RunId,
-
         [Parameter(Mandatory = $true)]
         [string]$GraphToken,
 
@@ -84,27 +81,115 @@ function New-CollectorRunManifest {
     )
 
     [pscustomobject]@{
-        schemaVersion = '1.0'
+        graphTokenSupplied = [bool](-not [string]::IsNullOrWhiteSpace($GraphToken))
+        outputRoot = $OutputRoot
+        stages = @($Stages)
+        sections = @($Sections)
+        resume = [bool]$RuntimeOptions.Resume
+        reprocessFailedOnly = [bool]$RuntimeOptions.ReprocessFailedOnly
+        force = [bool]$RuntimeOptions.Force
+        batchSize = [int]$RuntimeOptions.BatchSize
+        maxRetries = [int]$RuntimeOptions.MaxRetries
+        baseBackoffSeconds = [double]$RuntimeOptions.BaseBackoffSeconds
+        maxBackoffSeconds = [double]$RuntimeOptions.MaxBackoffSeconds
+        throttleMilliseconds = [int]$RuntimeOptions.ThrottleMilliseconds
+    }
+}
+
+function New-CollectorRunManifest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunId,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Parameters
+    )
+
+    [pscustomobject]@{
+        schemaVersion = '1.1'
         runId = $RunId
         startedUtc = (Get-Date).ToUniversalTime().ToString('o')
         completedUtc = $null
         status = 'InProgress'
-        parameters = [pscustomobject]@{
-            graphTokenSupplied = [bool](-not [string]::IsNullOrWhiteSpace($GraphToken))
-            outputRoot = $OutputRoot
-            stages = $Stages
-            sections = $Sections
-            resume = [bool]$RuntimeOptions.Resume
-            reprocessFailedOnly = [bool]$RuntimeOptions.ReprocessFailedOnly
-            force = [bool]$RuntimeOptions.Force
-            batchSize = [int]$RuntimeOptions.BatchSize
-            maxRetries = [int]$RuntimeOptions.MaxRetries
-            baseBackoffSeconds = [double]$RuntimeOptions.BaseBackoffSeconds
-            maxBackoffSeconds = [double]$RuntimeOptions.MaxBackoffSeconds
-            throttleMilliseconds = [int]$RuntimeOptions.ThrottleMilliseconds
-        }
+        parameters = $Parameters
         stageResults = @()
         checkpointSummary = @()
+        failures = @()
+        invocations = @()
+    }
+}
+
+function Get-CollectorRunManifestForInvocation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RunId,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Parameters,
+
+        [switch]$Resume
+    )
+
+    if (-not $Resume) {
+        return New-CollectorRunManifest -RunId $RunId -Parameters $Parameters
+    }
+
+    $manifestPath = Get-CollectorManifestPath -RunPath $RunPath
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        throw ('Resume requested for run {0}, but its run manifest is missing: {1}' -f $RunId, $manifestPath)
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw ('Resume requested for run {0}, but its run manifest is unreadable: {1}' -f $RunId, $_.Exception.Message)
+    }
+
+    if ([string]$manifest.runId -ne $RunId) {
+        throw ('Resume manifest runId mismatch. Expected {0}; found {1}.' -f $RunId, [string]$manifest.runId)
+    }
+
+    foreach ($propertyName in @('stageResults', 'checkpointSummary', 'failures')) {
+        if ($manifest.PSObject.Properties.Match($propertyName).Count -eq 0 -or $null -eq $manifest.$propertyName) {
+            $manifest | Add-Member -MemberType NoteProperty -Name $propertyName -Value @() -Force
+        }
+    }
+
+    if ($manifest.PSObject.Properties.Match('invocations').Count -eq 0 -or $null -eq $manifest.invocations) {
+        $legacyInvocation = [pscustomobject]@{
+            startedUtc = [string]$manifest.startedUtc
+            completedUtc = $manifest.completedUtc
+            status = [string]$manifest.status
+            parameters = $manifest.parameters
+            stageResults = @($manifest.stageResults)
+            failures = @($manifest.failures)
+        }
+        $manifest | Add-Member -MemberType NoteProperty -Name invocations -Value @($legacyInvocation) -Force
+    }
+
+    $manifest.schemaVersion = '1.1'
+    return $manifest
+}
+
+function New-CollectorInvocationRecord {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Parameters
+    )
+
+    [pscustomobject]@{
+        startedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        completedUtc = $null
+        status = 'InProgress'
+        parameters = $Parameters
+        stageResults = @()
         failures = @()
     }
 }
@@ -141,7 +226,6 @@ function Start-CollectorRun {
 
     $resolvedStages = Resolve-CollectorStages -Stages $Stages
     $resolvedSections = Resolve-CollectorSections -Sections $Sections
-
     $run = Resolve-CollectorRun -OutputRoot $OutputRoot -Resume:$Resume
 
     $context = @{
@@ -158,7 +242,14 @@ function Start-CollectorRun {
         ThrottleMilliseconds = $ThrottleMilliseconds
     }
 
-    $manifest = New-CollectorRunManifest -RunId $run.runId -GraphToken $GraphToken -OutputRoot $OutputRoot -Stages $resolvedStages -Sections $resolvedSections -RuntimeOptions $context
+    $parameters = New-CollectorInvocationParameters -GraphToken $GraphToken -OutputRoot $OutputRoot -Stages $resolvedStages -Sections $resolvedSections -RuntimeOptions $context
+    $manifest = Get-CollectorRunManifestForInvocation -RunPath $run.runPath -RunId $run.runId -Parameters $parameters -Resume:$Resume
+    $invocation = New-CollectorInvocationRecord -Parameters $parameters
+
+    $manifest.parameters = $parameters
+    $manifest.status = 'InProgress'
+    $manifest.completedUtc = $null
+    $manifest.invocations += $invocation
     $manifestPath = Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest
 
     try {
@@ -179,18 +270,21 @@ function Start-CollectorRun {
                 }
             }
 
+            $invocation.stageResults += $stageResults
             $manifest.stageResults += $stageResults
 
             foreach ($stageResult in $stageResults) {
                 if ($stageResult.failedBatches -gt 0 -and $stageResult.errors) {
                     foreach ($errorMessage in @($stageResult.errors)) {
                         if (-not [string]::IsNullOrWhiteSpace([string]$errorMessage)) {
-                            $manifest.failures += [pscustomobject]@{
+                            $failure = [pscustomobject]@{
                                 stage = $stageResult.stage
                                 section = $stageResult.section
                                 family = $stageResult.family
                                 error = [string]$errorMessage
                             }
+                            $invocation.failures += $failure
+                            $manifest.failures += $failure
                         }
                     }
                 }
@@ -198,22 +292,28 @@ function Start-CollectorRun {
         }
 
         $manifest.checkpointSummary = @(Get-CollectorCheckpointSummary -RunPath $run.runPath)
-        $manifest.status = if ($manifest.failures.Count -gt 0) { 'CompletedWithErrors' } else { 'Completed' }
+        $invocation.status = if ($invocation.failures.Count -gt 0) { 'CompletedWithErrors' } else { 'Completed' }
+        $manifest.status = $invocation.status
     }
     catch {
-        $manifest.failures += [pscustomobject]@{
+        $failure = [pscustomobject]@{
             stage = 'orchestration'
             section = 'all'
             family = 'all'
             error = $_.Exception.Message
         }
 
+        $invocation.failures += $failure
+        $manifest.failures += $failure
         $manifest.checkpointSummary = @(Get-CollectorCheckpointSummary -RunPath $run.runPath)
+        $invocation.status = 'Failed'
         $manifest.status = 'Failed'
         throw
     }
     finally {
-        $manifest.completedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        $completedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        $invocation.completedUtc = $completedUtc
+        $manifest.completedUtc = $completedUtc
         $manifestPath = Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest
     }
 
@@ -221,10 +321,10 @@ function Start-CollectorRun {
         runId = $run.runId
         runPath = $run.runPath
         manifestPath = $manifestPath
-        status = $manifest.status
-        stageResults = $manifest.stageResults
-        checkpointSummary = $manifest.checkpointSummary
-        failures = $manifest.failures
+        status = $invocation.status
+        stageResults = @($invocation.stageResults)
+        checkpointSummary = @($manifest.checkpointSummary)
+        failures = @($invocation.failures)
     }
 }
 
