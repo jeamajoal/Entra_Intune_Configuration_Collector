@@ -1,5 +1,46 @@
 Set-StrictMode -Version Latest
 
+function Get-CollectorHeaderValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Headers,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    if ($Headers.PSObject.Methods.Match('TryGetValues').Count -gt 0) {
+        try {
+            [System.Collections.Generic.IEnumerable[string]]$values = $null
+            if ($Headers.TryGetValues($Name, [ref]$values)) {
+                $firstValue = @($values) | Select-Object -First 1
+                if ($null -ne $firstValue) {
+                    return [string]$firstValue
+                }
+            }
+        }
+        catch {
+            # Fall through to legacy/indexed header access.
+        }
+    }
+
+    try {
+        $headerValue = $Headers[$Name]
+        if ($null -ne $headerValue) {
+            $firstValue = if ($headerValue -is [System.Array]) { $headerValue[0] } else { $headerValue }
+            if ($null -ne $firstValue) {
+                return [string]$firstValue
+            }
+        }
+    }
+    catch {
+        return $null
+    }
+
+    return $null
+}
+
 function Get-CollectorRetryMetadata {
     [CmdletBinding()]
     param(
@@ -44,27 +85,21 @@ function Get-CollectorRetryMetadata {
         }
 
         if ($response.PSObject.Properties.Match('Headers').Count -gt 0 -and $response.Headers) {
-            try {
-                $retryAfterHeader = $response.Headers['Retry-After']
-                if ($retryAfterHeader) {
-                    $firstValue = if ($retryAfterHeader -is [System.Array]) { $retryAfterHeader[0] } else { $retryAfterHeader }
-                    $parsedRetryAfter = 0
-                    if ([int]::TryParse([string]$firstValue, [ref]$parsedRetryAfter)) {
-                        $retryAfterSeconds = $parsedRetryAfter
-                    }
-                    else {
-                        $retryAfterDate = [datetimeoffset]::MinValue
-                        if ([datetimeoffset]::TryParse([string]$firstValue, [ref]$retryAfterDate)) {
-                            $delaySeconds = [int][Math]::Ceiling(($retryAfterDate.UtcDateTime - (Get-Date).ToUniversalTime()).TotalSeconds)
-                            if ($delaySeconds -gt 0) {
-                                $retryAfterSeconds = $delaySeconds
-                            }
+            $retryAfterHeader = Get-CollectorHeaderValue -Headers $response.Headers -Name 'Retry-After'
+            if ($retryAfterHeader) {
+                $parsedRetryAfter = 0
+                if ([int]::TryParse([string]$retryAfterHeader, [ref]$parsedRetryAfter)) {
+                    $retryAfterSeconds = $parsedRetryAfter
+                }
+                else {
+                    $retryAfterDate = [datetimeoffset]::MinValue
+                    if ([datetimeoffset]::TryParse([string]$retryAfterHeader, [ref]$retryAfterDate)) {
+                        $delaySeconds = [int][Math]::Ceiling(($retryAfterDate.UtcDateTime - (Get-Date).ToUniversalTime()).TotalSeconds)
+                        if ($delaySeconds -gt 0) {
+                            $retryAfterSeconds = $delaySeconds
                         }
                     }
                 }
-            }
-            catch {
-                $retryAfterSeconds = $null
             }
         }
     }
