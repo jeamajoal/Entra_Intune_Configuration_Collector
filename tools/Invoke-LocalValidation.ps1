@@ -36,7 +36,10 @@ Write-Host 'Parser validation passed.'
 if (-not $SkipScriptAnalyzer) {
     if (Get-Module -ListAvailable -Name PSScriptAnalyzer) {
         Import-Module PSScriptAnalyzer -ErrorAction Stop
-        $analyzerFindings = Invoke-ScriptAnalyzer -Path $collectorPath, $testsPath, $toolsPath -Recurse -Severity Error, Warning
+        $analyzerFindings = @()
+        foreach ($analysisPath in @($collectorPath, $testsPath, $toolsPath)) {
+            $analyzerFindings += @(Invoke-ScriptAnalyzer -Path $analysisPath -Recurse -Severity Error, Warning)
+        }
 
         if ($analyzerFindings -and $analyzerFindings.Count -gt 0) {
             $analyzerFindings | Format-Table -AutoSize
