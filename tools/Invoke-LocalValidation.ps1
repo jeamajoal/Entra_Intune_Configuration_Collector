@@ -23,6 +23,10 @@ function Get-PesterValidationSummary {
     $failedCount = $null
 
     if ($propertyNames -contains 'TotalCount') {
+        if ($null -eq $PesterResults.TotalCount) {
+            throw 'Pester TotalCount is null; unable to prove test execution.'
+        }
+
         try {
             $totalCount = [long]$PesterResults.TotalCount
         }
@@ -38,6 +42,10 @@ function Get-PesterValidationSummary {
     }
 
     if ($propertyNames -contains 'FailedCount') {
+        if ($null -eq $PesterResults.FailedCount) {
+            throw 'Pester FailedCount is null; unable to prove failure state.'
+        }
+
         try {
             $failedCount = [long]$PesterResults.FailedCount
         }
