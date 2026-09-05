@@ -3,6 +3,8 @@ Set-StrictMode -Version Latest
 $retryModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Retry.psm1'
 Import-Module -Name $retryModulePath -Force -ErrorAction Stop
 
+$script:GraphBaseUri = [uri]'https://graph.microsoft.com/'
+
 function Get-CollectorGraphHeader {
     [CmdletBinding()]
     param(
@@ -25,11 +27,29 @@ function Resolve-CollectorGraphUri {
         [switch]$AbsoluteUri
     )
 
-    if ($AbsoluteUri -or $Endpoint -match '^https?://') {
-        return $Endpoint
+    $hasAbsoluteScheme = $Endpoint -match '^[A-Za-z][A-Za-z0-9+.-]*://'
+    $candidateUri = if ($AbsoluteUri -or $hasAbsoluteScheme) {
+        $Endpoint
+    }
+    else {
+        'https://graph.microsoft.com{0}' -f $Endpoint
     }
 
-    return 'https://graph.microsoft.com{0}' -f $Endpoint
+    [uri]$resolvedUri = $null
+    if (-not [uri]::TryCreate($candidateUri, [System.UriKind]::Absolute, [ref]$resolvedUri)) {
+        throw ('Graph endpoint does not resolve to a valid absolute URI: {0}' -f $Endpoint)
+    }
+
+    $sameScheme = [string]::Equals($resolvedUri.Scheme, $script:GraphBaseUri.Scheme, [System.StringComparison]::OrdinalIgnoreCase)
+    $sameHost = [string]::Equals($resolvedUri.Host, $script:GraphBaseUri.Host, [System.StringComparison]::OrdinalIgnoreCase)
+    $samePort = $resolvedUri.Port -eq $script:GraphBaseUri.Port
+    $hasUserInfo = -not [string]::IsNullOrEmpty($resolvedUri.UserInfo)
+
+    if (-not $sameScheme -or -not $sameHost -or -not $samePort -or $hasUserInfo) {
+        throw ('Graph endpoint must use the Microsoft Graph HTTPS origin {0}: {1}' -f $script:GraphBaseUri.GetLeftPart([System.UriPartial]::Authority), $Endpoint)
+    }
+
+    return $resolvedUri.AbsoluteUri
 }
 
 function Invoke-CollectorGraphRequest {
