@@ -122,11 +122,11 @@ function Get-CollectorDomainAcl {
     $driveName = 'CollectorAD' + [Guid]::NewGuid().ToString('N')
     try {
         New-PSDrive -Name $driveName -PSProvider ActiveDirectory -Root '//RootDSE/' -Server $DomainContext -Scope Local -ErrorAction Stop | Out-Null
-        $path = '{0}:\{1}' -f $driveName, $DistinguishedName
-        $acl = Get-Acl -LiteralPath $path -ErrorAction Stop
+        $providerPath = '{0}:\{1}' -f $driveName, $DistinguishedName
+        $acl = Get-Acl -LiteralPath $providerPath -ErrorAction Stop
 
         [pscustomobject]@{
-            Path = $path
+            Path = 'AD:\{0}' -f $DistinguishedName
             Acl = $acl
         }
     }
