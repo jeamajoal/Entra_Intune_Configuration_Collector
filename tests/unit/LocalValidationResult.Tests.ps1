@@ -1,35 +1,37 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-$validationScript = Join-Path -Path $repoRoot -ChildPath 'tools/Invoke-LocalValidation.ps1'
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    $validationScript = Join-Path -Path $repoRoot -ChildPath 'tools/Invoke-LocalValidation.ps1'
 
-$validationSource = Get-Content -LiteralPath $validationScript -Raw
-$tokens = $null
-$parseErrors = $null
-$validationAst = [System.Management.Automation.Language.Parser]::ParseInput($validationSource, [ref]$tokens, [ref]$parseErrors)
-if ($parseErrors -and $parseErrors.Count -gt 0) {
-    throw ('Validation script did not parse: ' + (($parseErrors | ForEach-Object Message) -join '; '))
-}
-
-$summaryFunctionAst = $validationAst.Find({
-    param($node)
-    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-PesterValidationSummary'
-}, $true)
-if (-not $summaryFunctionAst) {
-    throw 'Get-PesterValidationSummary was not found in Invoke-LocalValidation.ps1.'
-}
-Invoke-Expression $summaryFunctionAst.Extent.Text
-
-function Get-ValidationSummaryFailure {
-    param(
-        [AllowNull()]
-        [object]$Result
-    )
-
-    try {
-        Get-PesterValidationSummary -PesterResults $Result | Out-Null
-        return $null
+    $validationSource = Get-Content -LiteralPath $validationScript -Raw
+    $tokens = $null
+    $parseErrors = $null
+    $validationAst = [System.Management.Automation.Language.Parser]::ParseInput($validationSource, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+        throw ('Validation script did not parse: ' + (($parseErrors | ForEach-Object Message) -join '; '))
     }
-    catch {
-        return $_.Exception.Message
+
+    $summaryFunctionAst = $validationAst.Find({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-PesterValidationSummary'
+    }, $true)
+    if (-not $summaryFunctionAst) {
+        throw 'Get-PesterValidationSummary was not found in Invoke-LocalValidation.ps1.'
+    }
+    Invoke-Expression $summaryFunctionAst.Extent.Text
+
+    function Get-ValidationSummaryFailure {
+        param(
+            [AllowNull()]
+            [object]$Result
+        )
+
+        try {
+            Get-PesterValidationSummary -PesterResults $Result | Out-Null
+            return $null
+        }
+        catch {
+            return $_.Exception.Message
+        }
     }
 }
 
