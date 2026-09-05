@@ -512,6 +512,7 @@ function Invoke-CollectorStage3 {
             'entra-apps' {
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'servicePrincipalAppRoleAssignedTo' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}/appRoleAssignedTo')
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'groupMembers' -DependencyFamily 'groups' -EndpointTemplate '/v1.0/groups/{id}/members')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'applicationFederatedIdentityCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description')
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3DelegatedGrantFamily -Context $Context -Section $section)
             }
 
