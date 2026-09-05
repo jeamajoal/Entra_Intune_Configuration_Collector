@@ -18,12 +18,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Pester
+      - name: Install validation modules
         shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
 
-      - name: Run parser and Pester validation
+      - name: Run parser, analyzer, and Pester validation
         shell: pwsh
-        run: ./tools/Invoke-LocalValidation.ps1 -SkipScriptAnalyzer
+        run: ./tools/Invoke-LocalValidation.ps1
