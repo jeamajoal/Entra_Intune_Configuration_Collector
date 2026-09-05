@@ -10,44 +10,45 @@ permissions:
   contents: read
 
 jobs:
-  powershell-validation:
-    name: Validate (${{ matrix.name }})
+  powershell7-validation:
+    name: Validate (PowerShell 7)
     runs-on: windows-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: PowerShell 7
-            shell: pwsh
-          - name: Windows PowerShell 5.1
-            shell: powershell
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Install validation modules
-        shell: ${{ matrix.shell }}
+        shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-
-          $pesterInstall = @{
-            Name = 'Pester'
-            RequiredVersion = '5.9.1'
-            Scope = 'CurrentUser'
-            Force = $true
-          }
-          if ($PSVersionTable.PSEdition -eq 'Desktop') {
-            # Windows includes an older Microsoft-signed Pester. The gallery
-            # build has a different publisher, so unattended side-by-side
-            # installation requires acknowledging that publisher transition.
-            $pesterInstall.SkipPublisherCheck = $true
-          }
-
-          Install-Module @pesterInstall
+          Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force
           Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
 
       - name: Run parser, analyzer, and Pester validation
-        shell: ${{ matrix.shell }}
+        shell: pwsh
+        run: ./tools/Invoke-LocalValidation.ps1
+
+  windows-powershell51-validation:
+    name: Validate (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install validation modules
+        shell: powershell
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          # Windows includes an older Microsoft-signed Pester. The gallery
+          # build has a different publisher, so unattended side-by-side
+          # installation must acknowledge that publisher transition.
+          Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+
+      - name: Run parser, analyzer, and Pester validation
+        shell: powershell
         run: ./tools/Invoke-LocalValidation.ps1
