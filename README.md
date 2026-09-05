@@ -171,9 +171,12 @@ For on-prem snapshots, sourceName records concrete cmdlet names and requestConte
 
 ## Validation
 
-Normal local validation requires PSScriptAnalyzer 1.25.0. Install the same pinned analyzer version used by CI before running the validation script:
+CI executes the same parser, PSScriptAnalyzer, and Pester validation gate on `windows-latest` under both PowerShell 7 (`pwsh`) and Windows PowerShell 5.1 (`powershell`). Both jobs pin Pester 5.9.1 and PSScriptAnalyzer 1.25.0. The Windows PowerShell job uses `-SkipPublisherCheck` only for the side-by-side Pester installation because Windows includes an older Microsoft-signed Pester with a different publisher; this does not skip or weaken Pester execution.
+
+For normal local validation, install the same pinned validation modules used by CI before running the validation script. On Windows PowerShell 5.1, Pester's publisher transition may require `-SkipPublisherCheck` during installation.
 
 ```powershell
+Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force
 Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
 pwsh ./tools/Invoke-LocalValidation.ps1
 ```
