@@ -98,6 +98,19 @@ The ordinary `entra-apps` Stage2 detail families use explicit Microsoft Graph v1
 - `group.onPremisesExtensionAttributes` is included explicitly because the current Microsoft Graph v1.0 group contract exposes it only when requested with `$select`.
 - PIM and Intune Stage2 families retain their existing request behavior until separately reviewed property contracts exist for those surfaces.
 
+### Entra credential and federated identity boundary
+
+Credential metadata is collected in separate families so its security and throttling behavior is not hidden inside the ordinary Stage2 detail contract.
+
+- Stage2 `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`.
+- Both credential families request only `id,keyCredentials,passwordCredentials` from the corresponding v1.0 object endpoint.
+- Because Microsoft Graph applies a 150 requests/minute tenant ceiling when `keyCredentials` is explicitly selected, those calls use an effective pre-request throttle of `max(ThrottleMilliseconds, 400)` and record the minimum/effective throttle in provenance.
+- Credential snapshots use an allowlist. Key credentials retain `customKeyIdentifier`, `displayName`, `endDateTime`, `keyId`, `startDateTime`, `type`, and `usage`. Password credentials retain `displayName`, `endDateTime`, `keyId`, and `startDateTime`.
+- Raw key material (`key`), password `secretText`, password `hint`, password `customKeyIdentifier`, and unrecognized response fields are never persisted by the credential transform.
+- Stage3 `applicationFederatedIdentityCredentials` depends on Stage1 `applications` and requests `/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description` through the existing per-object relationship seam.
+- Federated identity snapshots preserve the application parent id/count plus only the six explicitly selected trust fields.
+- These paths preserve the normal GET-only Graph provider boundary; secret retrieval, credential export, rotation, and mutation remain out of scope.
+
 ## Inventory-First Gating and Resume Semantics
 
 - Checkpoints are written per stage/section/family.
@@ -165,6 +178,7 @@ For on-prem families, sourceName is cmdlet-specific and requestContext includes 
 - Retry-After is honored when present.
 - Exponential backoff with jitter is applied within configured min/max bounds.
 - Throttle delay is applied before Graph requests.
+- Key-credential Stage2 reads have a 400 ms minimum pre-request throttle to stay at or below the documented 150 requests/minute tenant boundary.
 
 ## Failure Behavior
 

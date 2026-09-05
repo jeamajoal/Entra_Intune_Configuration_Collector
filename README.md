@@ -78,7 +78,7 @@ pwsh ./collector/Invoke-Collector.ps1 `
 - MaxRetries: retry count for transient Graph failures. Default 5.
 - BaseBackoffSeconds: base exponential backoff delay. Default 2.
 - MaxBackoffSeconds: backoff upper bound and Retry-After cap. Default 30.
-- ThrottleMilliseconds: delay before each Graph request. Default 100.
+- ThrottleMilliseconds: delay before each Graph request attempt. Default 100. Entra application/service-principal credential reads that explicitly select `keyCredentials` enforce at least 400 ms per request attempt to stay at or below Microsoft's documented 150 requests/minute tenant boundary.
 
 ## Stage and Section Model
 
@@ -103,6 +103,7 @@ Stage1 inventory families:
 Stage2 detail collection:
 
 - Graph families are collected by id from Stage1 inventory.
+- `entra-apps` also writes separate `applicationCredentials` and `servicePrincipalCredentials` families. These request `id,keyCredentials,passwordCredentials`, enforce the credential-specific throttle floor, and persist an allowlisted metadata shape that excludes raw key material and password secret text.
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
 - Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
 - Stage2 persists its own plan before processing so resume cannot silently reuse numeric batch IDs after Stage1 input, order, membership, or BatchSize changes.
@@ -112,6 +113,7 @@ Stage3 relationship families:
 - ACL metadata: domainRootAcl, ouAcl, gpoPermissions
 - Membership metadata: groupMembers, groupMembersOnPrem
 - Assignment metadata: mobileAppAssignments, deviceManagementScriptAssignments, servicePrincipalAppRoleAssignedTo
+- Entra federated trust metadata: applicationFederatedIdentityCredentials from each Stage1 application, limited to id/name/issuer/subject/audiences/description
 - Delegated grants: delegatedGrants from /v1.0/oauth2PermissionGrants
 - PIM relationship edges: pimScheduleEdges derived from Stage1 PIM schedule instances
 - On-prem relationship families use persisted Stage1 domain context where cmdlets support domain targeting.

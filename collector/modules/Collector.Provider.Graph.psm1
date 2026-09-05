@@ -55,11 +55,11 @@ function Invoke-CollectorGraphRequest {
     $uri = Resolve-CollectorGraphUri -Endpoint $Endpoint -AbsoluteUri:$AbsoluteUri
     $headers = New-CollectorGraphHeaders -GraphToken $GraphToken
 
-    if ($ThrottleMilliseconds -gt 0) {
-        Start-Sleep -Milliseconds $ThrottleMilliseconds
-    }
-
     $invokeRequest = {
+        if ($ThrottleMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds $ThrottleMilliseconds
+        }
+
         $requestParams = @{
             Uri = $uri
             Method = 'GET'
