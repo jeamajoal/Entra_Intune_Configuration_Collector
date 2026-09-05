@@ -1,51 +1,53 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
 
-function Assert-ZeroItemFamilyArtifacts {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RunPath,
+    function Assert-ZeroItemFamilyArtifacts {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$RunPath,
 
-        [Parameter(Mandatory = $true)]
-        [string]$Stage,
+            [Parameter(Mandatory = $true)]
+            [string]$Stage,
 
-        [Parameter(Mandatory = $true)]
-        [string]$Section,
+            [Parameter(Mandatory = $true)]
+            [string]$Section,
 
-        [Parameter(Mandatory = $true)]
-        [string]$Family
-    )
+            [Parameter(Mandatory = $true)]
+            [string]$Family
+        )
 
-    $artifactPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath (Join-Path -Path $Family -ChildPath 'batch-0001.json')))
-    if (-not (Test-Path -LiteralPath $artifactPath)) {
-        throw ('Expected zero-item artifact to exist: ' + $artifactPath)
-    }
+        $artifactPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath (Join-Path -Path $Family -ChildPath 'batch-0001.json')))
+        if (-not (Test-Path -LiteralPath $artifactPath)) {
+            throw ('Expected zero-item artifact to exist: ' + $artifactPath)
+        }
 
-    $snapshot = Get-Content -LiteralPath $artifactPath -Raw | ConvertFrom-Json
-    if ([int]$snapshot.itemCount -ne 0 -or @($snapshot.items).Count -ne 0) {
-        throw ('Expected zero-item snapshot for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
-    }
+        $snapshot = Get-Content -LiteralPath $artifactPath -Raw | ConvertFrom-Json
+        if ([int]$snapshot.itemCount -ne 0 -or @($snapshot.items).Count -ne 0) {
+            throw ('Expected zero-item snapshot for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+        }
 
-    $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path 'checkpoints' -ChildPath (Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json'))))
-    if (-not (Test-Path -LiteralPath $checkpointPath)) {
-        throw ('Expected zero-item checkpoint to exist: ' + $checkpointPath)
-    }
+        $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path 'checkpoints' -ChildPath (Join-Path -Path $Stage -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json'))))
+        if (-not (Test-Path -LiteralPath $checkpointPath)) {
+            throw ('Expected zero-item checkpoint to exist: ' + $checkpointPath)
+        }
 
-    $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
-    if (@($checkpoint.batches).Count -ne 1) {
-        throw ('Expected exactly one zero-item checkpoint batch for {0}/{1}/{2}; actual {3}.' -f $Stage, $Section, $Family, @($checkpoint.batches).Count)
-    }
+        $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+        if (@($checkpoint.batches).Count -ne 1) {
+            throw ('Expected exactly one zero-item checkpoint batch for {0}/{1}/{2}; actual {3}.' -f $Stage, $Section, $Family, @($checkpoint.batches).Count)
+        }
 
-    $batch = @($checkpoint.batches)[0]
-    if ([string]$batch.status -ne 'Succeeded' -or [int]$batch.itemCount -ne 0) {
-        throw ('Expected succeeded zero-item checkpoint batch for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
-    }
+        $batch = @($checkpoint.batches)[0]
+        if ([string]$batch.status -ne 'Succeeded' -or [int]$batch.itemCount -ne 0) {
+            throw ('Expected succeeded zero-item checkpoint batch for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+        }
 
-    if (-not $checkpoint.plan -or -not [bool]$checkpoint.plan.completed -or [int]$checkpoint.plan.expectedBatchCount -ne 1) {
-        throw ('Expected completed one-batch zero-item plan for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+        if (-not $checkpoint.plan -or -not [bool]$checkpoint.plan.completed -or [int]$checkpoint.plan.expectedBatchCount -ne 1) {
+            throw ('Expected completed one-batch zero-item plan for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+        }
     }
 }
 
