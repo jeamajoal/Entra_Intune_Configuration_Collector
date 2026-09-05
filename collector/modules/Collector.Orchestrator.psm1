@@ -8,6 +8,7 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.
 
 $script:SupportedStages = @('Stage1', 'Stage2', 'Stage3')
 $script:SupportedSections = @('entra-apps', 'entra-pim', 'intune-core', 'onprem-ad-gpo')
+$script:GraphBackedSections = @('entra-apps', 'entra-pim', 'intune-core')
 
 function Resolve-CollectorStages {
     [CmdletBinding()]
@@ -61,10 +62,28 @@ function Resolve-CollectorSections {
     return $resolved
 }
 
+function Assert-CollectorGraphTokenForSections {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$GraphToken,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Sections
+    )
+
+    $selectedGraphSections = @($Sections | Where-Object { $script:GraphBackedSections -contains $_ })
+    if ($selectedGraphSections.Count -gt 0 -and [string]::IsNullOrWhiteSpace($GraphToken)) {
+        throw ('GraphToken is required when Graph-backed sections are selected: {0}.' -f ($selectedGraphSections -join ', '))
+    }
+}
+
 function New-CollectorInvocationParameters {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [AllowEmptyString()]
         [string]$GraphToken,
 
         [Parameter(Mandatory = $true)]
@@ -229,7 +248,8 @@ function Add-CollectorManifestStageResult {
 function Start-CollectorRun {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [AllowEmptyString()]
         [string]$GraphToken,
 
         [Parameter(Mandatory = $true)]
@@ -258,6 +278,7 @@ function Start-CollectorRun {
 
     $resolvedStages = Resolve-CollectorStages -Stages $Stages
     $resolvedSections = Resolve-CollectorSections -Sections $Sections
+    Assert-CollectorGraphTokenForSections -GraphToken $GraphToken -Sections $resolvedSections
     $run = Resolve-CollectorRun -OutputRoot $OutputRoot -Resume:$Resume
 
     $context = @{

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
+    [AllowNull()]
+    [AllowEmptyString()]
     [string]$GraphToken,
 
     [Parameter(Mandatory = $true)]
