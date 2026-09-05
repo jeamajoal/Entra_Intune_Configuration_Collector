@@ -108,6 +108,50 @@ $script:CollectorStage2EntraSelectedProperties = @{
     )
 }
 
+$script:CollectorCredentialSelectedProperties = @('id', 'keyCredentials', 'passwordCredentials')
+$script:CollectorCredentialMinimumThrottleMilliseconds = 400
+
+function ConvertTo-CollectorCredentialMetadata {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Detail
+    )
+
+    $keyCredentials = @()
+    if ($Detail.PSObject.Properties.Match('keyCredentials').Count -gt 0 -and $Detail.keyCredentials) {
+        foreach ($credential in @($Detail.keyCredentials)) {
+            $keyCredentials += [pscustomobject]@{
+                customKeyIdentifier = if ($credential.PSObject.Properties.Match('customKeyIdentifier').Count -gt 0) { $credential.customKeyIdentifier } else { $null }
+                displayName = if ($credential.PSObject.Properties.Match('displayName').Count -gt 0) { $credential.displayName } else { $null }
+                endDateTime = if ($credential.PSObject.Properties.Match('endDateTime').Count -gt 0) { $credential.endDateTime } else { $null }
+                keyId = if ($credential.PSObject.Properties.Match('keyId').Count -gt 0) { $credential.keyId } else { $null }
+                startDateTime = if ($credential.PSObject.Properties.Match('startDateTime').Count -gt 0) { $credential.startDateTime } else { $null }
+                type = if ($credential.PSObject.Properties.Match('type').Count -gt 0) { $credential.type } else { $null }
+                usage = if ($credential.PSObject.Properties.Match('usage').Count -gt 0) { $credential.usage } else { $null }
+            }
+        }
+    }
+
+    $passwordCredentials = @()
+    if ($Detail.PSObject.Properties.Match('passwordCredentials').Count -gt 0 -and $Detail.passwordCredentials) {
+        foreach ($credential in @($Detail.passwordCredentials)) {
+            $passwordCredentials += [pscustomobject]@{
+                displayName = if ($credential.PSObject.Properties.Match('displayName').Count -gt 0) { $credential.displayName } else { $null }
+                endDateTime = if ($credential.PSObject.Properties.Match('endDateTime').Count -gt 0) { $credential.endDateTime } else { $null }
+                keyId = if ($credential.PSObject.Properties.Match('keyId').Count -gt 0) { $credential.keyId } else { $null }
+                startDateTime = if ($credential.PSObject.Properties.Match('startDateTime').Count -gt 0) { $credential.startDateTime } else { $null }
+            }
+        }
+    }
+
+    [pscustomobject]@{
+        id = if ($Detail.PSObject.Properties.Match('id').Count -gt 0) { $Detail.id } else { $null }
+        keyCredentials = $keyCredentials
+        passwordCredentials = $passwordCredentials
+    }
+}
+
 function New-CollectorFamilyResult {
     param(
         [string]$Stage,
@@ -201,26 +245,42 @@ function Invoke-CollectorStage2GraphFamily {
         [Parameter(Mandatory = $true)]
         [string]$EndpointTemplate,
 
-        [string[]]$SelectedProperties = @()
+        [string[]]$SelectedProperties = @(),
+
+        [string]$DependencyFamily,
+
+        [int]$MinimumThrottleMilliseconds = 0,
+
+        [scriptblock]$DetailTransform
     )
 
-    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $Family
+    if ([string]::IsNullOrWhiteSpace($DependencyFamily)) {
+        $DependencyFamily = $Family
+    }
+
+    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $DependencyFamily
 
     $stageName = 'stage2'
     $selectedProperties = @($SelectedProperties)
+    $effectiveThrottleMilliseconds = [Math]::Max([int]$Context.ThrottleMilliseconds, $MinimumThrottleMilliseconds)
     $requestContext = @{
         endpointTemplate = $EndpointTemplate
         method = 'GET'
         inventoryStage = 'stage1'
+        dependencyFamily = $DependencyFamily
     }
     if ($selectedProperties.Count -gt 0) {
         $requestContext.selectedProperties = @($selectedProperties)
+    }
+    if ($MinimumThrottleMilliseconds -gt 0) {
+        $requestContext.minimumThrottleMilliseconds = $MinimumThrottleMilliseconds
+        $requestContext.effectiveThrottleMilliseconds = $effectiveThrottleMilliseconds
     }
 
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
     $result = New-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
-    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $Family)
+    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
 
     if ($batches.Count -eq 0) {
@@ -283,7 +343,10 @@ function Invoke-CollectorStage2GraphFamily {
             }
 
             try {
-                $detail = Invoke-CollectorGraphRequest -GraphToken $Context.GraphToken -Endpoint $endpoint -MaxRetries $Context.MaxRetries -BaseBackoffSeconds $Context.BaseBackoffSeconds -MaxBackoffSeconds $Context.MaxBackoffSeconds -ThrottleMilliseconds $Context.ThrottleMilliseconds
+                $detail = Invoke-CollectorGraphRequest -GraphToken $Context.GraphToken -Endpoint $endpoint -MaxRetries $Context.MaxRetries -BaseBackoffSeconds $Context.BaseBackoffSeconds -MaxBackoffSeconds $Context.MaxBackoffSeconds -ThrottleMilliseconds $effectiveThrottleMilliseconds
+                if ($DetailTransform) {
+                    $detail = & $DetailTransform $detail
+                }
                 $details += $detail
             }
             catch {
@@ -476,6 +539,8 @@ function Invoke-CollectorStage2 {
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applications' -EndpointTemplate '/v1.0/applications/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.applications)
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.servicePrincipals)
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'groups' -EndpointTemplate '/v1.0/groups/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.groups)
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applicationCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}' -SelectedProperties $script:CollectorCredentialSelectedProperties -MinimumThrottleMilliseconds $script:CollectorCredentialMinimumThrottleMilliseconds -DetailTransform { param($detail) ConvertTo-CollectorCredentialMetadata -Detail $detail })
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipalCredentials' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}' -SelectedProperties $script:CollectorCredentialSelectedProperties -MinimumThrottleMilliseconds $script:CollectorCredentialMinimumThrottleMilliseconds -DetailTransform { param($detail) ConvertTo-CollectorCredentialMetadata -Detail $detail })
             }
 
             'entra-pim' {
