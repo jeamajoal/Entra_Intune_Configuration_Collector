@@ -26,6 +26,23 @@ function New-CollectorFamilyResult {
     }
 }
 
+function Publish-CollectorStage2Result {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Result
+    )
+
+    if ($Context.ContainsKey('PartialStageResults') -and $null -ne $Context.PartialStageResults) {
+        $Context.PartialStageResults.Add($Result) | Out-Null
+    }
+
+    return $Result
+}
+
 function Get-CollectorObjectId {
     [CmdletBinding()]
     param(
@@ -59,7 +76,11 @@ function Assert-CollectorInventoryFirstForStage2 {
     )
 
     if (-not (Test-CollectorInventoryArtifacts -RunPath $RunPath -Section $Section -Family $Family)) {
-        throw ('Stage2 inventory-first enforcement failed. Missing Stage1 artifact for section {0}, family {1}.' -f $Section, $Family)
+        $exception = [System.InvalidOperationException]::new(('Stage2 inventory-first enforcement failed. Missing Stage1 artifact for section {0}, family {1}.' -f $Section, $Family))
+        $exception.Data['CollectorStage'] = 'stage2'
+        $exception.Data['CollectorSection'] = $Section
+        $exception.Data['CollectorFamily'] = $Family
+        throw $exception
     }
 }
 
@@ -334,26 +355,26 @@ function Invoke-CollectorStage2 {
     foreach ($section in $Sections) {
         switch ($section) {
             'entra-apps' {
-                $results += Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applications' -EndpointTemplate '/v1.0/applications/{id}'
-                $results += Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}'
-                $results += Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'groups' -EndpointTemplate '/v1.0/groups/{id}'
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applications' -EndpointTemplate '/v1.0/applications/{id}')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'groups' -EndpointTemplate '/v1.0/groups/{id}')
             }
 
             'entra-pim' {
-                $results += Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'roleAssignmentScheduleInstances' -EndpointTemplate '/v1.0/roleManagement/directory/roleAssignmentScheduleInstances/{id}'
-                $results += Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'roleEligibilityScheduleInstances' -EndpointTemplate '/v1.0/roleManagement/directory/roleEligibilityScheduleInstances/{id}'
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'roleAssignmentScheduleInstances' -EndpointTemplate '/v1.0/roleManagement/directory/roleAssignmentScheduleInstances/{id}')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'roleEligibilityScheduleInstances' -EndpointTemplate '/v1.0/roleManagement/directory/roleEligibilityScheduleInstances/{id}')
             }
 
             'intune-core' {
-                $results += Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'mobileApps' -EndpointTemplate '/v1.0/deviceAppManagement/mobileApps/{id}'
-                $results += Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'deviceManagementScripts' -EndpointTemplate '/beta/deviceManagement/deviceManagementScripts/{id}'
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'mobileApps' -EndpointTemplate '/v1.0/deviceAppManagement/mobileApps/{id}')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'deviceManagementScripts' -EndpointTemplate '/beta/deviceManagement/deviceManagementScripts/{id}')
             }
 
             'onprem-ad-gpo' {
-                $results += Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'domains'
-                $results += Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'organizationalUnits'
-                $results += Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'groups'
-                $results += Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'gpos'
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'domains')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'organizationalUnits')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'groups')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'gpos')
             }
 
             default {

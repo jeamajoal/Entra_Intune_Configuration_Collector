@@ -194,6 +194,38 @@ function New-CollectorInvocationRecord {
     }
 }
 
+function Add-CollectorManifestStageResult {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Manifest,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Invocation,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$StageResult
+    )
+
+    $Invocation.stageResults += $StageResult
+    $Manifest.stageResults += $StageResult
+
+    if ($StageResult.failedBatches -gt 0 -and $StageResult.errors) {
+        foreach ($errorMessage in @($StageResult.errors)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$errorMessage)) {
+                $failure = [pscustomobject]@{
+                    stage = $StageResult.stage
+                    section = $StageResult.section
+                    family = $StageResult.family
+                    error = [string]$errorMessage
+                }
+                $Invocation.failures += $failure
+                $Manifest.failures += $failure
+            }
+        }
+    }
+}
+
 function Start-CollectorRun {
     [CmdletBinding()]
     param(
@@ -240,6 +272,7 @@ function Start-CollectorRun {
         BaseBackoffSeconds = $BaseBackoffSeconds
         MaxBackoffSeconds = $MaxBackoffSeconds
         ThrottleMilliseconds = $ThrottleMilliseconds
+        PartialStageResults = [System.Collections.Generic.List[object]]::new()
     }
 
     $parameters = New-CollectorInvocationParameters -GraphToken $GraphToken -OutputRoot $OutputRoot -Stages $resolvedStages -Sections $resolvedSections -RuntimeOptions $context
@@ -255,6 +288,7 @@ function Start-CollectorRun {
     try {
         foreach ($stage in $resolvedStages) {
             $stageResults = @()
+            $context.PartialStageResults.Clear()
 
             switch ($stage) {
                 'Stage1' {
@@ -270,24 +304,13 @@ function Start-CollectorRun {
                 }
             }
 
-            $invocation.stageResults += $stageResults
-            $manifest.stageResults += $stageResults
+            $resultsToPersist = if ($context.PartialStageResults.Count -gt 0) { @($context.PartialStageResults) } else { @($stageResults) }
+            foreach ($stageResult in $resultsToPersist) {
+                Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
+            }
 
-            foreach ($stageResult in $stageResults) {
-                if ($stageResult.failedBatches -gt 0 -and $stageResult.errors) {
-                    foreach ($errorMessage in @($stageResult.errors)) {
-                        if (-not [string]::IsNullOrWhiteSpace([string]$errorMessage)) {
-                            $failure = [pscustomobject]@{
-                                stage = $stageResult.stage
-                                section = $stageResult.section
-                                family = $stageResult.family
-                                error = [string]$errorMessage
-                            }
-                            $invocation.failures += $failure
-                            $manifest.failures += $failure
-                        }
-                    }
-                }
+            if ($resultsToPersist.Count -gt 0) {
+                Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
             }
         }
 
@@ -296,10 +319,15 @@ function Start-CollectorRun {
         $manifest.status = $invocation.status
     }
     catch {
+        foreach ($stageResult in @($context.PartialStageResults)) {
+            Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
+        }
+        $context.PartialStageResults.Clear()
+
         $failure = [pscustomobject]@{
-            stage = 'orchestration'
-            section = 'all'
-            family = 'all'
+            stage = if ($_.Exception.Data['CollectorStage']) { [string]$_.Exception.Data['CollectorStage'] } else { 'orchestration' }
+            section = if ($_.Exception.Data['CollectorSection']) { [string]$_.Exception.Data['CollectorSection'] } else { 'all' }
+            family = if ($_.Exception.Data['CollectorFamily']) { [string]$_.Exception.Data['CollectorFamily'] } else { 'all' }
             error = $_.Exception.Message
         }
 

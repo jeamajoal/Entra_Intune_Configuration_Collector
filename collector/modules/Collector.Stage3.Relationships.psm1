@@ -26,6 +26,23 @@ function New-CollectorFamilyResult {
     }
 }
 
+function Publish-CollectorStage3Result {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Result
+    )
+
+    if ($Context.ContainsKey('PartialStageResults') -and $null -ne $Context.PartialStageResults) {
+        $Context.PartialStageResults.Add($Result) | Out-Null
+    }
+
+    return $Result
+}
+
 function Get-CollectorObjectId {
     [CmdletBinding()]
     param(
@@ -90,7 +107,11 @@ function Assert-CollectorInventoryFirstForStage3 {
 
     foreach ($family in $Families) {
         if (-not (Test-CollectorInventoryArtifacts -RunPath $RunPath -Section $Section -Family $family)) {
-            throw ('Stage3 inventory-first enforcement failed. Missing Stage1 artifact for section {0}, family {1}.' -f $Section, $family)
+            $exception = [System.InvalidOperationException]::new(('Stage3 inventory-first enforcement failed. Missing Stage1 artifact for section {0}, family {1}.' -f $Section, $family))
+            $exception.Data['CollectorStage'] = 'stage3'
+            $exception.Data['CollectorSection'] = $Section
+            $exception.Data['CollectorFamily'] = $family
+            throw $exception
         }
     }
 }
@@ -489,25 +510,25 @@ function Invoke-CollectorStage3 {
     foreach ($section in $Sections) {
         switch ($section) {
             'entra-apps' {
-                $results += Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'servicePrincipalAppRoleAssignedTo' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}/appRoleAssignedTo'
-                $results += Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'groupMembers' -DependencyFamily 'groups' -EndpointTemplate '/v1.0/groups/{id}/members'
-                $results += Invoke-CollectorStage3DelegatedGrantFamily -Context $Context -Section $section
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'servicePrincipalAppRoleAssignedTo' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}/appRoleAssignedTo')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'groupMembers' -DependencyFamily 'groups' -EndpointTemplate '/v1.0/groups/{id}/members')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3DelegatedGrantFamily -Context $Context -Section $section)
             }
 
             'entra-pim' {
-                $results += Invoke-CollectorStage3PimScheduleEdges -Context $Context -Section $section
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3PimScheduleEdges -Context $Context -Section $section)
             }
 
             'intune-core' {
-                $results += Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'mobileAppAssignments' -DependencyFamily 'mobileApps' -EndpointTemplate '/v1.0/deviceAppManagement/mobileApps/{id}/assignments'
-                $results += Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'deviceManagementScriptAssignments' -DependencyFamily 'deviceManagementScripts' -EndpointTemplate '/beta/deviceManagement/deviceManagementScripts/{id}/assignments'
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'mobileAppAssignments' -DependencyFamily 'mobileApps' -EndpointTemplate '/v1.0/deviceAppManagement/mobileApps/{id}/assignments')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'deviceManagementScriptAssignments' -DependencyFamily 'deviceManagementScripts' -EndpointTemplate '/beta/deviceManagement/deviceManagementScripts/{id}/assignments')
             }
 
             'onprem-ad-gpo' {
-                $results += Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'domainRootAcl' -DependencyFamily 'domains'
-                $results += Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'ouAcl' -DependencyFamily 'organizationalUnits'
-                $results += Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'gpoPermissions' -DependencyFamily 'gpos'
-                $results += Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'groupMembersOnPrem' -DependencyFamily 'groups'
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'domainRootAcl' -DependencyFamily 'domains')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'ouAcl' -DependencyFamily 'organizationalUnits')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'gpoPermissions' -DependencyFamily 'gpos')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'groupMembersOnPrem' -DependencyFamily 'groups')
             }
 
             default {
