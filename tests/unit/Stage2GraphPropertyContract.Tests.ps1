@@ -1,55 +1,57 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
 
-function New-Stage2GraphPropertyContractContext {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RunPath
-    )
+    function New-Stage2GraphPropertyContractContext {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$RunPath
+        )
 
-    @{
-        RunPath = $RunPath
-        RunId = 'stage2-graph-property-contract-run'
-        GraphToken = 'test-token'
-        BatchSize = 100
-        MaxRetries = 0
-        BaseBackoffSeconds = 0
-        MaxBackoffSeconds = 0
-        ThrottleMilliseconds = 0
-        Resume = $false
-        ReprocessFailedOnly = $false
-    }
-}
-
-function Get-SelectedPropertiesFromEndpoint {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Endpoint
-    )
-
-    if ($Endpoint -notmatch '\?\$select=(.+)$') {
-        return @()
+        @{
+            RunPath = $RunPath
+            RunId = 'stage2-graph-property-contract-run'
+            GraphToken = 'test-token'
+            BatchSize = 100
+            MaxRetries = 0
+            BaseBackoffSeconds = 0
+            MaxBackoffSeconds = 0
+            ThrottleMilliseconds = 0
+            Resume = $false
+            ReprocessFailedOnly = $false
+        }
     }
 
-    return @($Matches[1] -split ',')
-}
+    function Get-SelectedPropertiesFromEndpoint {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Endpoint
+        )
 
-function Get-Stage2GraphPropertySnapshot {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RunPath,
+        if ($Endpoint -notmatch '\?\$select=(.+)$') {
+            return @()
+        }
 
-        [Parameter(Mandatory = $true)]
-        [string]$Family
-    )
-
-    $artifactPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path 'stage2' -ChildPath (Join-Path -Path 'entra-apps' -ChildPath (Join-Path -Path $Family -ChildPath 'batch-0001.json')))
-    if (-not (Test-Path -LiteralPath $artifactPath)) {
-        throw ('Expected Stage2 artifact was not created: ' + $artifactPath)
+        return @($Matches[1] -split ',')
     }
 
-    return (Get-Content -LiteralPath $artifactPath -Raw | ConvertFrom-Json)
+    function Get-Stage2GraphPropertySnapshot {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$RunPath,
+
+            [Parameter(Mandatory = $true)]
+            [string]$Family
+        )
+
+        $artifactPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path 'stage2' -ChildPath (Join-Path -Path 'entra-apps' -ChildPath (Join-Path -Path $Family -ChildPath 'batch-0001.json')))
+        if (-not (Test-Path -LiteralPath $artifactPath)) {
+            throw ('Expected Stage2 artifact was not created: ' + $artifactPath)
+        }
+
+        return (Get-Content -LiteralPath $artifactPath -Raw | ConvertFrom-Json)
+    }
 }
 
 Describe 'Stage2 Entra Graph property contract' {
