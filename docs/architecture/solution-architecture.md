@@ -91,11 +91,11 @@ The ordinary `entra-apps` Stage2 detail families use explicit Microsoft Graph v1
 
 - `applications` owns identity/profile plus authentication, token, client, API, SAML, redirect, and lock configuration fields defined by Issue #16.
 - `servicePrincipals` owns identity/profile plus assignment, SSO, exposed API, redirect, notification, and token-signing configuration fields defined by Issue #16.
-- `groups` owns identity/security/membership plus lifecycle, provisioning, licensing, synchronization, label, and management-restriction configuration fields defined by Issue #16.
+- `groups` owns identity/security/membership plus lifecycle, provisioning, licensing, synchronization, label, management-restriction, and on-premises extension-attribute configuration fields defined by Issue #16.
 - Each Stage2 snapshot records the exact selected property names in `requestContext.selectedProperties`.
 - The contract is intentionally not `$select=*` and does not claim complete Microsoft Graph object coverage.
 - `keyCredentials`, `passwordCredentials`, and application federated identity credentials are outside this ordinary detail contract and are owned by the dedicated credential/FIC work item.
-- `group.onPremisesExtensionAttributes` is not requested by this v1.0 contract because the group property is currently beta-only; the collector does not switch ordinary group details to beta merely to obtain it.
+- `group.onPremisesExtensionAttributes` is included explicitly because the current Microsoft Graph v1.0 group contract exposes it only when requested with `$select`.
 - PIM and Intune Stage2 families retain their existing request behavior until separately reviewed property contracts exist for those surfaces.
 
 ## Inventory-First Gating and Resume Semantics
