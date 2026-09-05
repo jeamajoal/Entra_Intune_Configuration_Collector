@@ -1,32 +1,34 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 
-function global:Get-GPPermission {
-    [CmdletBinding()]
-    param(
-        [Guid]$Guid,
-        [string]$Name,
-        [switch]$All,
-        [string]$DomainName
-    )
+    function global:Get-GPPermission {
+        [CmdletBinding()]
+        param(
+            [Guid]$Guid,
+            [string]$Name,
+            [switch]$All,
+            [string]$DomainName
+        )
 
-    $global:CollectorGpoPermissionCalls.Add([pscustomobject]@{
-        Guid = $Guid
-        Name = $Name
-        All = [bool]$All
-        DomainName = $DomainName
-    }) | Out-Null
-    [pscustomobject]@{ Trustee = 'TEST\Trustee'; Permission = 'GpoRead' }
+        $global:CollectorGpoPermissionCalls.Add([pscustomobject]@{
+            Guid = $Guid
+            Name = $Name
+            All = [bool]$All
+            DomainName = $DomainName
+        }) | Out-Null
+        [pscustomobject]@{ Trustee = 'TEST\Trustee'; Permission = 'GpoRead' }
+    }
+
+    function Test-CollectorResultHasError {
+        param([object]$Result)
+
+        return $null -ne $Result -and
+            $Result.PSObject.Properties.Match('_collectorError').Count -gt 0 -and
+            -not [string]::IsNullOrWhiteSpace([string]$Result._collectorError)
+    }
+
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
 }
-
-function Test-CollectorResultHasError {
-    param([object]$Result)
-
-    return $null -ne $Result -and
-        $Result.PSObject.Properties.Match('_collectorError').Count -gt 0 -and
-        -not [string]::IsNullOrWhiteSpace([string]$Result._collectorError)
-}
-
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
 
 Describe 'On-prem GPO permission identity' {
     BeforeEach {
