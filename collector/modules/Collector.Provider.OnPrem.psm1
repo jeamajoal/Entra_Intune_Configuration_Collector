@@ -38,6 +38,7 @@ function Get-CollectorFirstPropertyValue {
 
 function Get-CollectorOnPremForestDomains {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This private helper intentionally returns the forest domain collection and the plural name matches that result contract.')]
     param()
 
     Assert-CollectorOnPremCommand -CommandNames @('Get-ADForest')

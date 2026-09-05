@@ -1,3 +1,6 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Pester mocks execute in imported module scopes; these test-only globals bridge captured calls and sleep observations into the test scope and are removed during teardown.')]
+param()
+
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
@@ -5,7 +8,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.Graph.psm1') -Force -ErrorAction Stop
 
-    function New-CredentialFederationContext {
+    function Get-CredentialFederationContext {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath
@@ -143,7 +146,7 @@ Describe 'Entra credential and federated identity metadata' {
     }
 
     It 'collects allowlisted credential metadata with the 400 millisecond key-credential rate floor' {
-        $context = New-CredentialFederationContext -RunPath $script:testRoot
+        $context = Get-CredentialFederationContext -RunPath $script:testRoot
         Invoke-CollectorStage1 -Context $context -Sections @('entra-apps') | Out-Null
         $stage2Results = @(Invoke-CollectorStage2 -Context $context -Sections @('entra-apps'))
 
@@ -225,7 +228,7 @@ Describe 'Entra credential and federated identity metadata' {
     }
 
     It 'collects application federated identity credentials through the Stage3 relationship seam' {
-        $context = New-CredentialFederationContext -RunPath $script:testRoot
+        $context = Get-CredentialFederationContext -RunPath $script:testRoot
         Invoke-CollectorStage1 -Context $context -Sections @('entra-apps') | Out-Null
         $stage3Results = @(Invoke-CollectorStage3 -Context $context -Sections @('entra-apps'))
 

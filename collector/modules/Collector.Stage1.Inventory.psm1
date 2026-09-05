@@ -6,7 +6,7 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
-function New-CollectorFamilyResult {
+function Get-CollectorFamilyResult {
     param(
         [string]$Stage,
         [string]$Section,
@@ -56,7 +56,7 @@ function Invoke-CollectorStage1Family {
     )
 
     $stageName = 'stage1'
-    $result = New-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
+    $result = Get-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
 
     try {

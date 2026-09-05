@@ -17,7 +17,7 @@ BeforeAll {
     if (-not $summaryFunctionAst) {
         throw 'Get-PesterValidationSummary was not found in Invoke-LocalValidation.ps1.'
     }
-    Invoke-Expression $summaryFunctionAst.Extent.Text
+    . ([scriptblock]::Create($summaryFunctionAst.Extent.Text))
 
     function Get-ValidationSummaryFailure {
         param(

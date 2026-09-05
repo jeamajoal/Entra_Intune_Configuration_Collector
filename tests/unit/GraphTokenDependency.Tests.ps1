@@ -10,6 +10,8 @@ Describe 'Graph token section dependency' {
 
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
             param([hashtable]$Context, [string[]]$Sections)
+            $null = $Context
+            $null = $Sections
             @()
         }
     }

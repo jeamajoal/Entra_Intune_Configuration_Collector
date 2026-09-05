@@ -21,6 +21,7 @@ function Get-CollectorHeaderValue {
             }
         }
         catch {
+            $null = $_
             # Fall through to legacy/indexed header access.
         }
     }
@@ -43,6 +44,7 @@ function Get-CollectorHeaderValue {
 
 function Get-CollectorRetryMetadata {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Metadata is the established domain noun for this result object.')]
     param(
         [Parameter(Mandatory = $true)]
         [System.Management.Automation.ErrorRecord]$ErrorRecord
@@ -117,6 +119,7 @@ function Get-CollectorRetryMetadata {
 
 function Get-CollectorRetryDelaySeconds {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Seconds is the explicit unit returned by this numeric delay helper.')]
     param(
         [Parameter(Mandatory = $true)]
         [int]$Attempt,

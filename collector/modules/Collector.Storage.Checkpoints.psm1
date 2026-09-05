@@ -62,6 +62,7 @@ function Get-CollectorPlanHash {
 
 function New-CollectorCheckpointPlan {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function only constructs and returns an in-memory checkpoint plan.')]
     param(
         [Parameter(Mandatory = $true)]
         [AllowEmptyCollection()]
@@ -188,6 +189,7 @@ function Complete-CollectorCheckpointPlan {
 
 function New-CollectorCheckpointDocument {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function only constructs and returns an in-memory checkpoint document.')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunId,
@@ -333,6 +335,7 @@ function Get-CollectorCheckpointBatch {
 
 function Set-CollectorCheckpointBatch {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function mutates only the supplied in-memory checkpoint object; persistence is performed separately by Save-CollectorCheckpoint.')]
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject]$Checkpoint,
@@ -456,6 +459,7 @@ function Get-CollectorBatchExecutionDecision {
 
 function Get-CollectorCheckpointFiles {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This private helper intentionally returns the collection of checkpoint files beneath a run.')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunPath

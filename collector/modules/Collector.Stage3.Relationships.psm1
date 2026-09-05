@@ -6,7 +6,7 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
-function New-CollectorFamilyResult {
+function Get-CollectorFamilyResult {
     param(
         [string]$Stage,
         [string]$Section,
@@ -92,20 +92,20 @@ function Get-CollectorNestedValue {
     return $null
 }
 
-function ConvertTo-CollectorFederatedIdentityCredentialMetadata {
+function ConvertTo-CollectorFederatedIdentityRecord {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [pscustomobject]$Credential
+        [pscustomobject]$FederatedIdentityItem
     )
 
     [pscustomobject]@{
-        id = if ($Credential.PSObject.Properties.Match('id').Count -gt 0) { $Credential.id } else { $null }
-        name = if ($Credential.PSObject.Properties.Match('name').Count -gt 0) { $Credential.name } else { $null }
-        issuer = if ($Credential.PSObject.Properties.Match('issuer').Count -gt 0) { $Credential.issuer } else { $null }
-        subject = if ($Credential.PSObject.Properties.Match('subject').Count -gt 0) { $Credential.subject } else { $null }
-        audiences = if ($Credential.PSObject.Properties.Match('audiences').Count -gt 0) { @($Credential.audiences) } else { @() }
-        description = if ($Credential.PSObject.Properties.Match('description').Count -gt 0) { $Credential.description } else { $null }
+        id = if ($FederatedIdentityItem.PSObject.Properties.Match('id').Count -gt 0) { $FederatedIdentityItem.id } else { $null }
+        name = if ($FederatedIdentityItem.PSObject.Properties.Match('name').Count -gt 0) { $FederatedIdentityItem.name } else { $null }
+        issuer = if ($FederatedIdentityItem.PSObject.Properties.Match('issuer').Count -gt 0) { $FederatedIdentityItem.issuer } else { $null }
+        subject = if ($FederatedIdentityItem.PSObject.Properties.Match('subject').Count -gt 0) { $FederatedIdentityItem.subject } else { $null }
+        audiences = if ($FederatedIdentityItem.PSObject.Properties.Match('audiences').Count -gt 0) { @($FederatedIdentityItem.audiences) } else { @() }
+        description = if ($FederatedIdentityItem.PSObject.Properties.Match('description').Count -gt 0) { $FederatedIdentityItem.description } else { $null }
     }
 }
 
@@ -167,7 +167,7 @@ function Invoke-CollectorStage3BatchLoop {
 
     $stageName = 'stage3'
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
-    $result = New-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
+    $result = Get-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
     if ($Batches.Count -eq 0) {
         $Batches = @(@())
@@ -314,6 +314,7 @@ function Invoke-CollectorStage3GraphPerObjectFamily {
 
     $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
+    $effectiveRelationshipTransform = $RelationshipTransform
 
     $isBeta = $EndpointTemplate.StartsWith('/beta')
     $apiVersion = if ($isBeta) { 'beta' } else { 'v1.0' }
@@ -337,13 +338,13 @@ function Invoke-CollectorStage3GraphPerObjectFamily {
             $endpoint = $EndpointTemplate.Replace('{id}', $objectId)
             try {
                 $relationships = @(Invoke-CollectorGraphCollection -GraphToken $Context.GraphToken -Endpoint $endpoint -MaxRetries $Context.MaxRetries -BaseBackoffSeconds $Context.BaseBackoffSeconds -MaxBackoffSeconds $Context.MaxBackoffSeconds -ThrottleMilliseconds $Context.ThrottleMilliseconds)
-                if ($RelationshipTransform) {
+                if ($effectiveRelationshipTransform) {
                     $transformedRelationships = @()
                     foreach ($relationship in $relationships) {
                         if ($null -eq $relationship) {
                             continue
                         }
-                        $transformedRelationships += & $RelationshipTransform $relationship
+                        $transformedRelationships += & $effectiveRelationshipTransform $relationship
                     }
                     $relationships = $transformedRelationships
                 }
@@ -437,7 +438,7 @@ function Convert-CollectorPimScheduleToEdge {
     }
 }
 
-function Invoke-CollectorStage3PimScheduleEdges {
+function Invoke-CollectorStage3PimScheduleEdgeCollection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -542,12 +543,12 @@ function Invoke-CollectorStage3 {
             'entra-apps' {
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'servicePrincipalAppRoleAssignedTo' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}/appRoleAssignedTo')
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'groupMembers' -DependencyFamily 'groups' -EndpointTemplate '/v1.0/groups/{id}/members')
-                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'applicationFederatedIdentityCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description' -RelationshipTransform { param($credential) ConvertTo-CollectorFederatedIdentityCredentialMetadata -Credential $credential })
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'applicationFederatedIdentityCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description' -RelationshipTransform { param($federatedIdentityItem) ConvertTo-CollectorFederatedIdentityRecord -FederatedIdentityItem $federatedIdentityItem })
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3DelegatedGrantFamily -Context $Context -Section $section)
             }
 
             'entra-pim' {
-                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3PimScheduleEdges -Context $Context -Section $section)
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3PimScheduleEdgeCollection -Context $Context -Section $section)
             }
 
             'intune-core' {

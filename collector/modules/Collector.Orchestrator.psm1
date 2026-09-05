@@ -12,6 +12,7 @@ $script:GraphBackedSections = @('entra-apps', 'entra-pim', 'intune-core')
 
 function Resolve-CollectorStages {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported selector resolves a collection of requested stages and its established public name is intentionally plural.')]
     param(
         [string[]]$Stages = @('All')
     )
@@ -40,6 +41,7 @@ function Resolve-CollectorStages {
 
 function Resolve-CollectorSections {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported selector resolves a collection of requested sections and its established public name is intentionally plural.')]
     param(
         [string[]]$Sections
     )
@@ -64,6 +66,7 @@ function Resolve-CollectorSections {
 
 function Assert-CollectorGraphTokenForSections {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'The assertion evaluates the complete selected section set, so the established plural noun reflects the input contract.')]
     param(
         [AllowNull()]
         [AllowEmptyString()]
@@ -81,6 +84,8 @@ function Assert-CollectorGraphTokenForSections {
 
 function New-CollectorInvocationParameters {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function only constructs and returns an in-memory invocation parameter object.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Parameters describes the intentionally multi-property invocation parameter object.')]
     param(
         [AllowNull()]
         [AllowEmptyString()]
@@ -117,6 +122,7 @@ function New-CollectorInvocationParameters {
 
 function New-CollectorRunManifest {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function only constructs and returns an in-memory manifest object.')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunId,
@@ -198,6 +204,7 @@ function Get-CollectorRunManifestForInvocation {
 
 function New-CollectorInvocationRecord {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function only constructs and returns an in-memory invocation record.')]
     param(
         [Parameter(Mandatory = $true)]
         [pscustomobject]$Parameters
@@ -247,6 +254,7 @@ function Add-CollectorManifestStageResult {
 
 function Start-CollectorRun {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Start-CollectorRun is the explicit execution entry point; WhatIf semantics are not part of the collector contract and adding them would change public behavior.')]
     param(
         [AllowNull()]
         [AllowEmptyString()]

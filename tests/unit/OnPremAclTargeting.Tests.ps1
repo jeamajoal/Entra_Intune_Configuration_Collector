@@ -1,3 +1,6 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Global command shims must share test capture state with the imported provider module; all test-only globals and shims are removed during teardown.')]
+param()
+
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 
@@ -54,7 +57,7 @@ BeforeAll {
             [switch]$Force
         )
 
-        $global:CollectorRemoveDriveCalls.Add([pscustomobject]@{ Name = $Name; Scope = $Scope }) | Out-Null
+        $global:CollectorRemoveDriveCalls.Add([pscustomobject]@{ Name = $Name; Scope = $Scope; Force = [bool]$Force }) | Out-Null
     }
 
     function Test-CollectorResultHasError {

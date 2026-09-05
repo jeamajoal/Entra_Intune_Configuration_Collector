@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 
-function New-CollectorDirectory {
+function Initialize-CollectorDirectory {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -52,7 +52,7 @@ function Resolve-CollectorRun {
         [switch]$Resume
     )
 
-    New-CollectorDirectory -Path $OutputRoot | Out-Null
+    Initialize-CollectorDirectory -Path $OutputRoot | Out-Null
 
     $runId = $null
     if ($Resume) {
@@ -89,9 +89,9 @@ function Resolve-CollectorRun {
     }
 
     $runPath = Join-Path -Path $OutputRoot -ChildPath $runId
-    New-CollectorDirectory -Path $runPath | Out-Null
-    New-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'manifest') | Out-Null
-    New-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'checkpoints') | Out-Null
+    Initialize-CollectorDirectory -Path $runPath | Out-Null
+    Initialize-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'manifest') | Out-Null
+    Initialize-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'checkpoints') | Out-Null
 
     Write-CollectorRunMarker -OutputRoot $OutputRoot -RunId $runId
 
@@ -103,6 +103,8 @@ function Resolve-CollectorRun {
 
 function Split-CollectorItems {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'The exported function intentionally splits an item collection into multiple batches and its established contract is plural.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseCmdletCorrectly', '', Justification = 'Write-Output -NoEnumerate is intentional here to preserve the nested batch collection as one pipeline object.')]
     param(
         [Parameter(Mandatory = $true)]
         [AllowEmptyCollection()]
@@ -181,7 +183,7 @@ function Write-CollectorSnapshotArtifact {
     $batchId = '{0:D4}' -f $BatchNumber
     $artifactPath = Get-CollectorCanonicalArtifactPath -RunPath $RunPath -Stage $Stage -Section $Section -Family $Family -BatchId $batchId
     $stageFolder = Split-Path -Path $artifactPath -Parent
-    New-CollectorDirectory -Path $stageFolder | Out-Null
+    Initialize-CollectorDirectory -Path $stageFolder | Out-Null
 
     $Snapshot | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $artifactPath -Encoding UTF8
 
@@ -193,6 +195,7 @@ function Write-CollectorSnapshotArtifact {
 
 function Get-CollectorSnapshotFiles {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported function intentionally returns the collection of snapshot files for a family.')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunPath,
@@ -217,6 +220,7 @@ function Get-CollectorSnapshotFiles {
 
 function Get-CollectorSnapshotItems {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported function intentionally returns the collection of items across snapshot files.')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunPath,
@@ -245,6 +249,7 @@ function Get-CollectorSnapshotItems {
 
 function Test-CollectorInventoryArtifacts {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported readiness test validates the complete set of inventory artifacts for a family.')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunPath,
@@ -322,7 +327,7 @@ function Save-CollectorManifest {
     $manifestPath = Get-CollectorManifestPath -RunPath $RunPath
     $manifestDirectory = Split-Path -Path $manifestPath -Parent
 
-    New-CollectorDirectory -Path $manifestDirectory | Out-Null
+    Initialize-CollectorDirectory -Path $manifestDirectory | Out-Null
     $Manifest | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
     return $manifestPath

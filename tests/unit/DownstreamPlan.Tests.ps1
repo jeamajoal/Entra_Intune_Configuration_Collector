@@ -1,10 +1,13 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Pester mocks execute in imported module scope; this test-only global bridges source fixture state into those mocks and is removed during teardown.')]
+param()
+
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
 
-    function New-DownstreamPlanContext {
+    function Get-DownstreamPlanContext {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath,
@@ -57,18 +60,18 @@ Describe 'Downstream checkpoint plan identity' {
     }
 
     It 'allows compatible Stage2 resume and rejects a changed BatchSize' {
-        $initialContext = New-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$false
+        $initialContext = Get-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$false
         Invoke-CollectorStage1 -Context $initialContext -Sections @('entra-apps') | Out-Null
         Invoke-CollectorStage2 -Context $initialContext -Sections @('entra-apps') | Out-Null
 
-        $resumeContext = New-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$true
+        $resumeContext = Get-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$true
         $resumeResults = @(Invoke-CollectorStage2 -Context $resumeContext -Sections @('entra-apps'))
         $applications = @($resumeResults | Where-Object { $_.family -eq 'applications' })[0]
         if (-not $applications -or [int]$applications.skippedBatches -ne 1 -or [int]$applications.succeededBatches -ne 0) {
             throw 'Expected compatible Stage2 resume to reuse the successful planned batch.'
         }
 
-        $changedBatchSizeContext = New-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 1 -Resume:$true
+        $changedBatchSizeContext = Get-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 1 -Resume:$true
         $threw = $false
         try {
             Invoke-CollectorStage2 -Context $changedBatchSizeContext -Sections @('entra-apps') | Out-Null
@@ -82,7 +85,7 @@ Describe 'Downstream checkpoint plan identity' {
     }
 
     It 'rejects Stage2 resume after Stage1 source membership changes' {
-        $initialContext = New-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$false
+        $initialContext = Get-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$false
         Invoke-CollectorStage1 -Context $initialContext -Sections @('entra-apps') | Out-Null
         Invoke-CollectorStage2 -Context $initialContext -Sections @('entra-apps') | Out-Null
 
@@ -93,7 +96,7 @@ Describe 'Downstream checkpoint plan identity' {
         )
         Invoke-CollectorStage1 -Context $initialContext -Sections @('entra-apps') | Out-Null
 
-        $resumeContext = New-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$true
+        $resumeContext = Get-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$true
         $threw = $false
         try {
             Invoke-CollectorStage2 -Context $resumeContext -Sections @('entra-apps') | Out-Null
@@ -107,7 +110,7 @@ Describe 'Downstream checkpoint plan identity' {
     }
 
     It 'rejects Stage3 resume after Stage1 source identity changes' {
-        $initialContext = New-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$false
+        $initialContext = Get-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$false
         Invoke-CollectorStage1 -Context $initialContext -Sections @('entra-apps') | Out-Null
         Invoke-CollectorStage3 -Context $initialContext -Sections @('entra-apps') | Out-Null
 
@@ -117,7 +120,7 @@ Describe 'Downstream checkpoint plan identity' {
         )
         Invoke-CollectorStage1 -Context $initialContext -Sections @('entra-apps') | Out-Null
 
-        $resumeContext = New-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$true
+        $resumeContext = Get-DownstreamPlanContext -RunPath $script:testRoot -BatchSize 2 -Resume:$true
         $threw = $false
         try {
             Invoke-CollectorStage3 -Context $resumeContext -Sections @('entra-apps') | Out-Null
