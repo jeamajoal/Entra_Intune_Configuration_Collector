@@ -173,12 +173,21 @@ For on-prem snapshots, sourceName records concrete cmdlet names and requestConte
 
 CI executes the same parser, PSScriptAnalyzer, and Pester validation gate on `windows-latest` under both PowerShell 7 (`pwsh`) and Windows PowerShell 5.1 (`powershell`). Both jobs pin Pester 5.9.1 and PSScriptAnalyzer 1.25.0. The Windows PowerShell job uses `-SkipPublisherCheck` only for the side-by-side Pester installation because Windows includes an older Microsoft-signed Pester with a different publisher; this does not skip or weaken Pester execution.
 
-For normal local validation, install the same pinned validation modules used by CI before running the validation script. On Windows PowerShell 5.1, Pester's publisher transition may require `-SkipPublisherCheck` during installation.
+For normal local validation, install the same pinned validation modules used by CI and run the script from whichever supported PowerShell host you want to validate. On Windows PowerShell 5.1, Pester's publisher transition requires `-SkipPublisherCheck` for unattended side-by-side installation.
 
 ```powershell
-Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force
+$pesterInstall = @{
+	Name = 'Pester'
+	RequiredVersion = '5.9.1'
+	Scope = 'CurrentUser'
+	Force = $true
+}
+if ($PSVersionTable.PSEdition -eq 'Desktop') {
+	$pesterInstall.SkipPublisherCheck = $true
+}
+Install-Module @pesterInstall
 Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
-pwsh ./tools/Invoke-LocalValidation.ps1
+./tools/Invoke-LocalValidation.ps1
 ```
 
 The validation script runs parser checks, PSScriptAnalyzer, and Pester tests when Pester is installed. If PSScriptAnalyzer is unavailable, normal validation fails closed instead of silently skipping static analysis. Use `-SkipScriptAnalyzer` only when intentionally bypassing the analyzer for a bounded diagnostic; CI does not use that bypass. A Pester pass is reported only when the returned result uses a supported Pester 4/5 result shape, proves that at least one test executed, and reports zero failures; null, unknown, or zero-test results fail closed. Explicitly skipped or unavailable Pester remains reported as skipped rather than passed.
