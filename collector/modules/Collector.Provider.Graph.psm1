@@ -41,11 +41,6 @@ function Invoke-CollectorGraphRequest {
         [Parameter(Mandatory = $true)]
         [string]$Endpoint,
 
-        [ValidateSet('GET', 'POST', 'PATCH', 'PUT', 'DELETE')]
-        [string]$Method = 'GET',
-
-        [object]$Body,
-
         [switch]$AbsoluteUri,
 
         [int]$MaxRetries = 5,
@@ -67,14 +62,9 @@ function Invoke-CollectorGraphRequest {
     $invokeRequest = {
         $requestParams = @{
             Uri = $uri
-            Method = $Method
+            Method = 'GET'
             Headers = $headers
             ErrorAction = 'Stop'
-        }
-
-        if ($PSBoundParameters.ContainsKey('Body') -and $null -ne $Body) {
-            $requestParams.Body = ($Body | ConvertTo-Json -Depth 30)
-            $requestParams.ContentType = 'application/json'
         }
 
         Invoke-RestMethod @requestParams

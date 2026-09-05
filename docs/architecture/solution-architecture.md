@@ -53,6 +53,7 @@ ACLs, memberships, and assignments are classified as metadata.
 - Mailbox or collaboration workloads.
 - Defender telemetry domains.
 - Audit and sign-in stream ingestion.
+- Configuration mutation through the collector; the normal Graph provider request boundary is GET-only and exposes no mutation/body request surface.
 
 ## Stage and Section Model
 
