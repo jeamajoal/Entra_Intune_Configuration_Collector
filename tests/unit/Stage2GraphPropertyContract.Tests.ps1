@@ -1,9 +1,12 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Pester mocks execute in imported module scope; this test-only global captures requested endpoints and is removed during teardown.')]
+param()
+
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
 
-    function New-Stage2GraphPropertyContractContext {
+    function Get-Stage2GraphPropertyContractContext {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath
@@ -120,7 +123,7 @@ Describe 'Stage2 Entra Graph property contract' {
     }
 
     It 'requests explicit v1.0 Entra properties, records provenance, and leaves unrelated Graph families unchanged' {
-        $context = New-Stage2GraphPropertyContractContext -RunPath $script:testRoot
+        $context = Get-Stage2GraphPropertyContractContext -RunPath $script:testRoot
         $sections = @('entra-apps', 'entra-pim', 'intune-core')
 
         Invoke-CollectorStage1 -Context $context -Sections $sections | Out-Null
