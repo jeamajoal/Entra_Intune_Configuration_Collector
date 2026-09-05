@@ -263,6 +263,28 @@ function Get-CollectorCheckpoint {
     }
 
     $checkpoint = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+    if ($null -eq $checkpoint) {
+        throw ('Checkpoint identity mismatch at {0}: checkpoint document is null.' -f $checkpointPath)
+    }
+
+    $expectedIdentity = @{
+        runId = $RunId
+        stage = $Stage
+        section = $Section
+        family = $Family
+    }
+    foreach ($identityName in @('runId', 'stage', 'section', 'family')) {
+        if ($checkpoint.PSObject.Properties.Match($identityName).Count -eq 0) {
+            throw ('Checkpoint identity mismatch at {0}: required identity property {1} is missing.' -f $checkpointPath, $identityName)
+        }
+
+        $actualValue = [string]$checkpoint.$identityName
+        $expectedValue = [string]$expectedIdentity[$identityName]
+        if ($actualValue -ne $expectedValue) {
+            throw ('Checkpoint identity mismatch at {0}: expected {1}={2}; found {3}.' -f $checkpointPath, $identityName, $expectedValue, $actualValue)
+        }
+    }
+
     if (-not $checkpoint.batches) {
         $checkpoint | Add-Member -MemberType NoteProperty -Name batches -Value @() -Force
     }

@@ -156,4 +156,69 @@ Describe 'Checkpoint resume behavior' {
             throw 'Expected MarkMissing to be false for failed batch during failed-only resume.'
         }
     }
+
+    It 'rejects mismatched persisted checkpoint identity without mutating the source file' {
+        $runId = 'run-identity'
+        $stage = 'stage1'
+        $section = 'entra-apps'
+        $family = 'applications'
+        $checkpointPath = Get-CollectorCheckpointPath -RunPath $script:testRoot -Stage $stage -Section $section -Family $family
+        $checkpointDirectory = Split-Path -Path $checkpointPath -Parent
+        New-Item -Path $checkpointDirectory -ItemType Directory -Force | Out-Null
+
+        $identityCases = @(
+            @{ Name = 'runId'; Value = 'other-run' },
+            @{ Name = 'stage'; Value = 'stage2' },
+            @{ Name = 'section'; Value = 'intune-core' },
+            @{ Name = 'family'; Value = 'groups' }
+        )
+
+        foreach ($identityCase in $identityCases) {
+            $persisted = [pscustomobject]@{
+                schemaVersion = '1.0'
+                runId = $runId
+                stage = $stage
+                section = $section
+                family = $family
+                updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
+                plan = $null
+                batches = @(
+                    [pscustomobject]@{
+                        batchId = '0001'
+                        status = 'Succeeded'
+                        attempts = 1
+                        itemCount = 1
+                        successCount = 1
+                        failedCount = 0
+                        artifactPath = 'legacy-relative-artifact.json'
+                        error = $null
+                        updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
+                    }
+                )
+            }
+            $persisted.PSObject.Properties[$identityCase.Name].Value = $identityCase.Value
+            $persisted | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $checkpointPath -Encoding UTF8
+            $before = Get-Content -LiteralPath $checkpointPath -Raw
+
+            $errorMessage = $null
+            try {
+                Get-CollectorCheckpoint -RunPath $script:testRoot -RunId $runId -Stage $stage -Section $section -Family $family | Out-Null
+            }
+            catch {
+                $errorMessage = $_.Exception.Message
+            }
+
+            if ([string]::IsNullOrWhiteSpace([string]$errorMessage)) {
+                throw ('Expected checkpoint identity mismatch for {0} to fail closed.' -f $identityCase.Name)
+            }
+            if ($errorMessage -notmatch 'Checkpoint identity mismatch' -or $errorMessage -notmatch [regex]::Escape($identityCase.Name)) {
+                throw ('Expected mismatch error to identify {0}; actual: {1}' -f $identityCase.Name, $errorMessage)
+            }
+
+            $after = Get-Content -LiteralPath $checkpointPath -Raw
+            if ($after -ne $before) {
+                throw ('Expected mismatched {0} checkpoint to remain unchanged after rejection.' -f $identityCase.Name)
+            }
+        }
+    }
 }
