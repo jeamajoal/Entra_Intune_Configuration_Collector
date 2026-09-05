@@ -21,6 +21,12 @@ function Resolve-CollectorStages {
         return @($script:SupportedStages)
     }
 
+    $supportedSelections = @('All') + @($script:SupportedStages)
+    $invalidStages = @($Stages | Where-Object { $supportedSelections -notcontains $_ })
+    if ($invalidStages.Count -gt 0) {
+        throw ('Unsupported stage selection(s): {0}. Supported values are All, Stage1, Stage2, Stage3.' -f ($invalidStages -join ', '))
+    }
+
     if ($Stages -contains 'All') {
         return @($script:SupportedStages)
     }
@@ -48,6 +54,11 @@ function Resolve-CollectorSections {
 
     if (-not $Sections -or $Sections.Count -eq 0) {
         return @($script:SupportedSections)
+    }
+
+    $invalidSections = @($Sections | Where-Object { $script:SupportedSections -notcontains $_ })
+    if ($invalidSections.Count -gt 0) {
+        throw ('Unsupported section selection(s): {0}. Supported values are entra-apps, entra-pim, intune-core, onprem-ad-gpo.' -f ($invalidSections -join ', '))
     }
 
     $resolved = @()

@@ -55,6 +55,50 @@ Describe 'Collector orchestrator execution flow' {
         }
     }
 
+    It 'rejects a mixed valid and invalid stage selection before creating run state' {
+        $threw = $false
+        try {
+            Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1', 'Stgae3') -Sections @('onprem-ad-gpo') | Out-Null
+        }
+        catch {
+            $threw = $true
+            if ($_.Exception.Message -notmatch 'Unsupported stage selection' -or $_.Exception.Message -notmatch 'Stgae3') {
+                throw ('Expected explicit invalid-stage rejection; actual error: {0}' -f $_.Exception.Message)
+            }
+        }
+
+        if (-not $threw) {
+            throw 'Expected mixed valid/invalid stage selection to fail.'
+        }
+
+        $markerPath = Join-Path -Path $script:testRoot -ChildPath 'current-run.json'
+        if (Test-Path -LiteralPath $markerPath) {
+            throw 'Invalid stage selection must fail before current-run.json is created.'
+        }
+    }
+
+    It 'rejects a mixed valid and invalid section selection before creating run state' {
+        $threw = $false
+        try {
+            Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo', 'onprem-ad-gop') | Out-Null
+        }
+        catch {
+            $threw = $true
+            if ($_.Exception.Message -notmatch 'Unsupported section selection' -or $_.Exception.Message -notmatch 'onprem-ad-gop') {
+                throw ('Expected explicit invalid-section rejection; actual error: {0}' -f $_.Exception.Message)
+            }
+        }
+
+        if (-not $threw) {
+            throw 'Expected mixed valid/invalid section selection to fail.'
+        }
+
+        $markerPath = Join-Path -Path $script:testRoot -ChildPath 'current-run.json'
+        if (Test-Path -LiteralPath $markerPath) {
+            throw 'Invalid section selection must fail before current-run.json is created.'
+        }
+    }
+
     It 'executes only the selected stage and forwards section-only selection in canonical order' {
         $script:capturedStage3Sections = @()
 
