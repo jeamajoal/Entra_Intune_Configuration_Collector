@@ -137,6 +137,28 @@ Describe 'Collector orchestrator execution flow' {
         }
     }
 
+    It 'rejects failed-only execution without resume before creating run state' {
+        $threw = $false
+        try {
+            Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo') -ReprocessFailedOnly | Out-Null
+        }
+        catch {
+            $threw = $true
+            if ($_.Exception.Message -notmatch 'ReprocessFailedOnly' -or $_.Exception.Message -notmatch 'Resume') {
+                throw ('Expected failed-only resume-dependency rejection; actual error: {0}' -f $_.Exception.Message)
+            }
+        }
+
+        if (-not $threw) {
+            throw 'Expected ReprocessFailedOnly without Resume to fail.'
+        }
+
+        $markerPath = Join-Path -Path $script:testRoot -ChildPath 'current-run.json'
+        if (Test-Path -LiteralPath $markerPath) {
+            throw 'ReprocessFailedOnly without Resume must fail before current-run.json is created.'
+        }
+    }
+
     It 'accepts zero retry backoff and throttle values' {
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
             param(
