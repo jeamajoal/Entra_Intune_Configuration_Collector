@@ -301,11 +301,11 @@ function Start-CollectorRun {
     if ($MaxRetries -lt 0) {
         throw 'MaxRetries must be greater than or equal to zero.'
     }
-    if ($BaseBackoffSeconds -lt 0) {
-        throw 'BaseBackoffSeconds must be greater than or equal to zero.'
+    if ([double]::IsNaN($BaseBackoffSeconds) -or [double]::IsInfinity($BaseBackoffSeconds) -or $BaseBackoffSeconds -lt 0) {
+        throw 'BaseBackoffSeconds must be a finite number greater than or equal to zero.'
     }
-    if ($MaxBackoffSeconds -lt 0) {
-        throw 'MaxBackoffSeconds must be greater than or equal to zero.'
+    if ([double]::IsNaN($MaxBackoffSeconds) -or [double]::IsInfinity($MaxBackoffSeconds) -or $MaxBackoffSeconds -lt 0) {
+        throw 'MaxBackoffSeconds must be a finite number greater than or equal to zero.'
     }
     if ($ThrottleMilliseconds -lt 0) {
         throw 'ThrottleMilliseconds must be greater than or equal to zero.'
