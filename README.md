@@ -31,7 +31,7 @@ Prerequisites:
 Run all stages and sections:
 
 ```powershell
-pwsh ./collector/Invoke-Collector.ps1 `
+./collector/Invoke-Collector.ps1 `
 	-GraphToken $GraphToken `
 	-OutputRoot ./output
 ```
@@ -39,7 +39,7 @@ pwsh ./collector/Invoke-Collector.ps1 `
 Run only Stage1 for Entra apps and Intune core:
 
 ```powershell
-pwsh ./collector/Invoke-Collector.ps1 `
+./collector/Invoke-Collector.ps1 `
 	-GraphToken $GraphToken `
 	-OutputRoot ./output `
 	-Stages Stage1 `
@@ -49,7 +49,7 @@ pwsh ./collector/Invoke-Collector.ps1 `
 Run only the on-prem section without a Graph token:
 
 ```powershell
-pwsh ./collector/Invoke-Collector.ps1 `
+./collector/Invoke-Collector.ps1 `
 	-OutputRoot ./output `
 	-Sections onprem-ad-gpo
 ```
@@ -57,7 +57,7 @@ pwsh ./collector/Invoke-Collector.ps1 `
 Resume previous run and reprocess failed or missing batches only:
 
 ```powershell
-pwsh ./collector/Invoke-Collector.ps1 `
+./collector/Invoke-Collector.ps1 `
 	-GraphToken $GraphToken `
 	-OutputRoot ./output `
 	-Stages Stage2,Stage3 `
