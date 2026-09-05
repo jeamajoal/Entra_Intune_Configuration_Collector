@@ -113,6 +113,7 @@ Describe 'Entra credential and federated identity metadata' {
                         subject = 'repo:example/repo:ref:refs/heads/main'
                         audiences = @('api://AzureADTokenExchange')
                         description = 'GitHub Actions main branch'
+                        unexpectedProperty = 'FIC_UNEXPECTED_MUST_NOT_PERSIST'
                     }
                 )
             }
@@ -249,6 +250,9 @@ Describe 'Entra credential and federated identity metadata' {
         }
         if ((@($fic.audiences) -join ',') -ne 'api://AzureADTokenExchange') {
             throw 'Expected FIC audience was not persisted.'
+        }
+        if ($fic.PSObject.Properties.Match('unexpectedProperty').Count -gt 0 -or $artifact.Raw.Contains('FIC_UNEXPECTED_MUST_NOT_PERSIST')) {
+            throw 'Unexpected FIC response fields must not survive the allowlist transform.'
         }
         if ([string]$snapshot.apiVersion -ne 'v1.0' -or [string]$snapshot.requestContext.dependencyFamily -ne 'applications' -or [string]$snapshot.requestContext.endpointTemplate -ne '/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description') {
             throw 'FIC provenance does not identify the v1.0 endpoint and applications dependency.'
