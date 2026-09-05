@@ -38,8 +38,10 @@ Describe 'Partial Stage2 and Stage3 manifest results' {
         $manifest = Get-Content -LiteralPath $initial.manifestPath -Raw | ConvertFrom-Json
         $latest = @($manifest.invocations)[-1]
         $stage2Results = @($latest.stageResults | Where-Object { $_.stage -eq 'stage2' })
-        if ($stage2Results.Count -ne 3) {
-            throw ('Expected three completed entra-apps Stage2 results to survive later gate failure; actual ' + $stage2Results.Count)
+        $actualStage2Families = @($stage2Results.family | Sort-Object)
+        $expectedStage2Families = @('applicationCredentials','applications','groups','servicePrincipalCredentials','servicePrincipals') | Sort-Object
+        if (($actualStage2Families -join ',') -ne ($expectedStage2Families -join ',')) {
+            throw ('Expected all completed entra-apps Stage2 families to survive later gate failure; actual ' + ($actualStage2Families -join ','))
         }
 
         $failure = @($latest.failures)[-1]
@@ -72,8 +74,10 @@ Describe 'Partial Stage2 and Stage3 manifest results' {
         $manifest = Get-Content -LiteralPath $initial.manifestPath -Raw | ConvertFrom-Json
         $latest = @($manifest.invocations)[-1]
         $stage3Results = @($latest.stageResults | Where-Object { $_.stage -eq 'stage3' })
-        if ($stage3Results.Count -ne 3) {
-            throw ('Expected three completed entra-apps Stage3 results to survive later gate failure; actual ' + $stage3Results.Count)
+        $actualStage3Families = @($stage3Results.family | Sort-Object)
+        $expectedStage3Families = @('applicationFederatedIdentityCredentials','delegatedGrants','groupMembers','servicePrincipalAppRoleAssignedTo') | Sort-Object
+        if (($actualStage3Families -join ',') -ne ($expectedStage3Families -join ',')) {
+            throw ('Expected all completed entra-apps Stage3 families to survive later gate failure; actual ' + ($actualStage3Families -join ','))
         }
 
         $failure = @($latest.failures)[-1]
