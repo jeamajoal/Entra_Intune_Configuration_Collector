@@ -104,7 +104,11 @@ Describe 'Collector orchestrator execution flow' {
             [pscustomobject]@{ Name = 'BatchSize'; Parameters = @{ BatchSize = 0 } },
             [pscustomobject]@{ Name = 'MaxRetries'; Parameters = @{ MaxRetries = -1 } },
             [pscustomobject]@{ Name = 'BaseBackoffSeconds'; Parameters = @{ BaseBackoffSeconds = -0.1 } },
+            [pscustomobject]@{ Name = 'BaseBackoffSeconds'; Parameters = @{ BaseBackoffSeconds = [double]::NaN } },
+            [pscustomobject]@{ Name = 'BaseBackoffSeconds'; Parameters = @{ BaseBackoffSeconds = [double]::PositiveInfinity } },
             [pscustomobject]@{ Name = 'MaxBackoffSeconds'; Parameters = @{ MaxBackoffSeconds = -0.1 } },
+            [pscustomobject]@{ Name = 'MaxBackoffSeconds'; Parameters = @{ MaxBackoffSeconds = [double]::NaN } },
+            [pscustomobject]@{ Name = 'MaxBackoffSeconds'; Parameters = @{ MaxBackoffSeconds = [double]::PositiveInfinity } },
             [pscustomobject]@{ Name = 'ThrottleMilliseconds'; Parameters = @{ ThrottleMilliseconds = -1 } }
         )
 
