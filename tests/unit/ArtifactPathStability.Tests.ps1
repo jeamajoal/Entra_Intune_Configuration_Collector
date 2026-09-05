@@ -1,26 +1,28 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 
-function Set-TestCompletedStage1Plan {
-    param(
-        [Parameter(Mandatory = $true)]
-        [pscustomobject]$Checkpoint
-    )
+    function Set-TestCompletedStage1Plan {
+        param(
+            [Parameter(Mandatory = $true)]
+            [pscustomobject]$Checkpoint
+        )
 
-    $Checkpoint.plan = [pscustomobject]@{
-        planVersion = '1.0'
-        batchSize = 100
-        expectedBatchCount = 1
-        sourceFingerprint = 'artifact-path-test'
-        completed = $true
-        batches = @([pscustomobject]@{
-            batchId = '0001'
-            itemCount = [int]@($Checkpoint.batches)[0].itemCount
-            fingerprint = 'artifact-path-test-0001'
-        })
+        $Checkpoint.plan = [pscustomobject]@{
+            planVersion = '1.0'
+            batchSize = 100
+            expectedBatchCount = 1
+            sourceFingerprint = 'artifact-path-test'
+            completed = $true
+            batches = @([pscustomobject]@{
+                batchId = '0001'
+                itemCount = [int]@($Checkpoint.batches)[0].itemCount
+                fingerprint = 'artifact-path-test-0001'
+            })
+        }
+        return $Checkpoint
     }
-    return $Checkpoint
 }
 
 Describe 'Artifact path stability' {
