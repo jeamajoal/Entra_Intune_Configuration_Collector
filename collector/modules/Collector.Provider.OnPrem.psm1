@@ -468,24 +468,32 @@ function Invoke-CollectorOnPremRelationshipFamily {
         'gpoPermissions' {
             Assert-CollectorOnPremCommand -CommandNames @('Get-GPPermission')
             foreach ($gpoItem in @($InventoryItems)) {
+                $gpoId = Get-CollectorFirstPropertyValue -Item $gpoItem -PropertyNames @('id', 'Id')
                 $gpoName = Get-CollectorFirstPropertyValue -Item $gpoItem -PropertyNames @('displayName', 'name')
-                if (-not $gpoName) {
-                    $results += [pscustomobject]@{ _collectorError = 'Unable to resolve GPO display name for permission collection.' }
+                $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $gpoItem
+
+                $parsedGpoId = [Guid]::Empty
+                if (-not $gpoId -or -not [Guid]::TryParse([string]$gpoId, [ref]$parsedGpoId)) {
+                    $results += [pscustomobject]@{
+                        gpo = $gpoName
+                        gpoId = if ($gpoId) { [string]$gpoId } else { $null }
+                        domainContext = $domainContext
+                        _collectorError = 'Unable to resolve a valid persisted GPO GUID for permission collection.'
+                    }
                     continue
                 }
 
-                $domainContext = $null
                 try {
-                    $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $gpoItem
                     if ($domainContext) {
-                        $permissions = Get-GPPermission -Name $gpoName -All -DomainName $domainContext
+                        $permissions = Get-GPPermission -Guid $parsedGpoId -All -DomainName $domainContext
                     }
                     else {
-                        $permissions = Get-GPPermission -Name $gpoName -All
+                        $permissions = Get-GPPermission -Guid $parsedGpoId -All
                     }
 
                     $results += [pscustomobject]@{
                         gpo = $gpoName
+                        gpoId = [string]$parsedGpoId
                         domainContext = $domainContext
                         permissions = @($permissions)
                     }
@@ -493,6 +501,7 @@ function Invoke-CollectorOnPremRelationshipFamily {
                 catch {
                     $results += [pscustomobject]@{
                         gpo = $gpoName
+                        gpoId = [string]$parsedGpoId
                         domainContext = $domainContext
                         _collectorError = $_.Exception.Message
                     }
