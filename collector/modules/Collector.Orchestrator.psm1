@@ -325,7 +325,14 @@ function Start-CollectorRun {
                 }
             }
 
-            $resultsToPersist = if ($context.PartialStageResults.Count -gt 0) { @($context.PartialStageResults) } else { @($stageResults) }
+            $resultsToPersist = @()
+            if ($context.PartialStageResults.Count -gt 0) {
+                $resultsToPersist = @($context.PartialStageResults)
+            }
+            else {
+                $resultsToPersist = @($stageResults)
+            }
+
             foreach ($stageResult in $resultsToPersist) {
                 Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
             }
