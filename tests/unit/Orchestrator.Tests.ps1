@@ -99,6 +99,56 @@ Describe 'Collector orchestrator execution flow' {
         }
     }
 
+    It 'rejects invalid numeric runtime options before creating run state' {
+        $invalidCases = @(
+            [pscustomobject]@{ Name = 'BatchSize'; Parameters = @{ BatchSize = 0 } },
+            [pscustomobject]@{ Name = 'MaxRetries'; Parameters = @{ MaxRetries = -1 } },
+            [pscustomobject]@{ Name = 'BaseBackoffSeconds'; Parameters = @{ BaseBackoffSeconds = -0.1 } },
+            [pscustomobject]@{ Name = 'MaxBackoffSeconds'; Parameters = @{ MaxBackoffSeconds = -0.1 } },
+            [pscustomobject]@{ Name = 'ThrottleMilliseconds'; Parameters = @{ ThrottleMilliseconds = -1 } }
+        )
+
+        foreach ($case in $invalidCases) {
+            $runtimeParameters = $case.Parameters
+            $threw = $false
+
+            try {
+                Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo') @runtimeParameters | Out-Null
+            }
+            catch {
+                $threw = $true
+                if ($_.Exception.Message -notlike ('*' + $case.Name + '*')) {
+                    throw ('Expected invalid {0} rejection; actual error: {1}' -f $case.Name, $_.Exception.Message)
+                }
+            }
+
+            if (-not $threw) {
+                throw ('Expected invalid {0} value to fail.' -f $case.Name)
+            }
+
+            $markerPath = Join-Path -Path $script:testRoot -ChildPath 'current-run.json'
+            if (Test-Path -LiteralPath $markerPath) {
+                throw ('Invalid {0} must fail before current-run.json is created.' -f $case.Name)
+            }
+        }
+    }
+
+    It 'accepts zero retry backoff and throttle values' {
+        Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
+            param(
+                [hashtable]$Context,
+                [string[]]$Sections
+            )
+            return @()
+        }
+
+        $result = Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo') -BatchSize 1 -MaxRetries 0 -BaseBackoffSeconds 0 -MaxBackoffSeconds 0 -ThrottleMilliseconds 0
+
+        if ($result.status -ne 'Completed') {
+            throw ('Expected zero-valued retry/backoff/throttle options to remain valid; actual status: {0}' -f $result.status)
+        }
+    }
+
     It 'executes only the selected stage and forwards section-only selection in canonical order' {
         $script:capturedStage3Sections = @()
 
