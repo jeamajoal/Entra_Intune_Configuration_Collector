@@ -92,6 +92,23 @@ function Get-CollectorNestedValue {
     return $null
 }
 
+function ConvertTo-CollectorFederatedIdentityCredentialMetadata {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Credential
+    )
+
+    [pscustomobject]@{
+        id = if ($Credential.PSObject.Properties.Match('id').Count -gt 0) { $Credential.id } else { $null }
+        name = if ($Credential.PSObject.Properties.Match('name').Count -gt 0) { $Credential.name } else { $null }
+        issuer = if ($Credential.PSObject.Properties.Match('issuer').Count -gt 0) { $Credential.issuer } else { $null }
+        subject = if ($Credential.PSObject.Properties.Match('subject').Count -gt 0) { $Credential.subject } else { $null }
+        audiences = if ($Credential.PSObject.Properties.Match('audiences').Count -gt 0) { @($Credential.audiences) } else { @() }
+        description = if ($Credential.PSObject.Properties.Match('description').Count -gt 0) { $Credential.description } else { $null }
+    }
+}
+
 function Assert-CollectorInventoryFirstForStage3 {
     [CmdletBinding()]
     param(
@@ -288,7 +305,9 @@ function Invoke-CollectorStage3GraphPerObjectFamily {
         [string]$DependencyFamily,
 
         [Parameter(Mandatory = $true)]
-        [string]$EndpointTemplate
+        [string]$EndpointTemplate,
+
+        [scriptblock]$RelationshipTransform
     )
 
     Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @($DependencyFamily)
@@ -317,7 +336,18 @@ function Invoke-CollectorStage3GraphPerObjectFamily {
 
             $endpoint = $EndpointTemplate.Replace('{id}', $objectId)
             try {
-                $relationships = Invoke-CollectorGraphCollection -GraphToken $Context.GraphToken -Endpoint $endpoint -MaxRetries $Context.MaxRetries -BaseBackoffSeconds $Context.BaseBackoffSeconds -MaxBackoffSeconds $Context.MaxBackoffSeconds -ThrottleMilliseconds $Context.ThrottleMilliseconds
+                $relationships = @(Invoke-CollectorGraphCollection -GraphToken $Context.GraphToken -Endpoint $endpoint -MaxRetries $Context.MaxRetries -BaseBackoffSeconds $Context.BaseBackoffSeconds -MaxBackoffSeconds $Context.MaxBackoffSeconds -ThrottleMilliseconds $Context.ThrottleMilliseconds)
+                if ($RelationshipTransform) {
+                    $transformedRelationships = @()
+                    foreach ($relationship in $relationships) {
+                        if ($null -eq $relationship) {
+                            continue
+                        }
+                        $transformedRelationships += & $RelationshipTransform $relationship
+                    }
+                    $relationships = $transformedRelationships
+                }
+
                 $items += [pscustomobject]@{
                     parentId = $objectId
                     relationshipCount = @($relationships).Count
@@ -512,7 +542,7 @@ function Invoke-CollectorStage3 {
             'entra-apps' {
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'servicePrincipalAppRoleAssignedTo' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}/appRoleAssignedTo')
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'groupMembers' -DependencyFamily 'groups' -EndpointTemplate '/v1.0/groups/{id}/members')
-                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'applicationFederatedIdentityCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $Context -Section $section -Family 'applicationFederatedIdentityCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description' -RelationshipTransform { param($credential) ConvertTo-CollectorFederatedIdentityCredentialMetadata -Credential $credential })
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3DelegatedGrantFamily -Context $Context -Section $section)
             }
 
