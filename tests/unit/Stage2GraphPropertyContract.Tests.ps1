@@ -141,7 +141,7 @@ Describe 'Stage2 Entra Graph property contract' {
         $servicePrincipalProperties = @(Get-SelectedPropertiesFromEndpoint -Endpoint $servicePrincipalEndpoint)
         $groupProperties = @(Get-SelectedPropertiesFromEndpoint -Endpoint $groupEndpoint)
 
-        foreach ($required in @('authenticationBehaviors', 'requiredResourceAccess', 'servicePrincipalLockConfiguration')) {
+        foreach ($required in @('authenticationBehaviors', 'requiredResourceAccess', 'servicePrincipalLockConfiguration', 'oauth2RequirePostResponse')) {
             if ($applicationProperties -notcontains $required) {
                 throw ('Application $select is missing required property ' + $required + '.')
             }
@@ -160,6 +160,9 @@ Describe 'Stage2 Entra Graph property contract' {
         $allProperties = @($applicationProperties) + @($servicePrincipalProperties) + @($groupProperties)
         if ($allProperties -contains 'keyCredentials' -or $allProperties -contains 'passwordCredentials') {
             throw 'Credential properties owned by #45 must not be included in the ordinary Stage2 property contract.'
+        }
+        if ($applicationProperties -contains 'oauth2RequiredPostResponse') {
+            throw 'The Microsoft Learn resource table label must not replace the serialized Graph property name oauth2RequirePostResponse.'
         }
         if (@($applicationProperties | Sort-Object -Unique).Count -ne $applicationProperties.Count) {
             throw 'Application Stage2 property contract contains duplicate property names.'
