@@ -1,3 +1,6 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'The global captures calls made by a global command shim before the provider module is imported; it is test-only and removed during teardown.')]
+param()
+
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 
