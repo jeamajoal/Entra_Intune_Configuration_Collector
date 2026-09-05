@@ -104,6 +104,9 @@ Describe 'On-prem ACL domain targeting' {
         if ($global:CollectorAclCalls.Count -ne 1 -or [string]::IsNullOrWhiteSpace($global:CollectorAclCalls[0].LiteralPath) -or $global:CollectorAclCalls[0].Path) {
             throw 'Expected domain-root ACL to use LiteralPath and never Path.'
         }
+        if ([string]$result[0].path -ne 'AD:\DC=alpha,DC=test' -or [string]$result[0].path -match 'CollectorAD') {
+            throw ('Expected stable persisted domain-root path AD:\DC=alpha,DC=test; actual ' + [string]$result[0].path + '.')
+        }
         if ($global:CollectorRemoveDriveCalls.Count -ne 1 -or $global:CollectorRemoveDriveCalls[0].Name -ne $global:CollectorNewDriveCalls[0].Name) {
             throw 'Expected temporary AD drive to be removed after successful ACL read.'
         }
@@ -132,6 +135,14 @@ Describe 'On-prem ACL domain targeting' {
         }
         if (@($global:CollectorAclCalls | Where-Object { $_.Path }).Count -ne 0) {
             throw 'Expected no wildcard-aware Path binding for OU ACL reads.'
+        }
+
+        $persistedPaths = @($results | ForEach-Object { [string]$_.path })
+        if ($persistedPaths[0] -ne 'AD:\OU=Ops[1],DC=alpha,DC=test' -or $persistedPaths[1] -ne 'AD:\OU=Ops*,DC=beta,DC=test') {
+            throw ('Expected stable AD:\<DN> output paths; actual ' + ($persistedPaths -join ', ') + '.')
+        }
+        if (@($persistedPaths | Where-Object { $_ -match 'CollectorAD' }).Count -ne 0) {
+            throw 'Expected temporary randomized drive names to remain internal and never be persisted.'
         }
         if ($global:CollectorRemoveDriveCalls.Count -ne 2) {
             throw 'Expected each temporary AD drive to be removed.'
