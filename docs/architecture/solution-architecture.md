@@ -48,13 +48,14 @@ ACLs, memberships, and assignments are classified as metadata.
 - On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets.
 - Relationship metadata for ACLs, memberships, assignments, delegated grants, and PIM schedule edges.
 
+Bearer-authenticated absolute Graph request and pagination URIs are restricted to the collector's public Microsoft Graph HTTPS origin (`https://graph.microsoft.com:443`); insecure, cross-origin, alternate-port, and user-info-bearing absolute URIs fail before HTTP execution.
+
 ### Out of Scope
 
 - Mailbox or collaboration workloads.
 - Defender telemetry domains.
 - Audit and sign-in stream ingestion.
 - Configuration mutation through the collector; the normal Graph provider request boundary is GET-only and exposes no mutation/body request surface.
-- Bearer-authenticated absolute Graph request and pagination URIs are restricted to the collector's public Microsoft Graph HTTPS origin (`https://graph.microsoft.com:443`); insecure, cross-origin, alternate-port, and user-info-bearing absolute URIs fail before HTTP execution.
 
 ## Stage and Section Model
 
