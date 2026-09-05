@@ -51,6 +51,29 @@ Describe 'Graph provider read-only boundary' {
         }
     }
 
+    It 'validates the final resolved URI for crafted relative endpoints' {
+        Mock -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -MockWith {
+            throw 'Invoke-RestMethod must not run for a rejected Graph URI.'
+        }
+
+        $threw = $false
+        try {
+            Invoke-CollectorGraphRequest -GraphToken 'test-token' -Endpoint '@example.invalid/path' -ThrottleMilliseconds 0 -MaxRetries 0
+        }
+        catch {
+            $threw = $true
+            if ($_.Exception.Message -notmatch 'Microsoft Graph HTTPS origin') {
+                throw ('Expected crafted relative endpoint origin rejection; actual error: {0}' -f $_.Exception.Message)
+            }
+        }
+
+        if (-not $threw) {
+            throw 'Expected crafted relative Graph endpoint to be rejected.'
+        }
+
+        Assert-MockCalled -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -Times 0 -Exactly
+    }
+
     It 'allows same-origin HTTPS absolute Graph requests as GET' {
         Mock -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -MockWith {
             [pscustomobject]@{ id = 'absolute-ok' }
