@@ -5,7 +5,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
 
-    function Assert-ZeroItemFamilyArtifacts {
+    function Assert-ZeroItemFamilyArtifact {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath,
@@ -111,7 +111,7 @@ Describe 'Zero-item batch execution' {
             if (-not $result -or $result.batchCount -ne 1 -or $result.succeededBatches -ne 1 -or $result.itemCount -ne 0) {
                 throw ('Expected Stage1 zero-item success for family ' + $family + '.')
             }
-            Assert-ZeroItemFamilyArtifacts -RunPath $script:testRoot -Stage 'stage1' -Section 'entra-apps' -Family $family
+            Assert-ZeroItemFamilyArtifact -RunPath $script:testRoot -Stage 'stage1' -Section 'entra-apps' -Family $family
         }
 
         $stage2Results = @(Invoke-CollectorStage2 -Context $script:context -Sections @('entra-apps'))
@@ -120,7 +120,7 @@ Describe 'Zero-item batch execution' {
             if (-not $result -or $result.batchCount -ne 1 -or $result.succeededBatches -ne 1 -or $result.itemCount -ne 0) {
                 throw ('Expected Stage2 zero-item success for family ' + $family + '.')
             }
-            Assert-ZeroItemFamilyArtifacts -RunPath $script:testRoot -Stage 'stage2' -Section 'entra-apps' -Family $family
+            Assert-ZeroItemFamilyArtifact -RunPath $script:testRoot -Stage 'stage2' -Section 'entra-apps' -Family $family
         }
 
         $stage3Results = @(Invoke-CollectorStage3 -Context $script:context -Sections @('entra-apps'))
@@ -129,7 +129,7 @@ Describe 'Zero-item batch execution' {
             if (-not $result -or $result.batchCount -ne 1 -or $result.succeededBatches -ne 1 -or $result.itemCount -ne 0) {
                 throw ('Expected Stage3 zero-item success for family ' + $family + '.')
             }
-            Assert-ZeroItemFamilyArtifacts -RunPath $script:testRoot -Stage 'stage3' -Section 'entra-apps' -Family $family
+            Assert-ZeroItemFamilyArtifact -RunPath $script:testRoot -Stage 'stage3' -Section 'entra-apps' -Family $family
         }
     }
 }
