@@ -1,22 +1,24 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Common.Retry.psm1') -Force -ErrorAction Stop
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Common.Retry.psm1') -Force -ErrorAction Stop
 
-function New-RetryErrorRecord {
-    param(
-        [Parameter(Mandatory = $true)]
-        [object]$Response,
+    function New-RetryErrorRecord {
+        param(
+            [Parameter(Mandatory = $true)]
+            [object]$Response,
 
-        [string]$Message = 'HTTP 429 throttle'
-    )
+            [string]$Message = 'HTTP 429 throttle'
+        )
 
-    $exception = [System.Exception]::new($Message)
-    $exception | Add-Member -MemberType NoteProperty -Name Response -Value $Response -Force
-    [System.Management.Automation.ErrorRecord]::new(
-        $exception,
-        'CollectorRetryTest',
-        [System.Management.Automation.ErrorCategory]::LimitsExceeded,
-        $null
-    )
+        $exception = [System.Exception]::new($Message)
+        $exception | Add-Member -MemberType NoteProperty -Name Response -Value $Response -Force
+        [System.Management.Automation.ErrorRecord]::new(
+            $exception,
+            'CollectorRetryTest',
+            [System.Management.Automation.ErrorCategory]::LimitsExceeded,
+            $null
+        )
+    }
 }
 
 Describe 'Retry policy behavior' {
