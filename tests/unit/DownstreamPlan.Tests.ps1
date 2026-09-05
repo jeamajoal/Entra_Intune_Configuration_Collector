@@ -1,29 +1,31 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
 
-function New-DownstreamPlanContext {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RunPath,
+    function New-DownstreamPlanContext {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$RunPath,
 
-        [int]$BatchSize = 2,
+            [int]$BatchSize = 2,
 
-        [bool]$Resume = $false
-    )
+            [bool]$Resume = $false
+        )
 
-    @{
-        RunPath = $RunPath
-        RunId = 'downstream-plan-run'
-        GraphToken = 'test-token'
-        BatchSize = $BatchSize
-        MaxRetries = 0
-        BaseBackoffSeconds = 0
-        MaxBackoffSeconds = 0
-        ThrottleMilliseconds = 0
-        Resume = $Resume
-        ReprocessFailedOnly = $false
+        @{
+            RunPath = $RunPath
+            RunId = 'downstream-plan-run'
+            GraphToken = 'test-token'
+            BatchSize = $BatchSize
+            MaxRetries = 0
+            BaseBackoffSeconds = 0
+            MaxBackoffSeconds = 0
+            ThrottleMilliseconds = 0
+            Resume = $Resume
+            ReprocessFailedOnly = $false
+        }
     }
 }
 
