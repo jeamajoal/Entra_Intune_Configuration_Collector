@@ -4,7 +4,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 
-    function New-TestStage1CheckpointBatch {
+    function Get-TestStage1CheckpointBatch {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath,
@@ -100,7 +100,7 @@ Describe 'Inventory-first enforcement' {
         New-Item -Path $artifactDirectory -ItemType Directory -Force | Out-Null
         $artifactPath = Join-Path -Path $artifactDirectory -ChildPath 'batch-0001.json'
         '{"items":[]}' | Set-Content -LiteralPath $artifactPath -Encoding UTF8
-        New-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $artifactPath -ItemCount 0
+        Get-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $artifactPath -ItemCount 0
 
         try { Assert-CollectorInventoryFirstForStage2 -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' }
         catch { throw ('Expected Stage2 inventory-first assertion to pass for complete planned Stage1 evidence. Actual: ' + $_.Exception.Message) }
@@ -111,8 +111,8 @@ Describe 'Inventory-first enforcement' {
         New-Item -Path $artifactDirectory -ItemType Directory -Force | Out-Null
         $artifactPath = Join-Path -Path $artifactDirectory -ChildPath 'batch-0001.json'
         '{"items":[{"id":"one"}]}' | Set-Content -LiteralPath $artifactPath -Encoding UTF8
-        New-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $artifactPath
-        New-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0002' -Status 'Failed' -ArtifactPath $null
+        Get-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $artifactPath
+        Get-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0002' -Status 'Failed' -ArtifactPath $null
 
         $threw = $false
         try { Assert-CollectorInventoryFirstForStage2 -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' } catch { $threw = $true }
@@ -121,7 +121,7 @@ Describe 'Inventory-first enforcement' {
 
     It 'hard-fails Stage2 when a succeeded Stage1 checkpoint batch references a missing artifact' {
         $missingArtifactPath = Join-Path -Path $script:testRoot -ChildPath 'stage1/entra-apps/applications/batch-0001.json'
-        New-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $missingArtifactPath
+        Get-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $missingArtifactPath
 
         $threw = $false
         try { Assert-CollectorInventoryFirstForStage2 -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' } catch { $threw = $true }
@@ -134,7 +134,7 @@ Describe 'Inventory-first enforcement' {
             New-Item -Path $artifactDirectory -ItemType Directory -Force | Out-Null
             $artifactPath = Join-Path -Path $artifactDirectory -ChildPath 'batch-0001.json'
             '{"items":[]}' | Set-Content -LiteralPath $artifactPath -Encoding UTF8
-            New-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Family $family -BatchId '0001' -Status 'Succeeded' -ArtifactPath $artifactPath -ItemCount 0
+            Get-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Family $family -BatchId '0001' -Status 'Succeeded' -ArtifactPath $artifactPath -ItemCount 0
         }
 
         try { Assert-CollectorInventoryFirstForStage3 -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Families @('groups', 'gpos') }
@@ -146,8 +146,8 @@ Describe 'Inventory-first enforcement' {
         New-Item -Path $groupArtifactDirectory -ItemType Directory -Force | Out-Null
         $groupArtifactPath = Join-Path -Path $groupArtifactDirectory -ChildPath 'batch-0001.json'
         '{"items":[]}' | Set-Content -LiteralPath $groupArtifactPath -Encoding UTF8
-        New-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Family 'groups' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $groupArtifactPath -ItemCount 0
-        New-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Family 'gpos' -BatchId '0001' -Status 'InProgress' -ArtifactPath $null
+        Get-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Family 'groups' -BatchId '0001' -Status 'Succeeded' -ArtifactPath $groupArtifactPath -ItemCount 0
+        Get-TestStage1CheckpointBatch -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Family 'gpos' -BatchId '0001' -Status 'InProgress' -ArtifactPath $null
 
         $threw = $false
         try { Assert-CollectorInventoryFirstForStage3 -RunPath $script:testRoot -Section 'onprem-ad-gpo' -Families @('groups', 'gpos') } catch { $threw = $true }
