@@ -43,6 +43,44 @@ function Write-CollectorRunMarker {
     $marker | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $markerPath -Encoding UTF8
 }
 
+function Test-CollectorResumeRun {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OutputRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RunId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RunId) -or $RunId -match '[\\/]' -or $RunId -eq '.' -or $RunId -eq '..') {
+        return $false
+    }
+
+    $runPath = Join-Path -Path $OutputRoot -ChildPath $RunId
+    if (-not (Test-Path -LiteralPath $runPath -PathType Container)) {
+        return $false
+    }
+
+    $manifestPath = Join-Path -Path $runPath -ChildPath 'manifest\run-manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        return $false
+    }
+
+    if ($null -eq $manifest -or $manifest.PSObject.Properties.Match('runId').Count -eq 0) {
+        return $false
+    }
+
+    return -not [string]::IsNullOrWhiteSpace([string]$manifest.runId) -and [string]$manifest.runId -eq $RunId
+}
+
 function Resolve-CollectorRun {
     [CmdletBinding()]
     param(
@@ -52,19 +90,19 @@ function Resolve-CollectorRun {
         [switch]$Resume
     )
 
-    Initialize-CollectorDirectory -Path $OutputRoot | Out-Null
-
     $runId = $null
     if ($Resume) {
+        if (-not (Test-Path -LiteralPath $OutputRoot -PathType Container)) {
+            throw 'Resume requested but no prior run artifacts were found under OutputRoot.'
+        }
+
         $markerPath = Get-CollectorRunMarkerPath -OutputRoot $OutputRoot
-        if (Test-Path -LiteralPath $markerPath) {
+        if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
             try {
                 $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
-                if ($marker.runId) {
-                    $markerRunPath = Join-Path -Path $OutputRoot -ChildPath $marker.runId
-                    if (Test-Path -LiteralPath $markerRunPath) {
-                        $runId = [string]$marker.runId
-                    }
+                $markerRunId = [string]$marker.runId
+                if (Test-CollectorResumeRun -OutputRoot $OutputRoot -RunId $markerRunId) {
+                    $runId = $markerRunId
                 }
             }
             catch {
@@ -74,24 +112,29 @@ function Resolve-CollectorRun {
 
         if (-not $runId) {
             $candidateDirectories = @(Get-ChildItem -LiteralPath $OutputRoot -Directory | Sort-Object -Property LastWriteTimeUtc -Descending)
-            if ($candidateDirectories.Count -gt 0) {
-                $runId = $candidateDirectories[0].Name
+            foreach ($candidateDirectory in $candidateDirectories) {
+                if (Test-CollectorResumeRun -OutputRoot $OutputRoot -RunId $candidateDirectory.Name) {
+                    $runId = $candidateDirectory.Name
+                    break
+                }
             }
         }
 
         if (-not $runId) {
             throw 'Resume requested but no prior run artifacts were found under OutputRoot.'
         }
+
+        $runPath = Join-Path -Path $OutputRoot -ChildPath $runId
     }
     else {
+        Initialize-CollectorDirectory -Path $OutputRoot | Out-Null
         $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
         $runId = '{0}-{1}' -f $timestamp, ([guid]::NewGuid().ToString('N').Substring(0, 8))
+        $runPath = Join-Path -Path $OutputRoot -ChildPath $runId
+        Initialize-CollectorDirectory -Path $runPath | Out-Null
+        Initialize-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'manifest') | Out-Null
+        Initialize-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'checkpoints') | Out-Null
     }
-
-    $runPath = Join-Path -Path $OutputRoot -ChildPath $runId
-    Initialize-CollectorDirectory -Path $runPath | Out-Null
-    Initialize-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'manifest') | Out-Null
-    Initialize-CollectorDirectory -Path (Join-Path -Path $runPath -ChildPath 'checkpoints') | Out-Null
 
     Write-CollectorRunMarker -OutputRoot $OutputRoot -RunId $runId
 
