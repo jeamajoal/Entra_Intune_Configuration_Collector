@@ -320,6 +320,23 @@ function Test-CollectorInventoryArtifacts {
         return $false
     }
 
+    $manifestPath = Join-Path -Path $RunPath -ChildPath 'manifest\run-manifest.json'
+    if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+        try {
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            return $false
+        }
+
+        if ($null -eq $manifest -or $manifest.PSObject.Properties.Match('runId').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$manifest.runId)) {
+            return $false
+        }
+        if ($checkpoint.PSObject.Properties.Match('runId').Count -eq 0 -or [string]$checkpoint.runId -ne [string]$manifest.runId) {
+            return $false
+        }
+    }
+
     if ($checkpoint.PSObject.Properties.Match('plan').Count -eq 0 -or $null -eq $checkpoint.plan -or -not [bool]$checkpoint.plan.completed) {
         return $false
     }
