@@ -177,7 +177,7 @@ Run local parser and test scaffolding:
 pwsh ./tools/Invoke-LocalValidation.ps1
 ```
 
-The validation script runs parser checks, optional PSScriptAnalyzer if installed, and Pester tests if installed.
+The validation script runs parser checks, optional PSScriptAnalyzer if installed, and Pester tests if installed. A Pester pass is reported only when the returned result uses a supported Pester 4/5 result shape, proves that at least one test executed, and reports zero failures; null, unknown, or zero-test results fail closed. Explicitly skipped or unavailable Pester remains reported as skipped rather than passed.
 
 ## Scope Boundaries
 
