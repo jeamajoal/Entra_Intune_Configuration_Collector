@@ -133,29 +133,28 @@ if ($parseFailures.Count -gt 0) {
     throw ('Parser validation failed:' + [Environment]::NewLine + ($parseFailures -join [Environment]::NewLine))
 }
 
-Write-Host 'Parser validation passed.'
+Write-Information -MessageData 'Parser validation passed.' -InformationAction Continue
 
 if (-not $SkipScriptAnalyzer) {
-    if (Get-Module -ListAvailable -Name PSScriptAnalyzer) {
-        Import-Module PSScriptAnalyzer -ErrorAction Stop
-        $analyzerFindings = @()
-        foreach ($analysisPath in @($collectorPath, $testsPath, $toolsPath)) {
-            $analyzerFindings += @(Invoke-ScriptAnalyzer -Path $analysisPath -Recurse -Severity Error, Warning)
-        }
-
-        if ($analyzerFindings -and $analyzerFindings.Count -gt 0) {
-            $analyzerFindings | Format-Table -AutoSize
-            throw ('PSScriptAnalyzer returned {0} findings.' -f $analyzerFindings.Count)
-        }
-
-        Write-Host 'PSScriptAnalyzer validation passed.'
+    if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+        throw 'PSScriptAnalyzer is not installed; validation cannot continue.'
     }
-    else {
-        Write-Host 'PSScriptAnalyzer is not installed; analyzer step skipped.'
+
+    Import-Module PSScriptAnalyzer -ErrorAction Stop
+    $analyzerFindings = @()
+    foreach ($analysisPath in @($collectorPath, $testsPath, $toolsPath)) {
+        $analyzerFindings += @(Invoke-ScriptAnalyzer -Path $analysisPath -Recurse -Severity Error, Warning)
     }
+
+    if ($analyzerFindings -and $analyzerFindings.Count -gt 0) {
+        $analyzerFindings | Format-Table -AutoSize
+        throw ('PSScriptAnalyzer returned {0} findings.' -f $analyzerFindings.Count)
+    }
+
+    Write-Information -MessageData 'PSScriptAnalyzer validation passed.' -InformationAction Continue
 }
 else {
-    Write-Host 'PSScriptAnalyzer step skipped by request.'
+    Write-Information -MessageData 'PSScriptAnalyzer step skipped by request.' -InformationAction Continue
 }
 
 if (-not $SkipPester) {
@@ -175,14 +174,14 @@ if (-not $SkipPester) {
         }
 
         Get-PesterValidationSummary -PesterResults $pesterResults | Out-Null
-        Write-Host 'Pester validation passed.'
+        Write-Information -MessageData 'Pester validation passed.' -InformationAction Continue
     }
     else {
-        Write-Host 'Pester is not installed; test step skipped.'
+        Write-Information -MessageData 'Pester is not installed; test step skipped.' -InformationAction Continue
     }
 }
 else {
-    Write-Host 'Pester step skipped by request.'
+    Write-Information -MessageData 'Pester step skipped by request.' -InformationAction Continue
 }
 
-Write-Host 'Local validation completed.'
+Write-Information -MessageData 'Local validation completed.' -InformationAction Continue
