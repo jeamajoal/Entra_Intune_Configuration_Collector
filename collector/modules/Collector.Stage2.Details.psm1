@@ -97,6 +97,7 @@ $script:CollectorStage2EntraSelectedProperties = @{
         'licenseProcessingState',
         'isManagementRestricted',
         'onPremisesDomainName',
+        'onPremisesExtensionAttributes',
         'onPremisesLastSyncDateTime',
         'onPremisesNetBiosName',
         'onPremisesSamAccountName',
