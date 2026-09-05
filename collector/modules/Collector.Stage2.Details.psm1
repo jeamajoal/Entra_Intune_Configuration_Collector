@@ -6,6 +6,107 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
+$script:CollectorStage2EntraSelectedProperties = @{
+    applications = @(
+        'id',
+        'appId',
+        'applicationTemplateId',
+        'displayName',
+        'description',
+        'createdDateTime',
+        'disabledByMicrosoftStatus',
+        'publisherDomain',
+        'verifiedPublisher',
+        'signInAudience',
+        'tags',
+        'notes',
+        'uniqueName',
+        'info',
+        'addIns',
+        'api',
+        'appRoles',
+        'authenticationBehaviors',
+        'groupMembershipClaims',
+        'identifierUris',
+        'isDeviceOnlyAuthSupported',
+        'isFallbackPublicClient',
+        'nativeAuthenticationApisEnabled',
+        'oauth2RequiredPostResponse',
+        'optionalClaims',
+        'publicClient',
+        'requestSignatureVerification',
+        'requiredResourceAccess',
+        'samlMetadataUrl',
+        'serviceManagementReference',
+        'servicePrincipalLockConfiguration',
+        'spa',
+        'tokenEncryptionKeyId',
+        'web'
+    )
+    servicePrincipals = @(
+        'id',
+        'appId',
+        'applicationTemplateId',
+        'appOwnerOrganizationId',
+        'displayName',
+        'description',
+        'accountEnabled',
+        'disabledByMicrosoftStatus',
+        'servicePrincipalType',
+        'signInAudience',
+        'tags',
+        'notes',
+        'verifiedPublisher',
+        'info',
+        'alternativeNames',
+        'appRoleAssignmentRequired',
+        'appRoles',
+        'oauth2PermissionScopes',
+        'resourceSpecificApplicationPermissions',
+        'preferredSingleSignOnMode',
+        'samlSingleSignOnSettings',
+        'servicePrincipalNames',
+        'replyUrls',
+        'homepage',
+        'loginUrl',
+        'logoutUrl',
+        'notificationEmailAddresses',
+        'tokenEncryptionKeyId',
+        'preferredTokenSigningKeyThumbprint'
+    )
+    groups = @(
+        'id',
+        'displayName',
+        'description',
+        'createdDateTime',
+        'classification',
+        'groupTypes',
+        'isAssignableToRole',
+        'mailEnabled',
+        'mailNickname',
+        'membershipRule',
+        'membershipRuleProcessingState',
+        'securityEnabled',
+        'visibility',
+        'expirationDateTime',
+        'renewedDateTime',
+        'resourceBehaviorOptions',
+        'resourceProvisioningOptions',
+        'assignedLabels',
+        'assignedLicenses',
+        'licenseProcessingState',
+        'isManagementRestricted',
+        'onPremisesDomainName',
+        'onPremisesLastSyncDateTime',
+        'onPremisesNetBiosName',
+        'onPremisesSamAccountName',
+        'onPremisesSecurityIdentifier',
+        'onPremisesSyncEnabled',
+        'proxyAddresses',
+        'securityIdentifier'
+    )
+}
+
 function New-CollectorFamilyResult {
     param(
         [string]$Stage,
@@ -97,12 +198,24 @@ function Invoke-CollectorStage2GraphFamily {
         [string]$Family,
 
         [Parameter(Mandatory = $true)]
-        [string]$EndpointTemplate
+        [string]$EndpointTemplate,
+
+        [string[]]$SelectedProperties = @()
     )
 
     Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $Family
 
     $stageName = 'stage2'
+    $selectedProperties = @($SelectedProperties)
+    $requestContext = @{
+        endpointTemplate = $EndpointTemplate
+        method = 'GET'
+        inventoryStage = 'stage1'
+    }
+    if ($selectedProperties.Count -gt 0) {
+        $requestContext.selectedProperties = @($selectedProperties)
+    }
+
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
     $result = New-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
@@ -164,6 +277,10 @@ function Invoke-CollectorStage2GraphFamily {
             }
 
             $endpoint = $EndpointTemplate.Replace('{id}', $objectId)
+            if ($selectedProperties.Count -gt 0) {
+                $endpoint = '{0}?$select={1}' -f $endpoint, ($selectedProperties -join ',')
+            }
+
             try {
                 $detail = Invoke-CollectorGraphRequest -GraphToken $Context.GraphToken -Endpoint $endpoint -MaxRetries $Context.MaxRetries -BaseBackoffSeconds $Context.BaseBackoffSeconds -MaxBackoffSeconds $Context.MaxBackoffSeconds -ThrottleMilliseconds $Context.ThrottleMilliseconds
                 $details += $detail
@@ -183,7 +300,7 @@ function Invoke-CollectorStage2GraphFamily {
         $status = if ($failedCount -eq 0) { 'Succeeded' } else { 'Failed' }
 
         try {
-            $snapshot = New-CollectorProvenanceSnapshot -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family -BatchId $batchId -SourceType 'Graph' -SourceName ('Graph {0}' -f $EndpointTemplate) -ApiVersion $apiVersion -IsBeta:$isBeta -RequestContext @{ endpointTemplate = $EndpointTemplate; method = 'GET'; inventoryStage = 'stage1' } -ItemCount $details.Count -Items $details
+            $snapshot = New-CollectorProvenanceSnapshot -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family -BatchId $batchId -SourceType 'Graph' -SourceName ('Graph {0}' -f $EndpointTemplate) -ApiVersion $apiVersion -IsBeta:$isBeta -RequestContext $requestContext -ItemCount $details.Count -Items $details
             $artifact = Write-CollectorSnapshotArtifact -RunPath $Context.RunPath -Stage $stageName -Section $Section -Family $Family -BatchNumber $batchNumber -Snapshot $snapshot
 
             $successCount = [Math]::Max(0, $details.Count - $failedCount)
@@ -355,9 +472,9 @@ function Invoke-CollectorStage2 {
     foreach ($section in $Sections) {
         switch ($section) {
             'entra-apps' {
-                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applications' -EndpointTemplate '/v1.0/applications/{id}')
-                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}')
-                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'groups' -EndpointTemplate '/v1.0/groups/{id}')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applications' -EndpointTemplate '/v1.0/applications/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.applications)
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.servicePrincipals)
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'groups' -EndpointTemplate '/v1.0/groups/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.groups)
             }
 
             'entra-pim' {
