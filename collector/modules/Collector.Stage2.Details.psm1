@@ -31,7 +31,7 @@ $script:CollectorStage2EntraSelectedProperties = @{
         'isDeviceOnlyAuthSupported',
         'isFallbackPublicClient',
         'nativeAuthenticationApisEnabled',
-        'oauth2RequiredPostResponse',
+        'oauth2RequirePostResponse',
         'optionalClaims',
         'publicClient',
         'requestSignatureVerification',
