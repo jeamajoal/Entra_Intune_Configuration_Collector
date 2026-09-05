@@ -100,6 +100,9 @@ Describe 'Stage2 Entra Graph property contract' {
                             displayName = 'Confidential'
                         }
                     )
+                    onPremisesExtensionAttributes = [pscustomobject]@{
+                        extensionAttribute1 = 'Finance'
+                    }
                 }
             }
 
@@ -148,23 +151,24 @@ Describe 'Stage2 Entra Graph property contract' {
                 throw ('Service principal $select is missing required property ' + $required + '.')
             }
         }
-        foreach ($required in @('assignedLabels', 'isManagementRestricted', 'licenseProcessingState')) {
+        foreach ($required in @('assignedLabels', 'isManagementRestricted', 'licenseProcessingState', 'onPremisesExtensionAttributes')) {
             if ($groupProperties -notcontains $required) {
                 throw ('Group $select is missing required property ' + $required + '.')
             }
         }
 
-        foreach ($properties in @($applicationProperties, $servicePrincipalProperties, $groupProperties)) {
-            if ($properties -contains 'keyCredentials' -or $properties -contains 'passwordCredentials') {
-                throw 'Credential properties owned by #45 must not be included in the ordinary Stage2 property contract.'
-            }
-            if (@($properties | Sort-Object -Unique).Count -ne $properties.Count) {
-                throw 'Stage2 property contracts must not contain duplicate property names.'
-            }
+        $allProperties = @($applicationProperties) + @($servicePrincipalProperties) + @($groupProperties)
+        if ($allProperties -contains 'keyCredentials' -or $allProperties -contains 'passwordCredentials') {
+            throw 'Credential properties owned by #45 must not be included in the ordinary Stage2 property contract.'
         }
-
-        if ($groupProperties -contains 'onPremisesExtensionAttributes') {
-            throw 'Beta-only group.onPremisesExtensionAttributes must not be included in the v1.0 Stage2 group contract.'
+        if (@($applicationProperties | Sort-Object -Unique).Count -ne $applicationProperties.Count) {
+            throw 'Application Stage2 property contract contains duplicate property names.'
+        }
+        if (@($servicePrincipalProperties | Sort-Object -Unique).Count -ne $servicePrincipalProperties.Count) {
+            throw 'Service principal Stage2 property contract contains duplicate property names.'
+        }
+        if (@($groupProperties | Sort-Object -Unique).Count -ne $groupProperties.Count) {
+            throw 'Group Stage2 property contract contains duplicate property names.'
         }
 
         $unselectedEndpoints = @($global:CollectorStage2GraphPropertyEndpoints | Where-Object {
@@ -203,6 +207,9 @@ Describe 'Stage2 Entra Graph property contract' {
         }
         if ([string]$groupSnapshot.items[0].assignedLabels[0].labelId -ne 'label-1') {
             throw 'Nested group assigned-label configuration returned by Graph was not persisted unchanged.'
+        }
+        if ([string]$groupSnapshot.items[0].onPremisesExtensionAttributes.extensionAttribute1 -ne 'Finance') {
+            throw 'Nested group on-premises extension attributes returned by Graph were not persisted unchanged.'
         }
     }
 }
