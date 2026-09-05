@@ -295,6 +295,22 @@ function Start-CollectorRun {
         [int]$ThrottleMilliseconds = 100
     )
 
+    if ($BatchSize -le 0) {
+        throw 'BatchSize must be greater than zero.'
+    }
+    if ($MaxRetries -lt 0) {
+        throw 'MaxRetries must be greater than or equal to zero.'
+    }
+    if ($BaseBackoffSeconds -lt 0) {
+        throw 'BaseBackoffSeconds must be greater than or equal to zero.'
+    }
+    if ($MaxBackoffSeconds -lt 0) {
+        throw 'MaxBackoffSeconds must be greater than or equal to zero.'
+    }
+    if ($ThrottleMilliseconds -lt 0) {
+        throw 'ThrottleMilliseconds must be greater than or equal to zero.'
+    }
+
     $resolvedStages = Resolve-CollectorStages -Stages $Stages
     $resolvedSections = Resolve-CollectorSections -Sections $Sections
     Assert-CollectorGraphTokenForSections -GraphToken $GraphToken -Sections $resolvedSections
