@@ -1,5 +1,6 @@
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Common.Retry.psm1') -Force -ErrorAction Stop
 
     function Get-RetryErrorRecord {
