@@ -97,4 +97,31 @@ Describe 'Resume run target validation' {
             throw 'Expected current-run.json to be repaired to the selected valid prior run.'
         }
     }
+
+    It 'skips a readable manifest that has no runId property' {
+        New-Item -Path $script:testRoot -ItemType Directory -Force | Out-Null
+        $first = Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo')
+
+        $unrelatedPath = Join-Path -Path $script:testRoot -ChildPath 'unrelated'
+        $unrelatedManifestPath = Join-Path -Path $unrelatedPath -ChildPath 'manifest\run-manifest.json'
+        New-Item -Path (Split-Path -Path $unrelatedManifestPath -Parent) -ItemType Directory -Force | Out-Null
+        '{}' | Set-Content -LiteralPath $unrelatedManifestPath -Encoding UTF8
+
+        [pscustomobject]@{ runId = 'unrelated'; updatedUtc = (Get-Date).ToUniversalTime().ToString('o') } |
+            ConvertTo-Json |
+            Set-Content -LiteralPath (Join-Path -Path $script:testRoot -ChildPath 'current-run.json') -Encoding UTF8
+
+        $resumed = Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage3') -Sections @('onprem-ad-gpo') -Resume
+
+        if ([string]$resumed.runId -ne [string]$first.runId) {
+            throw 'Expected readable manifest without runId to be rejected while fallback selects the valid run.'
+        }
+        if (Test-Path -LiteralPath (Join-Path -Path $unrelatedPath -ChildPath 'checkpoints')) {
+            throw 'Invalid readable manifest candidate must not receive checkpoint state.'
+        }
+        $unrelatedManifest = Get-Content -LiteralPath $unrelatedManifestPath -Raw | ConvertFrom-Json
+        if ($unrelatedManifest.PSObject.Properties.Match('runId').Count -ne 0) {
+            throw 'Invalid readable manifest must remain untouched.'
+        }
+    }
 }
