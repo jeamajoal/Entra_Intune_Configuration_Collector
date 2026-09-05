@@ -1,53 +1,55 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 
-function New-TestStage1CheckpointBatch {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RunPath,
+    function New-TestStage1CheckpointBatch {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$RunPath,
 
-        [Parameter(Mandatory = $true)]
-        [string]$Section,
+            [Parameter(Mandatory = $true)]
+            [string]$Section,
 
-        [Parameter(Mandatory = $true)]
-        [string]$Family,
+            [Parameter(Mandatory = $true)]
+            [string]$Family,
 
-        [Parameter(Mandatory = $true)]
-        [string]$BatchId,
+            [Parameter(Mandatory = $true)]
+            [string]$BatchId,
 
-        [Parameter(Mandatory = $true)]
-        [ValidateSet('Succeeded', 'Failed', 'InProgress', 'Missing')]
-        [string]$Status,
+            [Parameter(Mandatory = $true)]
+            [ValidateSet('Succeeded', 'Failed', 'InProgress', 'Missing')]
+            [string]$Status,
 
-        [string]$ArtifactPath,
+            [string]$ArtifactPath,
 
-        [int]$ItemCount = 1
-    )
+            [int]$ItemCount = 1
+        )
 
-    $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId 'inventory-first-test' -Stage 'stage1' -Section $Section -Family $Family
-    $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $BatchId -Status $Status -Attempts 1 -ItemCount $ItemCount -SuccessCount $(if ($Status -eq 'Succeeded') { $ItemCount } else { 0 }) -FailedCount $(if ($Status -eq 'Succeeded') { 0 } else { $ItemCount }) -ArtifactPath $ArtifactPath -Error $(if ($Status -eq 'Succeeded') { $null } else { 'test failure' })
+        $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId 'inventory-first-test' -Stage 'stage1' -Section $Section -Family $Family
+        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $BatchId -Status $Status -Attempts 1 -ItemCount $ItemCount -SuccessCount $(if ($Status -eq 'Succeeded') { $ItemCount } else { 0 }) -FailedCount $(if ($Status -eq 'Succeeded') { 0 } else { $ItemCount }) -ArtifactPath $ArtifactPath -Error $(if ($Status -eq 'Succeeded') { $null } else { 'test failure' })
 
-    $planBatches = @($checkpoint.batches | ForEach-Object {
-        [pscustomobject]@{
-            batchId = [string]$_.batchId
-            itemCount = [int]$_.itemCount
-            fingerprint = 'test-' + [string]$_.batchId
+        $planBatches = @($checkpoint.batches | ForEach-Object {
+            [pscustomobject]@{
+                batchId = [string]$_.batchId
+                itemCount = [int]$_.itemCount
+                fingerprint = 'test-' + [string]$_.batchId
+            }
+        })
+        $allSucceeded = @($checkpoint.batches | Where-Object { $_.status -ne 'Succeeded' }).Count -eq 0
+        $allArtifactsExist = @($checkpoint.batches | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.artifactPath) -or -not (Test-Path -LiteralPath $_.artifactPath) }).Count -eq 0
+        $checkpoint.plan = [pscustomobject]@{
+            planVersion = '1.0'
+            batchSize = 100
+            expectedBatchCount = $planBatches.Count
+            sourceFingerprint = 'inventory-first-test'
+            completed = [bool]($allSucceeded -and $allArtifactsExist)
+            batches = $planBatches
         }
-    })
-    $allSucceeded = @($checkpoint.batches | Where-Object { $_.status -ne 'Succeeded' }).Count -eq 0
-    $allArtifactsExist = @($checkpoint.batches | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.artifactPath) -or -not (Test-Path -LiteralPath $_.artifactPath) }).Count -eq 0
-    $checkpoint.plan = [pscustomobject]@{
-        planVersion = '1.0'
-        batchSize = 100
-        expectedBatchCount = $planBatches.Count
-        sourceFingerprint = 'inventory-first-test'
-        completed = [bool]($allSucceeded -and $allArtifactsExist)
-        batches = $planBatches
-    }
 
-    Save-CollectorCheckpoint -RunPath $RunPath -Checkpoint $checkpoint | Out-Null
+        Save-CollectorCheckpoint -RunPath $RunPath -Checkpoint $checkpoint | Out-Null
+    }
 }
 
 Describe 'Inventory-first enforcement' {
