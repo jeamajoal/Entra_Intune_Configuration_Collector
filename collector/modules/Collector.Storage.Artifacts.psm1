@@ -74,6 +74,10 @@ function Test-CollectorResumeRun {
         return $false
     }
 
+    if ($null -eq $manifest -or $manifest.PSObject.Properties.Match('runId').Count -eq 0) {
+        return $false
+    }
+
     return -not [string]::IsNullOrWhiteSpace([string]$manifest.runId) -and [string]$manifest.runId -eq $RunId
 }
 
@@ -259,7 +263,7 @@ function Get-CollectorSnapshotFiles {
 
 function Get-CollectorSnapshotItems {
     [CmdletBinding()]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported function intentionally returns the collection of items across snapshot files for a family.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported function intentionally returns the collection of items across snapshot files.')]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunPath,
