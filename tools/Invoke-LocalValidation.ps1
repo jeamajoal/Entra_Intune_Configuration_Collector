@@ -20,11 +20,12 @@ function Get-PesterValidationSummary {
 
     $propertyNames = @($PesterResults.PSObject.Properties.Name)
     $totalCount = $null
+    $passedCount = $null
     $failedCount = $null
 
     if ($propertyNames -contains 'TotalCount') {
         if ($null -eq $PesterResults.TotalCount) {
-            throw 'Pester TotalCount is null; unable to prove test execution.'
+            throw 'Pester TotalCount is null; unable to prove test discovery.'
         }
 
         try {
@@ -60,12 +61,40 @@ function Get-PesterValidationSummary {
         throw 'Unsupported Pester result shape: unable to resolve failed test count from FailedCount or TestResult.'
     }
 
-    if ($totalCount -lt 0 -or $failedCount -lt 0) {
+    if ($propertyNames -contains 'PassedCount') {
+        if ($null -eq $PesterResults.PassedCount) {
+            throw 'Pester PassedCount is null; unable to prove executed tests.'
+        }
+
+        try {
+            $passedCount = [long]$PesterResults.PassedCount
+        }
+        catch {
+            throw 'Pester PassedCount is not a supported numeric value.'
+        }
+    }
+    elseif ($propertyNames -contains 'TestResult') {
+        $passedCount = @($PesterResults.TestResult | Where-Object { $_.Result -eq 'Passed' }).Count
+    }
+    else {
+        throw 'Unsupported Pester result shape: unable to resolve passed test count from PassedCount or TestResult.'
+    }
+
+    if ($totalCount -lt 0 -or $passedCount -lt 0 -or $failedCount -lt 0) {
         throw 'Pester returned an invalid negative test count.'
     }
 
     if ($totalCount -eq 0) {
-        throw 'Pester reported zero tests; validation cannot pass without executed tests.'
+        throw 'Pester reported zero discovered tests; validation cannot pass.'
+    }
+
+    $executedCount = $passedCount + $failedCount
+    if ($executedCount -gt $totalCount) {
+        throw 'Pester returned inconsistent counts: passed plus failed exceeds total tests.'
+    }
+
+    if ($executedCount -eq 0) {
+        throw 'Pester reported discovered tests but no passed or failed tests executed; validation cannot pass.'
     }
 
     if ($failedCount -gt 0) {
@@ -74,7 +103,9 @@ function Get-PesterValidationSummary {
 
     [pscustomobject]@{
         TotalCount = $totalCount
+        PassedCount = $passedCount
         FailedCount = $failedCount
+        ExecutedCount = $executedCount
     }
 }
 
