@@ -111,7 +111,7 @@ $script:CollectorStage2EntraSelectedProperties = @{
 $script:CollectorCredentialSelectedProperties = @('id', 'keyCredentials', 'passwordCredentials')
 $script:CollectorCredentialMinimumThrottleMilliseconds = 400
 
-function ConvertTo-CollectorCredentialMetadata {
+function ConvertTo-CollectorCredentialMetadataRecord {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -160,7 +160,7 @@ function ConvertTo-CollectorCredentialMetadata {
     }
 }
 
-function New-CollectorFamilyResult {
+function Get-CollectorFamilyResult {
     param(
         [string]$Stage,
         [string]$Section,
@@ -289,7 +289,7 @@ function Invoke-CollectorStage2GraphFamily {
     }
 
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
-    $result = New-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
+    $result = Get-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
     $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
@@ -434,7 +434,7 @@ function Invoke-CollectorStage2OnPremFamily {
     }
 
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
-    $result = New-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
+    $result = Get-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
     $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $Family)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
@@ -550,8 +550,8 @@ function Invoke-CollectorStage2 {
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applications' -EndpointTemplate '/v1.0/applications/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.applications)
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.servicePrincipals)
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'groups' -EndpointTemplate '/v1.0/groups/{id}' -SelectedProperties $script:CollectorStage2EntraSelectedProperties.groups)
-                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applicationCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}' -SelectedProperties $script:CollectorCredentialSelectedProperties -MinimumThrottleMilliseconds $script:CollectorCredentialMinimumThrottleMilliseconds -DetailTransform { param($detail) ConvertTo-CollectorCredentialMetadata -Detail $detail })
-                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipalCredentials' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}' -SelectedProperties $script:CollectorCredentialSelectedProperties -MinimumThrottleMilliseconds $script:CollectorCredentialMinimumThrottleMilliseconds -DetailTransform { param($detail) ConvertTo-CollectorCredentialMetadata -Detail $detail })
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'applicationCredentials' -DependencyFamily 'applications' -EndpointTemplate '/v1.0/applications/{id}' -SelectedProperties $script:CollectorCredentialSelectedProperties -MinimumThrottleMilliseconds $script:CollectorCredentialMinimumThrottleMilliseconds -DetailTransform { param($detail) ConvertTo-CollectorCredentialMetadataRecord -Detail $detail })
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2GraphFamily -Context $Context -Section $section -Family 'servicePrincipalCredentials' -DependencyFamily 'servicePrincipals' -EndpointTemplate '/v1.0/servicePrincipals/{id}' -SelectedProperties $script:CollectorCredentialSelectedProperties -MinimumThrottleMilliseconds $script:CollectorCredentialMinimumThrottleMilliseconds -DetailTransform { param($detail) ConvertTo-CollectorCredentialMetadataRecord -Detail $detail })
             }
 
             'entra-pim' {
