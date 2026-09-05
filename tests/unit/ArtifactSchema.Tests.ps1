@@ -1,9 +1,11 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-$script:schemaFiles = @(
-    (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/snapshot.schema.json')
-    (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/checkpoint.schema.json')
-    (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/manifest.schema.json')
-)
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    $script:schemaFiles = @(
+        (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/snapshot.schema.json')
+        (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/checkpoint.schema.json')
+        (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/manifest.schema.json')
+    )
+}
 
 Describe 'Schema files' {
 
