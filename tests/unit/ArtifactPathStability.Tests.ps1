@@ -3,7 +3,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 
-    function Set-TestCompletedStage1Plan {
+    function Initialize-TestCompletedStage1Plan {
         param(
             [Parameter(Mandatory = $true)]
             [pscustomobject]$Checkpoint
@@ -62,7 +62,7 @@ Describe 'Artifact path stability' {
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:runPath -RunId 'run-one' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
         $legacyRelativePath = './output/run-one/stage1/entra-apps/applications/batch-0001.json'
         $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'Succeeded' -Attempts 1 -ItemCount 0 -SuccessCount 0 -FailedCount 0 -ArtifactPath $legacyRelativePath -ErrorMessage $null
-        $checkpoint = Set-TestCompletedStage1Plan -Checkpoint $checkpoint
+        $checkpoint = Initialize-TestCompletedStage1Plan -Checkpoint $checkpoint
         $checkpointPath = Save-CollectorCheckpoint -RunPath $script:runPath -Checkpoint $checkpoint
 
         Push-Location -LiteralPath $script:otherWorkingDirectory
@@ -98,7 +98,7 @@ Describe 'Artifact path stability' {
     It 'still detects a genuinely missing canonical artifact' {
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:runPath -RunId 'run-one' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
         $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'Succeeded' -Attempts 1 -ItemCount 1 -SuccessCount 1 -FailedCount 0 -ArtifactPath './legacy/batch-0001.json' -ErrorMessage $null
-        $checkpoint = Set-TestCompletedStage1Plan -Checkpoint $checkpoint
+        $checkpoint = Initialize-TestCompletedStage1Plan -Checkpoint $checkpoint
         Save-CollectorCheckpoint -RunPath $script:runPath -Checkpoint $checkpoint | Out-Null
 
         $loaded = Get-CollectorCheckpoint -RunPath $script:runPath -RunId 'run-one' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
