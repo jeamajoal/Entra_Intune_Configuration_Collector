@@ -7,6 +7,69 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-PesterValidationSummary {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$PesterResults
+    )
+
+    if ($null -eq $PesterResults) {
+        throw 'Pester returned no result object; unable to prove test execution.'
+    }
+
+    $propertyNames = @($PesterResults.PSObject.Properties.Name)
+    $totalCount = $null
+    $failedCount = $null
+
+    if ($propertyNames -contains 'TotalCount') {
+        try {
+            $totalCount = [long]$PesterResults.TotalCount
+        }
+        catch {
+            throw 'Pester TotalCount is not a supported numeric value.'
+        }
+    }
+    elseif ($propertyNames -contains 'TestResult') {
+        $totalCount = @($PesterResults.TestResult).Count
+    }
+    else {
+        throw 'Unsupported Pester result shape: unable to resolve total test count from TotalCount or TestResult.'
+    }
+
+    if ($propertyNames -contains 'FailedCount') {
+        try {
+            $failedCount = [long]$PesterResults.FailedCount
+        }
+        catch {
+            throw 'Pester FailedCount is not a supported numeric value.'
+        }
+    }
+    elseif ($propertyNames -contains 'TestResult') {
+        $failedCount = @($PesterResults.TestResult | Where-Object { $_.Result -ne 'Passed' }).Count
+    }
+    else {
+        throw 'Unsupported Pester result shape: unable to resolve failed test count from FailedCount or TestResult.'
+    }
+
+    if ($totalCount -lt 0 -or $failedCount -lt 0) {
+        throw 'Pester returned an invalid negative test count.'
+    }
+
+    if ($totalCount -eq 0) {
+        throw 'Pester reported zero tests; validation cannot pass without executed tests.'
+    }
+
+    if ($failedCount -gt 0) {
+        throw ('Pester reported {0} failed tests.' -f $failedCount)
+    }
+
+    [pscustomobject]@{
+        TotalCount = $totalCount
+        FailedCount = $failedCount
+    }
+}
+
 $repoRoot = Split-Path -Path $PSScriptRoot -Parent
 $collectorPath = Join-Path -Path $repoRoot -ChildPath 'collector'
 $testsPath = Join-Path -Path $repoRoot -ChildPath 'tests'
@@ -72,18 +135,7 @@ if (-not $SkipPester) {
             $pesterResults = Invoke-Pester $unitTestsPath -PassThru
         }
 
-        $failedCount = 0
-        if ($null -ne $pesterResults -and $pesterResults.PSObject.Properties.Name -contains 'FailedCount') {
-            $failedCount = [int]$pesterResults.FailedCount
-        }
-        elseif ($null -ne $pesterResults -and $pesterResults.PSObject.Properties.Name -contains 'TestResult') {
-            $failedCount = @($pesterResults.TestResult | Where-Object { $_.Result -ne 'Passed' }).Count
-        }
-
-        if ($failedCount -gt 0) {
-            throw ('Pester reported {0} failed tests.' -f $failedCount)
-        }
-
+        Get-PesterValidationSummary -PesterResults $pesterResults | Out-Null
         Write-Host 'Pester validation passed.'
     }
     else {
