@@ -44,38 +44,51 @@ Describe 'Local validation Pester result contract' {
         }
 
         $summary = Get-PesterValidationSummary -PesterResults $result
-        if ([int]$summary.TotalCount -ne 2 -or [int]$summary.FailedCount -ne 0) {
-            throw ('Unexpected Pester 4 summary: total={0}, failed={1}.' -f $summary.TotalCount, $summary.FailedCount)
+        if ([int]$summary.TotalCount -ne 2 -or [int]$summary.PassedCount -ne 2 -or [int]$summary.FailedCount -ne 0 -or [int]$summary.ExecutedCount -ne 2) {
+            throw ('Unexpected Pester 4 summary: total={0}, passed={1}, failed={2}, executed={3}.' -f $summary.TotalCount, $summary.PassedCount, $summary.FailedCount, $summary.ExecutedCount)
         }
     }
 
-    It 'accepts a Pester 5 style result with explicit TotalCount and FailedCount' {
+    It 'accepts a Pester 5 style result with explicit TotalCount PassedCount and FailedCount' {
         $result = [pscustomobject]@{
             TotalCount = 3
+            PassedCount = 3
             FailedCount = 0
         }
 
         $summary = Get-PesterValidationSummary -PesterResults $result
-        if ([int]$summary.TotalCount -ne 3 -or [int]$summary.FailedCount -ne 0) {
-            throw ('Unexpected Pester 5 summary: total={0}, failed={1}.' -f $summary.TotalCount, $summary.FailedCount)
+        if ([int]$summary.TotalCount -ne 3 -or [int]$summary.PassedCount -ne 3 -or [int]$summary.FailedCount -ne 0 -or [int]$summary.ExecutedCount -ne 3) {
+            throw ('Unexpected Pester 5 summary: total={0}, passed={1}, failed={2}, executed={3}.' -f $summary.TotalCount, $summary.PassedCount, $summary.FailedCount, $summary.ExecutedCount)
         }
     }
 
-    It 'fails closed when Pester reports zero tests' {
-        $message = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 0; FailedCount = 0 })
-        if ($message -notmatch 'zero tests') {
+    It 'fails closed when Pester discovers zero tests' {
+        $message = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 0; PassedCount = 0; FailedCount = 0 })
+        if ($message -notmatch 'zero discovered tests') {
             throw ('Expected zero-test failure; actual: ' + [string]$message)
         }
     }
 
+    It 'fails closed when tests are discovered but none pass or fail' {
+        $message = Get-ValidationSummaryFailure -Result ([pscustomobject]@{
+            TotalCount = 2
+            PassedCount = 0
+            FailedCount = 0
+            SkippedCount = 2
+        })
+        if ($message -notmatch 'no passed or failed tests executed') {
+            throw ('Expected no-executed-test failure; actual: ' + [string]$message)
+        }
+    }
+
     It 'fails when Pester reports failed tests' {
-        $message = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 2; FailedCount = 1 })
+        $message = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 2; PassedCount = 1; FailedCount = 1 })
         if ($message -notmatch '1 failed tests') {
             throw ('Expected failed-test error; actual: ' + [string]$message)
         }
     }
 
-    It 'derives failures from Pester 4 TestResult when FailedCount is unavailable' {
+    It 'derives passed and failed execution state from Pester 4 TestResult when count properties are unavailable' {
         $result = [pscustomobject]@{
             TestResult = @(
                 [pscustomobject]@{ Result = 'Passed' },
@@ -102,14 +115,19 @@ Describe 'Local validation Pester result contract' {
     }
 
     It 'fails closed when a supported count property is present but null' {
-        $totalMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = $null; FailedCount = 0 })
+        $totalMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = $null; PassedCount = 0; FailedCount = 0 })
         if ($totalMessage -notmatch 'TotalCount is null') {
             throw ('Expected null TotalCount failure; actual: ' + [string]$totalMessage)
         }
 
-        $failedMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 1; FailedCount = $null })
+        $failedMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 1; PassedCount = 1; FailedCount = $null })
         if ($failedMessage -notmatch 'FailedCount is null') {
             throw ('Expected null FailedCount failure; actual: ' + [string]$failedMessage)
+        }
+
+        $passedMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 1; PassedCount = $null; FailedCount = 0 })
+        if ($passedMessage -notmatch 'PassedCount is null') {
+            throw ('Expected null PassedCount failure; actual: ' + [string]$passedMessage)
         }
     }
 
