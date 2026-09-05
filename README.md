@@ -71,7 +71,7 @@ Resume previous run and reprocess failed or missing batches only:
 - OutputRoot (mandatory): root output folder containing per-run artifacts.
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
 - Sections: entra-apps, entra-pim, intune-core, onprem-ad-gpo. Default is all sections.
-- Resume: resume using the run marker or latest run folder under OutputRoot.
+- Resume: resume the valid run named by `current-run.json`; if that marker is unusable, fall back to the latest valid collector run under OutputRoot. If no valid prior run exists, fail without creating or initializing run state.
 - ReprocessFailedOnly: during resume, skip a succeeded batch only when the persisted family plan is compatible and its snapshot still exists; rerun failed, in-progress, missing, or missing-artifact batches.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
 - BatchSize: batch size for snapshot partitioning. Default 100. A different BatchSize is an incompatible resume plan and is rejected rather than reinterpreting existing batch IDs.
