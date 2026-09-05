@@ -121,6 +121,10 @@ function ConvertTo-CollectorCredentialMetadata {
     $keyCredentials = @()
     if ($Detail.PSObject.Properties.Match('keyCredentials').Count -gt 0 -and $Detail.keyCredentials) {
         foreach ($credential in @($Detail.keyCredentials)) {
+            if ($null -eq $credential) {
+                continue
+            }
+
             $keyCredentials += [pscustomobject]@{
                 customKeyIdentifier = if ($credential.PSObject.Properties.Match('customKeyIdentifier').Count -gt 0) { $credential.customKeyIdentifier } else { $null }
                 displayName = if ($credential.PSObject.Properties.Match('displayName').Count -gt 0) { $credential.displayName } else { $null }
@@ -136,6 +140,10 @@ function ConvertTo-CollectorCredentialMetadata {
     $passwordCredentials = @()
     if ($Detail.PSObject.Properties.Match('passwordCredentials').Count -gt 0 -and $Detail.passwordCredentials) {
         foreach ($credential in @($Detail.passwordCredentials)) {
+            if ($null -eq $credential) {
+                continue
+            }
+
             $passwordCredentials += [pscustomobject]@{
                 displayName = if ($credential.PSObject.Properties.Match('displayName').Count -gt 0) { $credential.displayName } else { $null }
                 endDateTime = if ($credential.PSObject.Properties.Match('endDateTime').Count -gt 0) { $credential.endDateTime } else { $null }
@@ -254,7 +262,8 @@ function Invoke-CollectorStage2GraphFamily {
         [scriptblock]$DetailTransform
     )
 
-    if ([string]::IsNullOrWhiteSpace($DependencyFamily)) {
+    $hasExplicitDependencyFamily = -not [string]::IsNullOrWhiteSpace($DependencyFamily)
+    if (-not $hasExplicitDependencyFamily) {
         $DependencyFamily = $Family
     }
 
@@ -267,7 +276,9 @@ function Invoke-CollectorStage2GraphFamily {
         endpointTemplate = $EndpointTemplate
         method = 'GET'
         inventoryStage = 'stage1'
-        dependencyFamily = $DependencyFamily
+    }
+    if ($hasExplicitDependencyFamily) {
+        $requestContext.dependencyFamily = $DependencyFamily
     }
     if ($selectedProperties.Count -gt 0) {
         $requestContext.selectedProperties = @($selectedProperties)
