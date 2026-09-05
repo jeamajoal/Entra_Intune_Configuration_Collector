@@ -2,7 +2,7 @@ BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Common.Retry.psm1') -Force -ErrorAction Stop
 
-    function New-RetryErrorRecord {
+    function Get-RetryErrorRecord {
         param(
             [Parameter(Mandatory = $true)]
             [object]$Response,
@@ -91,7 +91,7 @@ Describe 'Retry policy behavior' {
         $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]::TooManyRequests)
         try {
             $null = $response.Headers.TryAddWithoutValidation('Retry-After', '17')
-            $metadata = Get-CollectorRetryMetadata -ErrorRecord (New-RetryErrorRecord -Response $response)
+            $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
             if ([int]$metadata.StatusCode -ne 429 -or [int]$metadata.RetryAfterSeconds -ne 17) {
                 throw ('Expected PS7 Retry-After metadata 429/17; actual {0}/{1}.' -f $metadata.StatusCode, $metadata.RetryAfterSeconds)
@@ -107,7 +107,7 @@ Describe 'Retry policy behavior' {
             StatusCode = 429
             Headers = @{ 'Retry-After' = '11' }
         }
-        $metadata = Get-CollectorRetryMetadata -ErrorRecord (New-RetryErrorRecord -Response $response)
+        $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
         if ([int]$metadata.RetryAfterSeconds -ne 11) {
             throw ('Expected legacy Retry-After 11; actual ' + [string]$metadata.RetryAfterSeconds + '.')
@@ -120,7 +120,7 @@ Describe 'Retry policy behavior' {
             StatusCode = 429
             Headers = @{ 'Retry-After' = $retryAt.ToString('R') }
         }
-        $metadata = Get-CollectorRetryMetadata -ErrorRecord (New-RetryErrorRecord -Response $response)
+        $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
         if (-not $metadata.RetryAfterSeconds -or [double]$metadata.RetryAfterSeconds -lt 1 -or [double]$metadata.RetryAfterSeconds -gt 31) {
             throw ('Expected positive HTTP-date retry delay at most 31 seconds; actual ' + [string]$metadata.RetryAfterSeconds + '.')
@@ -133,7 +133,7 @@ Describe 'Retry policy behavior' {
             StatusCode = 429
             Headers = @{ 'Retry-After' = $retryAt.ToString('R') }
         }
-        $metadata = Get-CollectorRetryMetadata -ErrorRecord (New-RetryErrorRecord -Response $response)
+        $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
         if ([double]$metadata.RetryAfterSeconds -le [int]::MaxValue) {
             throw ('Expected distant Retry-After to remain wider than Int32; actual ' + [string]$metadata.RetryAfterSeconds + '.')
@@ -173,7 +173,7 @@ Describe 'Retry policy behavior' {
             StatusCode = 429
             Headers = @{ 'Retry-After' = 'not-a-delay' }
         }
-        $metadata = Get-CollectorRetryMetadata -ErrorRecord (New-RetryErrorRecord -Response $response)
+        $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
         if ($null -ne $metadata.RetryAfterSeconds) {
             throw ('Expected invalid Retry-After to remain unset; actual ' + [string]$metadata.RetryAfterSeconds + '.')
