@@ -85,6 +85,19 @@ Representative Stage1 families and sources:
 Stage2 detail and Stage3 relationship execution can be run independently by stage and section, but both are gated by completed Stage1 plan evidence for required section/family dependencies.
 On-prem inventory records persist domain identity so Stage2 and Stage3 reuse the same domain context for domain-targeted cmdlets.
 
+### Entra Stage2 detail property contract
+
+The ordinary `entra-apps` Stage2 detail families use explicit Microsoft Graph v1.0 `$select` lists owned by `Collector.Stage2.Details.psm1` rather than relying on Graph default-property subsets.
+
+- `applications` owns identity/profile plus authentication, token, client, API, SAML, redirect, and lock configuration fields defined by Issue #16.
+- `servicePrincipals` owns identity/profile plus assignment, SSO, exposed API, redirect, notification, and token-signing configuration fields defined by Issue #16.
+- `groups` owns identity/security/membership plus lifecycle, provisioning, licensing, synchronization, label, and management-restriction configuration fields defined by Issue #16.
+- Each Stage2 snapshot records the exact selected property names in `requestContext.selectedProperties`.
+- The contract is intentionally not `$select=*` and does not claim complete Microsoft Graph object coverage.
+- `keyCredentials`, `passwordCredentials`, and application federated identity credentials are outside this ordinary detail contract and are owned by the dedicated credential/FIC work item.
+- `group.onPremisesExtensionAttributes` is not requested by this v1.0 contract because the group property is currently beta-only; the collector does not switch ordinary group details to beta merely to obtain it.
+- PIM and Intune Stage2 families retain their existing request behavior until separately reviewed property contracts exist for those surfaces.
+
 ## Inventory-First Gating and Resume Semantics
 
 - Checkpoints are written per stage/section/family.
