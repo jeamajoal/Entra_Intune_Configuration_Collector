@@ -89,9 +89,13 @@ Describe 'Retry policy behavior' {
     }
 
     It 'reads integer Retry-After from HttpResponseHeaders' {
-        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]429)
+        $httpResponse = [System.Net.Http.HttpResponseMessage]::new()
         try {
-            $null = $response.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $null = $httpResponse.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $response = [pscustomobject]@{
+                StatusCode = 429
+                Headers = $httpResponse.Headers
+            }
             $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
             if ([int]$metadata.StatusCode -ne 429 -or [int]$metadata.RetryAfterSeconds -ne 17) {
@@ -99,7 +103,7 @@ Describe 'Retry policy behavior' {
             }
         }
         finally {
-            $response.Dispose()
+            $httpResponse.Dispose()
         }
     }
 
@@ -145,9 +149,13 @@ Describe 'Retry policy behavior' {
         Mock -ModuleName 'Collector.Common.Retry' -CommandName Start-Sleep -MockWith { }
         $script:attemptCount = 0
 
-        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]429)
+        $httpResponse = [System.Net.Http.HttpResponseMessage]::new()
         try {
-            $null = $response.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $null = $httpResponse.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $response = [pscustomobject]@{
+                StatusCode = 429
+                Headers = $httpResponse.Headers
+            }
             $exception = [System.Exception]::new('HTTP 429 throttle')
             $exception | Add-Member -MemberType NoteProperty -Name Response -Value $response -Force
 
@@ -165,7 +173,7 @@ Describe 'Retry policy behavior' {
             Assert-MockCalled -ModuleName 'Collector.Common.Retry' -CommandName Start-Sleep -Times 1 -Exactly -ParameterFilter { $Milliseconds -eq 3000 }
         }
         finally {
-            $response.Dispose()
+            $httpResponse.Dispose()
         }
     }
 
