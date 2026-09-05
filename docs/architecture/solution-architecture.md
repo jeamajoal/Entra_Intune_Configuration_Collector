@@ -123,6 +123,9 @@ Credential metadata is collected in separate families so its security and thrott
 - Stage2 and Stage3 persist their own plans before downstream batch decisions, so refreshed Stage1 source identity cannot silently reuse stale successful downstream numeric batch IDs.
 - Reorder, membership change, BatchSize change, or other persisted plan incompatibility is rejected during resume rather than interpreted as the prior work.
 - A legitimate zero-item family is one expected successful empty batch and may complete normally.
+- Resume requires an existing OutputRoot; it does not create a new root when there is nothing to resume.
+- A valid `current-run.json` target is preferred. If the marker is missing or unusable, fallback selects the newest directory that contains a readable run manifest whose `runId` matches that directory; unrelated or malformed directories are skipped.
+- If no valid prior collector run can be identified, resume fails before writing `current-run.json` or initializing collector child directories.
 - Resume with ReprocessFailedOnly:
   - skips Succeeded batches only when the persisted plan remains compatible and the artifact exists,
   - reruns Failed, InProgress, Missing, and missing-artifact batches.
