@@ -88,14 +88,14 @@ Describe 'Retry policy behavior' {
         }
     }
 
-    It 'reads integer Retry-After from PowerShell 7 HttpResponseHeaders' {
-        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]::TooManyRequests)
+    It 'reads integer Retry-After from HttpResponseHeaders' {
+        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]429)
         try {
             $null = $response.Headers.TryAddWithoutValidation('Retry-After', '17')
             $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
             if ([int]$metadata.StatusCode -ne 429 -or [int]$metadata.RetryAfterSeconds -ne 17) {
-                throw ('Expected PS7 Retry-After metadata 429/17; actual {0}/{1}.' -f $metadata.StatusCode, $metadata.RetryAfterSeconds)
+                throw ('Expected Retry-After metadata 429/17; actual {0}/{1}.' -f $metadata.StatusCode, $metadata.RetryAfterSeconds)
             }
         }
         finally {
@@ -145,7 +145,7 @@ Describe 'Retry policy behavior' {
         Mock -ModuleName 'Collector.Common.Retry' -CommandName Start-Sleep -MockWith { }
         $script:attemptCount = 0
 
-        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]::TooManyRequests)
+        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]429)
         try {
             $null = $response.Headers.TryAddWithoutValidation('Retry-After', '17')
             $exception = [System.Exception]::new('HTTP 429 throttle')
