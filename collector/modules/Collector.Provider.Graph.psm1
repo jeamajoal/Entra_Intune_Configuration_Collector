@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $retryModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Retry.psm1'
 Import-Module -Name $retryModulePath -Force -ErrorAction Stop
 
-function New-CollectorGraphHeaders {
+function Get-CollectorGraphHeader {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -53,11 +53,12 @@ function Invoke-CollectorGraphRequest {
     )
 
     $uri = Resolve-CollectorGraphUri -Endpoint $Endpoint -AbsoluteUri:$AbsoluteUri
-    $headers = New-CollectorGraphHeaders -GraphToken $GraphToken
+    $headers = Get-CollectorGraphHeader -GraphToken $GraphToken
+    $effectiveThrottleMilliseconds = $ThrottleMilliseconds
 
     $invokeRequest = {
-        if ($ThrottleMilliseconds -gt 0) {
-            Start-Sleep -Milliseconds $ThrottleMilliseconds
+        if ($effectiveThrottleMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds $effectiveThrottleMilliseconds
         }
 
         $requestParams = @{
