@@ -295,6 +295,9 @@ function Start-CollectorRun {
         [int]$ThrottleMilliseconds = 100
     )
 
+    if ($ReprocessFailedOnly -and -not $Resume) {
+        throw 'ReprocessFailedOnly requires Resume.'
+    }
     if ($BatchSize -le 0) {
         throw 'BatchSize must be greater than zero.'
     }
