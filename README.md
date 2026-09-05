@@ -171,13 +171,14 @@ For on-prem snapshots, sourceName records concrete cmdlet names and requestConte
 
 ## Validation
 
-Run local parser and test scaffolding:
+Normal local validation requires PSScriptAnalyzer 1.25.0. Install the same pinned analyzer version used by CI before running the validation script:
 
 ```powershell
+Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
 pwsh ./tools/Invoke-LocalValidation.ps1
 ```
 
-The validation script runs parser checks, optional PSScriptAnalyzer if installed, and Pester tests if installed. A Pester pass is reported only when the returned result uses a supported Pester 4/5 result shape, proves that at least one test executed, and reports zero failures; null, unknown, or zero-test results fail closed. Explicitly skipped or unavailable Pester remains reported as skipped rather than passed.
+The validation script runs parser checks, PSScriptAnalyzer, and Pester tests when Pester is installed. If PSScriptAnalyzer is unavailable, normal validation fails closed instead of silently skipping static analysis. Use `-SkipScriptAnalyzer` only when intentionally bypassing the analyzer for a bounded diagnostic; CI does not use that bypass. A Pester pass is reported only when the returned result uses a supported Pester 4/5 result shape, proves that at least one test executed, and reports zero failures; null, unknown, or zero-test results fail closed. Explicitly skipped or unavailable Pester remains reported as skipped rather than passed.
 
 ## Scope Boundaries
 
