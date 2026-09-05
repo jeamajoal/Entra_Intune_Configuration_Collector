@@ -1,27 +1,22 @@
 $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 $validationScript = Join-Path -Path $repoRoot -ChildPath 'tools/Invoke-LocalValidation.ps1'
 
-function Import-ValidationSummaryFunction {
-    $source = Get-Content -LiteralPath $validationScript -Raw
-    $tokens = $null
-    $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$parseErrors)
-
-    if ($parseErrors -and $parseErrors.Count -gt 0) {
-        throw ('Validation script did not parse: ' + (($parseErrors | ForEach-Object Message) -join '; '))
-    }
-
-    $functionAst = $ast.Find({
-        param($node)
-        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-PesterValidationSummary'
-    }, $true)
-
-    if (-not $functionAst) {
-        throw 'Get-PesterValidationSummary was not found in Invoke-LocalValidation.ps1.'
-    }
-
-    Invoke-Expression $functionAst.Extent.Text
+$validationSource = Get-Content -LiteralPath $validationScript -Raw
+$tokens = $null
+$parseErrors = $null
+$validationAst = [System.Management.Automation.Language.Parser]::ParseInput($validationSource, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors -and $parseErrors.Count -gt 0) {
+    throw ('Validation script did not parse: ' + (($parseErrors | ForEach-Object Message) -join '; '))
 }
+
+$summaryFunctionAst = $validationAst.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-PesterValidationSummary'
+}, $true)
+if (-not $summaryFunctionAst) {
+    throw 'Get-PesterValidationSummary was not found in Invoke-LocalValidation.ps1.'
+}
+Invoke-Expression $summaryFunctionAst.Extent.Text
 
 function Get-ValidationSummaryFailure {
     param(
@@ -39,10 +34,6 @@ function Get-ValidationSummaryFailure {
 }
 
 Describe 'Local validation Pester result contract' {
-    BeforeAll {
-        Import-ValidationSummaryFunction
-    }
-
     It 'accepts a Pester 4 style result with executed passing tests' {
         $result = [pscustomobject]@{
             FailedCount = 0
@@ -107,6 +98,18 @@ Describe 'Local validation Pester result contract' {
         $unknownMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ SomethingElse = 1 })
         if ($unknownMessage -notmatch 'Unsupported Pester result shape') {
             throw ('Expected unsupported-shape failure; actual: ' + [string]$unknownMessage)
+        }
+    }
+
+    It 'fails closed when a supported count property is present but null' {
+        $totalMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = $null; FailedCount = 0 })
+        if ($totalMessage -notmatch 'TotalCount is null') {
+            throw ('Expected null TotalCount failure; actual: ' + [string]$totalMessage)
+        }
+
+        $failedMessage = Get-ValidationSummaryFailure -Result ([pscustomobject]@{ TotalCount = 1; FailedCount = $null })
+        if ($failedMessage -notmatch 'FailedCount is null') {
+            throw ('Expected null FailedCount failure; actual: ' + [string]$failedMessage)
         }
     }
 
