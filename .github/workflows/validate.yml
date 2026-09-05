@@ -10,7 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  powershell-validation:
+  powershell7-validation:
+    name: Validate (PowerShell 7)
     runs-on: windows-latest
     timeout-minutes: 15
 
@@ -27,4 +28,27 @@ jobs:
 
       - name: Run parser, analyzer, and Pester validation
         shell: pwsh
+        run: ./tools/Invoke-LocalValidation.ps1
+
+  windows-powershell51-validation:
+    name: Validate (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install validation modules
+        shell: powershell
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          # Windows includes an older Microsoft-signed Pester. The gallery
+          # build has a different publisher, so unattended side-by-side
+          # installation must acknowledge that publisher transition.
+          Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+
+      - name: Run parser, analyzer, and Pester validation
+        shell: powershell
         run: ./tools/Invoke-LocalValidation.ps1

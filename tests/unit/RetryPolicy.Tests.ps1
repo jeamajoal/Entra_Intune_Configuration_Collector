@@ -1,5 +1,6 @@
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+    Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Common.Retry.psm1') -Force -ErrorAction Stop
 
     function Get-RetryErrorRecord {
@@ -87,18 +88,22 @@ Describe 'Retry policy behavior' {
         }
     }
 
-    It 'reads integer Retry-After from PowerShell 7 HttpResponseHeaders' {
-        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]::TooManyRequests)
+    It 'reads integer Retry-After from HttpResponseHeaders' {
+        $httpResponse = [System.Net.Http.HttpResponseMessage]::new()
         try {
-            $null = $response.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $null = $httpResponse.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $response = [pscustomobject]@{
+                StatusCode = 429
+                Headers = $httpResponse.Headers
+            }
             $metadata = Get-CollectorRetryMetadata -ErrorRecord (Get-RetryErrorRecord -Response $response)
 
             if ([int]$metadata.StatusCode -ne 429 -or [int]$metadata.RetryAfterSeconds -ne 17) {
-                throw ('Expected PS7 Retry-After metadata 429/17; actual {0}/{1}.' -f $metadata.StatusCode, $metadata.RetryAfterSeconds)
+                throw ('Expected Retry-After metadata 429/17; actual {0}/{1}.' -f $metadata.StatusCode, $metadata.RetryAfterSeconds)
             }
         }
         finally {
-            $response.Dispose()
+            $httpResponse.Dispose()
         }
     }
 
@@ -144,9 +149,13 @@ Describe 'Retry policy behavior' {
         Mock -ModuleName 'Collector.Common.Retry' -CommandName Start-Sleep -MockWith { }
         $script:attemptCount = 0
 
-        $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]::TooManyRequests)
+        $httpResponse = [System.Net.Http.HttpResponseMessage]::new()
         try {
-            $null = $response.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $null = $httpResponse.Headers.TryAddWithoutValidation('Retry-After', '17')
+            $response = [pscustomobject]@{
+                StatusCode = 429
+                Headers = $httpResponse.Headers
+            }
             $exception = [System.Exception]::new('HTTP 429 throttle')
             $exception | Add-Member -MemberType NoteProperty -Name Response -Value $response -Force
 
@@ -164,7 +173,7 @@ Describe 'Retry policy behavior' {
             Assert-MockCalled -ModuleName 'Collector.Common.Retry' -CommandName Start-Sleep -Times 1 -Exactly -ParameterFilter { $Milliseconds -eq 3000 }
         }
         finally {
-            $response.Dispose()
+            $httpResponse.Dispose()
         }
     }
 
