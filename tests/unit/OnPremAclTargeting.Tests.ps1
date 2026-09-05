@@ -1,70 +1,72 @@
-$repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+BeforeAll {
+    $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 
-function global:Get-ADDomain {
-    [CmdletBinding()]
-    param(
-        [string]$Identity,
-        [string]$Server
-    )
+    function global:Get-ADDomain {
+        [CmdletBinding()]
+        param(
+            [string]$Identity,
+            [string]$Server
+        )
 
-    $global:CollectorAdDomainCalls.Add([pscustomobject]@{ Identity = $Identity; Server = $Server }) | Out-Null
-    [pscustomobject]@{ DistinguishedName = ('DC={0},DC=test' -f $Identity.Split('.')[0]) }
-}
-
-function global:New-PSDrive {
-    [CmdletBinding()]
-    param(
-        [string]$Name,
-        [string]$PSProvider,
-        [string]$Root,
-        [string]$Server,
-        [string]$Scope
-    )
-
-    $global:CollectorNewDriveCalls.Add([pscustomobject]@{
-        Name = $Name
-        PSProvider = $PSProvider
-        Root = $Root
-        Server = $Server
-        Scope = $Scope
-    }) | Out-Null
-    [pscustomobject]@{ Name = $Name }
-}
-
-function global:Get-Acl {
-    [CmdletBinding()]
-    param(
-        [string]$LiteralPath,
-        [string]$Path
-    )
-
-    $global:CollectorAclCalls.Add([pscustomobject]@{ LiteralPath = $LiteralPath; Path = $Path }) | Out-Null
-    if ($global:CollectorAclShouldThrow) {
-        throw 'simulated ACL read failure'
+        $global:CollectorAdDomainCalls.Add([pscustomobject]@{ Identity = $Identity; Server = $Server }) | Out-Null
+        [pscustomobject]@{ DistinguishedName = ('DC={0},DC=test' -f $Identity.Split('.')[0]) }
     }
-    [pscustomobject]@{ Owner = 'TEST\Owner'; Access = @() }
+
+    function global:New-PSDrive {
+        [CmdletBinding()]
+        param(
+            [string]$Name,
+            [string]$PSProvider,
+            [string]$Root,
+            [string]$Server,
+            [string]$Scope
+        )
+
+        $global:CollectorNewDriveCalls.Add([pscustomobject]@{
+            Name = $Name
+            PSProvider = $PSProvider
+            Root = $Root
+            Server = $Server
+            Scope = $Scope
+        }) | Out-Null
+        [pscustomobject]@{ Name = $Name }
+    }
+
+    function global:Get-Acl {
+        [CmdletBinding()]
+        param(
+            [string]$LiteralPath,
+            [string]$Path
+        )
+
+        $global:CollectorAclCalls.Add([pscustomobject]@{ LiteralPath = $LiteralPath; Path = $Path }) | Out-Null
+        if ($global:CollectorAclShouldThrow) {
+            throw 'simulated ACL read failure'
+        }
+        [pscustomobject]@{ Owner = 'TEST\Owner'; Access = @() }
+    }
+
+    function global:Remove-PSDrive {
+        [CmdletBinding()]
+        param(
+            [string]$Name,
+            [string]$Scope,
+            [switch]$Force
+        )
+
+        $global:CollectorRemoveDriveCalls.Add([pscustomobject]@{ Name = $Name; Scope = $Scope }) | Out-Null
+    }
+
+    function Test-CollectorResultHasError {
+        param([object]$Result)
+
+        return $null -ne $Result -and
+            $Result.PSObject.Properties.Match('_collectorError').Count -gt 0 -and
+            -not [string]::IsNullOrWhiteSpace([string]$Result._collectorError)
+    }
+
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
 }
-
-function global:Remove-PSDrive {
-    [CmdletBinding()]
-    param(
-        [string]$Name,
-        [string]$Scope,
-        [switch]$Force
-    )
-
-    $global:CollectorRemoveDriveCalls.Add([pscustomobject]@{ Name = $Name; Scope = $Scope }) | Out-Null
-}
-
-function Test-CollectorResultHasError {
-    param([object]$Result)
-
-    return $null -ne $Result -and
-        $Result.PSObject.Properties.Match('_collectorError').Count -gt 0 -and
-        -not [string]::IsNullOrWhiteSpace([string]$Result._collectorError)
-}
-
-Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
 
 Describe 'On-prem ACL domain targeting' {
     BeforeEach {
