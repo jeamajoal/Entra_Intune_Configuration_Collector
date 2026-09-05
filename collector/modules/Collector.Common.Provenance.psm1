@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 
 function New-CollectorProvenanceSnapshot {
     [CmdletBinding()]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function constructs and returns an in-memory provenance snapshot; it does not change external state.')]
     param(
         [string]$SchemaVersion = '1.0',
 
