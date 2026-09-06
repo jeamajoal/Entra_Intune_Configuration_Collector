@@ -437,26 +437,10 @@ function Get-CollectorSnapshotItems {
             throw ('Snapshot checkpoint batch {0} is not a successful persisted batch for {1}/{2}/{3}.' -f $batchId, $Stage, $Section, $Family)
         }
 
-        $checkpointItemCount = 0
-        if ($checkpointBatch.PSObject.Properties.Match('itemCount').Count -eq 0 -or -not [int]::TryParse([string]$checkpointBatch.itemCount, [ref]$checkpointItemCount) -or $checkpointItemCount -lt 0) {
-            throw ('Snapshot checkpoint batch has an invalid itemCount for {0}/{1}/{2} batch {3}.' -f $Stage, $Section, $Family, $batchId)
+        if (-not (Test-CollectorSucceededBatchCountIntegrity -Batch $checkpointBatch)) {
+            throw ('Snapshot checkpoint batch has invalid or inconsistent success/failure counts for {0}/{1}/{2} batch {3}.' -f $Stage, $Section, $Family, $batchId)
         }
-
-        $checkpointSuccessCount = 0
-        $checkpointFailedCount = 0
-        if (
-            $checkpointBatch.PSObject.Properties.Match('successCount').Count -eq 0 -or
-            $checkpointBatch.PSObject.Properties.Match('failedCount').Count -eq 0 -or
-            -not [int]::TryParse([string]$checkpointBatch.successCount, [ref]$checkpointSuccessCount) -or
-            -not [int]::TryParse([string]$checkpointBatch.failedCount, [ref]$checkpointFailedCount) -or
-            $checkpointSuccessCount -lt 0 -or
-            $checkpointFailedCount -lt 0
-        ) {
-            throw ('Snapshot checkpoint batch has invalid success/failure counts for {0}/{1}/{2} batch {3}.' -f $Stage, $Section, $Family, $batchId)
-        }
-        if ($checkpointSuccessCount -ne $checkpointItemCount -or $checkpointFailedCount -ne 0) {
-            throw ('Snapshot checkpoint batch success/failure counts are inconsistent for {0}/{1}/{2} batch {3}: itemCount={4}; successCount={5}; failedCount={6}.' -f $Stage, $Section, $Family, $batchId, $checkpointItemCount, $checkpointSuccessCount, $checkpointFailedCount)
-        }
+        $checkpointItemCount = [int]$checkpointBatch.itemCount
 
         if ([string]$Stage -ne 'stage3' -and $checkpointItemCount -ne $plannedItemCount) {
             throw ('Snapshot cardinality mismatch for {0}/{1}/{2} batch {3}: planned itemCount={4}; checkpoint itemCount={5}.' -f $Stage, $Section, $Family, $batchId, $plannedItemCount, $checkpointItemCount)
