@@ -72,7 +72,7 @@ Resume previous run and reprocess failed or missing batches only:
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
 - Sections: entra-apps, entra-pim, intune-core, onprem-ad-gpo. Default is all sections.
 - Resume: resume the valid run named by `current-run.json`; if that marker is unusable, fall back to the latest valid collector run under OutputRoot. If no valid prior run exists, fail without creating or initializing run state.
-- ReprocessFailedOnly: during resume, rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches. Stage1 and Stage2 skip a succeeded batch only when the persisted family plan is compatible and the canonical snapshot still exists, is readable/non-null, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality. Stage3 currently uses compatible-plan plus artifact-existence reuse semantics and is audited separately.
+- ReprocessFailedOnly: during resume, rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches. Stage1 and Stage2 reuse a succeeded batch only after compatible-plan and canonical snapshot identity/cardinality validation against current planned work. Stage3 also revalidates canonical snapshot identity and checkpoint/snapshot/actual output cardinality after compatible-plan validation, but does not require relationship output count to equal source batch count because one source object may legitimately produce multiple relationship rows.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
 - BatchSize: batch size for snapshot partitioning. Default 100. A different BatchSize is an incompatible resume plan and is rejected rather than reinterpreting existing batch IDs.
 - MaxRetries: retry count for transient Graph failures. Default 5.
@@ -119,6 +119,7 @@ Stage3 relationship families:
 - PIM relationship edges: pimScheduleEdges derived from Stage1 PIM schedule instances
 - On-prem relationship families use persisted Stage1 domain context where cmdlets support domain targeting.
 - Stage3 applies the same completed Stage1 plan readiness rule to every required dependency and persists its own compatible resume plan before processing relationship batches.
+- During Stage3 resume, a prior successful batch is reused only when its canonical snapshot is readable/non-null, matches current run/stage/section/family/batch identity, and checkpoint `itemCount`/`successCount`, snapshot `itemCount`, and actual `items.Count` agree with zero recorded failures. The current Stage3 plan binds the source batch; relationship output count is intentionally not required to equal source batch cardinality.
 
 A lone Stage1 `batch-*.json` file is not sufficient inventory-first evidence. Readiness requires a completed Stage1 family plan whose expected batch count matches the checkpoint, with every expected batch Succeeded and every referenced artifact present. Plans include BatchSize, ordered source identity, per-batch fingerprints, expected batch count, and completion state. Reorder, membership change, or BatchSize change is rejected during resume instead of silently associating prior numeric batch IDs with different work. A legitimate zero-item family is represented as one successful completed empty batch.
 

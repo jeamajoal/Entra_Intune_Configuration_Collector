@@ -130,7 +130,9 @@ Credential metadata is collected in separate families so its security and thrott
   - reruns Failed, InProgress, Missing, and missing-artifact batches;
   - Stage1 and Stage2 reuse a Succeeded batch only after current-input plan compatibility is established and the canonical snapshot is readable/non-null, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality;
   - a Stage1 or Stage2 prior success that fails that validation is recorded as non-success and reprocessed through that stage's normal write/checkpoint path in the same resume invocation without deleting the artifact first;
-  - Stage3 currently retains compatible-plan plus artifact-existence prior-success reuse semantics and remains a separate correctness-audit target.
+  - Stage3 also reuses a Succeeded batch only after current-input plan compatibility and canonical snapshot validation. The snapshot must be readable/non-null, match current run/stage/section/family/batch identity, and agree across checkpoint `itemCount`/`successCount`, snapshot `itemCount`, and actual `items.Count`, with zero checkpoint failures;
+  - Stage3 intentionally does not require relationship output `itemCount` to equal the source batch item count because relationship collectors may emit multiple output rows per source object. The compatible Stage3 plan binds source identity/cardinality separately from output-cardinality validation;
+  - a Stage3 prior success that fails validation is recorded as non-success and reprocessed through the normal Stage3 collector/write/checkpoint path in the same resume invocation without deleting the artifact first.
 - Checkpoint writes use same-directory validated temporary files and atomic replacement so a failed replacement does not destroy the last valid checkpoint.
 - Persisted artifact paths are normalized from run/stage/section/family/batch identity rather than interpreted relative to process working directory.
 
