@@ -240,6 +240,93 @@ function Assert-CollectorInventoryFirstForStage2 {
     }
 }
 
+function Test-CollectorStage2ResumeArtifact {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Section,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Family,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BatchId,
+
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$CheckpointBatch,
+
+        [Parameter(Mandatory = $true)]
+        [int]$ExpectedItemCount
+    )
+
+    if ([string]$CheckpointBatch.status -ne 'Succeeded' -or [string]::IsNullOrWhiteSpace([string]$CheckpointBatch.artifactPath)) {
+        return $false
+    }
+
+    $checkpointItemCount = 0
+    $checkpointSuccessCount = 0
+    $checkpointFailedCount = 0
+    if (
+        $CheckpointBatch.PSObject.Properties.Match('itemCount').Count -eq 0 -or
+        $CheckpointBatch.PSObject.Properties.Match('successCount').Count -eq 0 -or
+        $CheckpointBatch.PSObject.Properties.Match('failedCount').Count -eq 0 -or
+        -not [int]::TryParse([string]$CheckpointBatch.itemCount, [ref]$checkpointItemCount) -or
+        -not [int]::TryParse([string]$CheckpointBatch.successCount, [ref]$checkpointSuccessCount) -or
+        -not [int]::TryParse([string]$CheckpointBatch.failedCount, [ref]$checkpointFailedCount) -or
+        $checkpointItemCount -lt 0 -or
+        $checkpointSuccessCount -lt 0 -or
+        $checkpointFailedCount -lt 0 -or
+        $checkpointItemCount -ne $ExpectedItemCount -or
+        $checkpointSuccessCount -ne $ExpectedItemCount -or
+        $checkpointFailedCount -ne 0
+    ) {
+        return $false
+    }
+
+    $artifactPath = [string]$CheckpointBatch.artifactPath
+    if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        $snapshot = Get-Content -LiteralPath $artifactPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        return $false
+    }
+
+    if ($null -eq $snapshot) {
+        return $false
+    }
+
+    $expectedIdentity = @{
+        runId = [string]$Context.RunId
+        stage = 'stage2'
+        section = $Section
+        family = $Family
+        batchId = $BatchId
+    }
+    foreach ($identityName in @('runId', 'stage', 'section', 'family', 'batchId')) {
+        if ($snapshot.PSObject.Properties.Match($identityName).Count -eq 0 -or [string]$snapshot.$identityName -ne [string]$expectedIdentity[$identityName]) {
+            return $false
+        }
+    }
+
+    if ($snapshot.PSObject.Properties.Match('items').Count -eq 0 -or $snapshot.PSObject.Properties.Match('itemCount').Count -eq 0) {
+        return $false
+    }
+
+    $snapshotItemCount = 0
+    if (-not [int]::TryParse([string]$snapshot.itemCount, [ref]$snapshotItemCount) -or $snapshotItemCount -lt 0 -or $snapshotItemCount -ne $ExpectedItemCount) {
+        return $false
+    }
+
+    return @($snapshot.items).Count -eq $ExpectedItemCount
+}
+
 function Invoke-CollectorStage2GraphFamily {
     [CmdletBinding()]
     param(
@@ -309,6 +396,23 @@ function Invoke-CollectorStage2GraphFamily {
     foreach ($batch in $batches) {
         $batchNumber++
         $batchId = '{0:D4}' -f $batchNumber
+        $batchItems = @($batch)
+        $batchItemCount = $batchItems.Count
+        $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
+
+        if (
+            $Context.Resume -and
+            $existingBatch -and
+            [string]$existingBatch.status -eq 'Succeeded' -and
+            -not [string]::IsNullOrWhiteSpace([string]$existingBatch.artifactPath) -and
+            (Test-Path -LiteralPath $existingBatch.artifactPath -PathType Leaf) -and
+            -not (Test-CollectorStage2ResumeArtifact -Context $Context -Section $Section -Family $Family -BatchId $batchId -CheckpointBatch $existingBatch -ExpectedItemCount $batchItemCount)
+        ) {
+            $attempts = [int]$existingBatch.attempts
+            $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'Failed' -Attempts $attempts -ItemCount $batchItemCount -SuccessCount 0 -FailedCount $batchItemCount -ArtifactPath $existingBatch.artifactPath -Error 'Previously successful Stage2 artifact failed resume validation and will be reprocessed.'
+            Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
+        }
+
         $decision = Get-CollectorBatchExecutionDecision -Checkpoint $checkpoint -BatchId $batchId -Resume:$Context.Resume -ReprocessFailedOnly:$Context.ReprocessFailedOnly
 
         if ($decision.MarkMissing) {
@@ -332,9 +436,8 @@ function Invoke-CollectorStage2GraphFamily {
         $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
         $attempts = if ($existingBatch) { [int]$existingBatch.attempts + 1 } else { 1 }
         $existingArtifactPath = if ($existingBatch) { $existingBatch.artifactPath } else { $null }
-        $batchItems = @($batch)
 
-        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'InProgress' -Attempts $attempts -ItemCount $batchItems.Count -SuccessCount 0 -FailedCount 0 -ArtifactPath $existingArtifactPath -Error $null
+        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'InProgress' -Attempts $attempts -ItemCount $batchItemCount -SuccessCount 0 -FailedCount 0 -ArtifactPath $existingArtifactPath -Error $null
         Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
 
         $details = @()
@@ -454,6 +557,23 @@ function Invoke-CollectorStage2OnPremFamily {
     foreach ($batch in $batches) {
         $batchNumber++
         $batchId = '{0:D4}' -f $batchNumber
+        $batchItems = @($batch)
+        $batchItemCount = $batchItems.Count
+        $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
+
+        if (
+            $Context.Resume -and
+            $existingBatch -and
+            [string]$existingBatch.status -eq 'Succeeded' -and
+            -not [string]::IsNullOrWhiteSpace([string]$existingBatch.artifactPath) -and
+            (Test-Path -LiteralPath $existingBatch.artifactPath -PathType Leaf) -and
+            -not (Test-CollectorStage2ResumeArtifact -Context $Context -Section $Section -Family $Family -BatchId $batchId -CheckpointBatch $existingBatch -ExpectedItemCount $batchItemCount)
+        ) {
+            $attempts = [int]$existingBatch.attempts
+            $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'Failed' -Attempts $attempts -ItemCount $batchItemCount -SuccessCount 0 -FailedCount $batchItemCount -ArtifactPath $existingBatch.artifactPath -Error 'Previously successful Stage2 artifact failed resume validation and will be reprocessed.'
+            Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
+        }
+
         $decision = Get-CollectorBatchExecutionDecision -Checkpoint $checkpoint -BatchId $batchId -Resume:$Context.Resume -ReprocessFailedOnly:$Context.ReprocessFailedOnly
 
         if ($decision.MarkMissing) {
@@ -477,9 +597,8 @@ function Invoke-CollectorStage2OnPremFamily {
         $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
         $attempts = if ($existingBatch) { [int]$existingBatch.attempts + 1 } else { 1 }
         $existingArtifactPath = if ($existingBatch) { $existingBatch.artifactPath } else { $null }
-        $batchItems = @($batch)
 
-        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'InProgress' -Attempts $attempts -ItemCount $batchItems.Count -SuccessCount 0 -FailedCount 0 -ArtifactPath $existingArtifactPath -Error $null
+        $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'InProgress' -Attempts $attempts -ItemCount $batchItemCount -SuccessCount 0 -FailedCount 0 -ArtifactPath $existingArtifactPath -Error $null
         Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
 
         $details = @()
