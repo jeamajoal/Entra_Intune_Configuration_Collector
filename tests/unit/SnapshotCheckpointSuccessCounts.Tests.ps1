@@ -48,7 +48,7 @@ BeforeAll {
         Save-CollectorCheckpoint -RunPath $RunPath -Checkpoint $state.Checkpoint | Out-Null
     }
 
-    function Assert-TestSnapshotLoadFails {
+    function Assert-TestSnapshotLoadFailure {
         param(
             [Parameter(Mandatory = $true)][string]$RunPath,
             [Parameter(Mandatory = $true)][string]$Family
@@ -96,7 +96,7 @@ Describe 'Succeeded snapshot checkpoint count integrity' {
             $batch.successCount = 0
         }
 
-        Assert-TestSnapshotLoadFails -RunPath $script:testRoot -Family 'applications'
+        Assert-TestSnapshotLoadFailure -RunPath $script:testRoot -Family 'applications'
     }
 
     It 'rejects a succeeded snapshot checkpoint whose failedCount is nonzero' {
@@ -105,7 +105,7 @@ Describe 'Succeeded snapshot checkpoint count integrity' {
             $batch.failedCount = 1
         }
 
-        Assert-TestSnapshotLoadFails -RunPath $script:testRoot -Family 'applications'
+        Assert-TestSnapshotLoadFailure -RunPath $script:testRoot -Family 'applications'
     }
 
     It 'fails closed for missing malformed or negative succeeded success/failure counts' {
@@ -122,7 +122,7 @@ Describe 'Succeeded snapshot checkpoint count integrity' {
                 $caseContext = Get-TestSnapshotCountContext -RunPath $caseRoot
                 Invoke-CollectorStage1 -Context $caseContext -Sections @('entra-apps') | Out-Null
                 Save-TestStage1BatchMutation -RunPath $caseRoot -Family 'applications' -Mutation $mutation
-                Assert-TestSnapshotLoadFails -RunPath $caseRoot -Family 'applications'
+                Assert-TestSnapshotLoadFailure -RunPath $caseRoot -Family 'applications'
             }
             finally {
                 if (Test-Path -LiteralPath $caseRoot) {
