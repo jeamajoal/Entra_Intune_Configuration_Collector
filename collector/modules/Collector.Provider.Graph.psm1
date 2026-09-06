@@ -115,8 +115,14 @@ function Invoke-CollectorGraphCollection {
     $items = @()
     $currentEndpoint = $Endpoint
     $isAbsoluteUri = $false
+    $visitedPageUris = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     while ($currentEndpoint) {
+        $canonicalPageUri = Resolve-CollectorGraphUri -Endpoint $currentEndpoint -AbsoluteUri:$isAbsoluteUri
+        if (-not $visitedPageUris.Add($canonicalPageUri)) {
+            throw ('Graph pagination cycle detected; page URI was already requested: {0}' -f $canonicalPageUri)
+        }
+
         $response = Invoke-CollectorGraphRequest -GraphToken $GraphToken -Endpoint $currentEndpoint -AbsoluteUri:$isAbsoluteUri -MaxRetries $MaxRetries -BaseBackoffSeconds $BaseBackoffSeconds -MaxBackoffSeconds $MaxBackoffSeconds -ThrottleMilliseconds $ThrottleMilliseconds
 
         if ($null -eq $response) {
