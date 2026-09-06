@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
+
 function Initialize-CollectorDirectory {
     [CmdletBinding()]
     param(
@@ -278,13 +280,117 @@ function Get-CollectorSnapshotItems {
         [string]$Family
     )
 
-    $items = @()
-    $snapshotFiles = Get-CollectorSnapshotFiles -RunPath $RunPath -Stage $Stage -Section $Section -Family $Family
-    foreach ($snapshotFile in $snapshotFiles) {
-        $snapshot = Get-Content -LiteralPath $snapshotFile.FullName -Raw | ConvertFrom-Json
-        if ($snapshot.items) {
-            $items += @($snapshot.items)
+    $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path (Join-Path -Path 'checkpoints' -ChildPath $Stage) -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json')))
+    if (-not (Test-Path -LiteralPath $checkpointPath -PathType Leaf)) {
+        throw ('Snapshot loading requires a persisted checkpoint for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
+    try {
+        $checkpointIdentity = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw ('Snapshot loading cannot read checkpoint identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $_.Exception.Message)
+    }
+
+    if ($null -eq $checkpointIdentity -or $checkpointIdentity.PSObject.Properties.Match('runId').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$checkpointIdentity.runId)) {
+        throw ('Snapshot loading requires a checkpoint run identity for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
+    $runId = [string]$checkpointIdentity.runId
+    $manifestPath = Get-CollectorManifestPath -RunPath $RunPath
+    if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+        try {
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
         }
+        catch {
+            throw ('Snapshot loading cannot validate manifest run identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $_.Exception.Message)
+        }
+
+        if ($null -eq $manifest -or $manifest.PSObject.Properties.Match('runId').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$manifest.runId) -or [string]$manifest.runId -ne $runId) {
+            throw ('Snapshot loading run identity does not match the persisted manifest for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+        }
+    }
+
+    $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $runId -Stage $Stage -Section $Section -Family $Family
+    if ($checkpoint.PSObject.Properties.Match('plan').Count -eq 0 -or $null -eq $checkpoint.plan -or -not [bool]$checkpoint.plan.completed) {
+        throw ('Snapshot loading requires a completed checkpoint plan for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
+    $plannedBatches = @($checkpoint.plan.batches)
+    $checkpointBatches = @($checkpoint.batches)
+    $expectedBatchCount = [int]$checkpoint.plan.expectedBatchCount
+    if ($expectedBatchCount -le 0 -or $plannedBatches.Count -ne $expectedBatchCount -or $checkpointBatches.Count -ne $expectedBatchCount) {
+        throw ('Snapshot checkpoint plan is incomplete or inconsistent for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
+    $plannedBatchIds = @($plannedBatches | ForEach-Object { [string]$_.batchId })
+    $checkpointBatchIds = @($checkpointBatches | ForEach-Object { [string]$_.batchId })
+    $plannedBatchIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($batchId in $plannedBatchIds) {
+        if ([string]::IsNullOrWhiteSpace($batchId) -or -not $plannedBatchIdSet.Add($batchId)) {
+            throw ('Snapshot checkpoint plan contains an empty or duplicate batch identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $batchId)
+        }
+    }
+
+    $checkpointBatchIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($batchId in $checkpointBatchIds) {
+        if ([string]::IsNullOrWhiteSpace($batchId) -or -not $checkpointBatchIdSet.Add($batchId)) {
+            throw ('Snapshot checkpoint contains an empty or duplicate recorded batch identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $batchId)
+        }
+    }
+
+    if (-not $plannedBatchIdSet.SetEquals($checkpointBatchIdSet)) {
+        throw ('Snapshot checkpoint planned and recorded batch identities do not match for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
+    $items = @()
+    foreach ($plannedBatch in $plannedBatches) {
+        $batchId = [string]$plannedBatch.batchId
+        $checkpointBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
+        if ($null -eq $checkpointBatch -or [string]$checkpointBatch.status -ne 'Succeeded' -or [string]::IsNullOrWhiteSpace([string]$checkpointBatch.artifactPath)) {
+            throw ('Snapshot checkpoint batch {0} is not a successful persisted batch for {1}/{2}/{3}.' -f $batchId, $Stage, $Section, $Family)
+        }
+
+        $artifactPath = Get-CollectorCanonicalArtifactPath -RunPath $RunPath -Stage $Stage -Section $Section -Family $Family -BatchId $batchId
+        if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+            throw ('Expected snapshot artifact is missing for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
+        }
+
+        try {
+            $snapshot = Get-Content -LiteralPath $artifactPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            throw ('Expected snapshot artifact is unreadable for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $_.Exception.Message)
+        }
+
+        if ($null -eq $snapshot) {
+            throw ('Expected snapshot artifact is null for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
+        }
+
+        $expectedIdentity = @{
+            runId = $runId
+            stage = $Stage
+            section = $Section
+            family = $Family
+            batchId = $batchId
+        }
+        foreach ($identityName in @('runId', 'stage', 'section', 'family', 'batchId')) {
+            if ($snapshot.PSObject.Properties.Match($identityName).Count -eq 0) {
+                throw ('Snapshot identity mismatch at {0}: required identity property {1} is missing.' -f $artifactPath, $identityName)
+            }
+
+            $actualValue = [string]$snapshot.$identityName
+            $expectedValue = [string]$expectedIdentity[$identityName]
+            if ($actualValue -ne $expectedValue) {
+                throw ('Snapshot identity mismatch at {0}: expected {1}={2}; found {3}.' -f $artifactPath, $identityName, $expectedValue, $actualValue)
+            }
+        }
+
+        if ($snapshot.PSObject.Properties.Match('items').Count -eq 0) {
+            throw ('Expected snapshot artifact has no items property for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
+        }
+
+        $items += @($snapshot.items)
     }
 
     return $items
