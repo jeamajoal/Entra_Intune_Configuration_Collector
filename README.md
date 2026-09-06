@@ -72,7 +72,7 @@ Resume previous run and reprocess failed or missing batches only:
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
 - Sections: entra-apps, entra-pim, intune-core, onprem-ad-gpo. Default is all sections.
 - Resume: resume the valid run named by `current-run.json`; if that marker is unusable, fall back to the latest valid collector run under OutputRoot. If no valid prior run exists, fail without creating or initializing run state.
-- ReprocessFailedOnly: during resume, skip a succeeded batch only when the persisted family plan is compatible and its snapshot still exists; rerun failed, in-progress, missing, or missing-artifact batches.
+- ReprocessFailedOnly: during resume, skip a succeeded Stage1 batch only when the persisted family plan is compatible and its canonical snapshot still exists and matches the current run/stage/section/family/batch identity and planned/checkpoint/snapshot item cardinality; rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
 - BatchSize: batch size for snapshot partitioning. Default 100. A different BatchSize is an incompatible resume plan and is rejected rather than reinterpreting existing batch IDs.
 - MaxRetries: retry count for transient Graph failures. Default 5.
