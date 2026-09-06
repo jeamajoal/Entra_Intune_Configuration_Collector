@@ -106,7 +106,7 @@ Describe 'Stage3 Graph resume artifact integrity' {
         Invoke-CollectorStage1 -Context $script:context -Sections @('entra-apps') | Out-Null
 
         Mock -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphCollection -MockWith {
-            param($GraphToken, $Endpoint)
+            param($Endpoint)
 
             if ($Endpoint -eq '/v1.0/oauth2PermissionGrants') {
                 return @([pscustomobject]@{ id = 'grant-1' })
