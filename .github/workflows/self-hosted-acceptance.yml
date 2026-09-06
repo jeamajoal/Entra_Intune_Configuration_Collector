@@ -1,0 +1,99 @@
+name: trusted self-hosted acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open same-repository pull request number to validate
+        required: true
+        type: string
+      head_sha:
+        description: Exact current pull request head SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bind-candidate:
+    name: Bind trusted PR candidate
+    runs-on: windows-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      validated_sha: ${{ steps.bind.outputs.validated_sha }}
+
+    steps:
+      - name: Require dispatch from main
+        shell: pwsh
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if ($env:DISPATCH_REF -ne 'refs/heads/main') {
+              throw "Trusted self-hosted acceptance must be dispatched from refs/heads/main; found '$env:DISPATCH_REF'."
+          }
+
+      - name: Checkout trusted binding code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate trusted PR binding
+        id: bind
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          EXPECTED_HEAD_SHA: ${{ inputs.head_sha }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if ($env:PR_NUMBER -notmatch '^[1-9][0-9]*$') {
+              throw "pr_number must be a positive integer; found '$env:PR_NUMBER'."
+          }
+
+          $headers = @{
+              Authorization = "Bearer $env:GITHUB_TOKEN"
+              Accept = 'application/vnd.github+json'
+              'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $uri = "https://api.github.com/repos/$env:EXPECTED_REPOSITORY/pulls/$env:PR_NUMBER"
+          $pullRequest = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
+
+          $validatedSha = & ./tools/Test-TrustedAcceptanceBinding.ps1 `
+              -PullRequest $pullRequest `
+              -ExpectedRepository $env:EXPECTED_REPOSITORY `
+              -ExpectedHeadSha $env:EXPECTED_HEAD_SHA `
+              -DispatchRef $env:DISPATCH_REF
+
+          "validated_sha=$validatedSha" >> $env:GITHUB_OUTPUT
+
+  powershell7-self-hosted-validation:
+    name: Validate trusted candidate (PowerShell 7 self-hosted)
+    needs: bind-candidate
+    runs-on: self-hosted
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout validated immutable candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bind-candidate.outputs.validated_sha }}
+          persist-credentials: false
+
+      - name: Install validation modules
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+
+      - name: Run parser, analyzer, and Pester validation
+        shell: pwsh
+        run: ./tools/Invoke-LocalValidation.ps1
