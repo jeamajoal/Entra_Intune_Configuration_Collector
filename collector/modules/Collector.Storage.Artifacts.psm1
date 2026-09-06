@@ -427,8 +427,8 @@ function Get-CollectorSnapshotItems {
     $items = @()
     foreach ($plannedBatch in $plannedBatches) {
         $batchId = [string]$plannedBatch.batchId
-        $plannedItemCount = 0
-        if ($plannedBatch.PSObject.Properties.Match('itemCount').Count -eq 0 -or -not [int]::TryParse([string]$plannedBatch.itemCount, [ref]$plannedItemCount) -or $plannedItemCount -lt 0) {
+        $plannedItemCount = Get-CollectorBatchCountValue -Batch $plannedBatch -PropertyName 'itemCount'
+        if ($null -eq $plannedItemCount) {
             throw ('Snapshot checkpoint plan has an invalid itemCount for {0}/{1}/{2} batch {3}.' -f $Stage, $Section, $Family, $batchId)
         }
 
@@ -485,8 +485,8 @@ function Get-CollectorSnapshotItems {
             throw ('Expected snapshot artifact has no items property for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
         }
 
-        $snapshotItemCount = 0
-        if ($snapshot.PSObject.Properties.Match('itemCount').Count -eq 0 -or -not [int]::TryParse([string]$snapshot.itemCount, [ref]$snapshotItemCount) -or $snapshotItemCount -lt 0) {
+        $snapshotItemCount = Get-CollectorBatchCountValue -Batch $snapshot -PropertyName 'itemCount'
+        if ($null -eq $snapshotItemCount) {
             throw ('Expected snapshot artifact has an invalid itemCount for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
         }
 
