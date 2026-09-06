@@ -53,7 +53,7 @@ BeforeAll {
                 batches = @([pscustomobject]@{
                     batchId = $batchId
                     itemCount = $PlanItemCount
-                    fingerprint = 'batch-test'
+                    fingerprint = Get-CollectorSnapshotBatchFingerprint -Items @($Items)
                 })
             }
             batches = @([pscustomobject]@{
