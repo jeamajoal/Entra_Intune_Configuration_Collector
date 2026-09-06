@@ -5,6 +5,7 @@ BeforeAll {
     function Get-TestResumePlanCheckpoint {
         param(
             [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
             [object[]]$Batches,
 
             [int]$BatchSize = 100
@@ -39,13 +40,14 @@ BeforeAll {
 }
 
 Describe 'Resume checkpoint plan numeric integrity' {
-    It 'rejects malformed persisted batchSize values with the bounded resume mismatch and does not normalize them' {
+    It 'rejects invalid or mismatched persisted batchSize values with the bounded resume mismatch and does not normalize them' {
         $batches = Get-TestSingleItemBatchSet
         $baseline = Get-TestResumePlanCheckpoint -Batches $batches -BatchSize 100
         $cases = @(
             [pscustomobject]@{ Name = 'string numeric'; Remove = $false; Value = '100' },
             [pscustomobject]@{ Name = 'Boolean'; Remove = $false; Value = $true },
             [pscustomobject]@{ Name = 'fractional'; Remove = $false; Value = [double]100.4 },
+            [pscustomobject]@{ Name = 'near integer double'; Remove = $false; Value = [double]::Parse('100.00000000000001', [Globalization.CultureInfo]::InvariantCulture) },
             [pscustomobject]@{ Name = 'zero'; Remove = $false; Value = 0 },
             [pscustomobject]@{ Name = 'negative'; Remove = $false; Value = -100 },
             [pscustomobject]@{ Name = 'object'; Remove = $false; Value = [pscustomobject]@{ value = 100 } },
@@ -72,7 +74,7 @@ Describe 'Resume checkpoint plan numeric integrity' {
             }
 
             if ([string]::IsNullOrWhiteSpace([string]$errorMessage) -or $errorMessage -notmatch '^Resume plan mismatch') {
-                throw ('Expected malformed batchSize case [{0}] to fail with bounded resume mismatch; actual: {1}' -f $case.Name, [string]$errorMessage)
+                throw ('Expected batchSize case [{0}] to fail with bounded resume mismatch; actual: {1}' -f $case.Name, [string]$errorMessage)
             }
 
             if ($case.Remove) {
@@ -86,14 +88,15 @@ Describe 'Resume checkpoint plan numeric integrity' {
         }
     }
 
-    It 'rejects malformed persisted expectedBatchCount values with the bounded resume mismatch and does not normalize them' {
+    It 'rejects invalid or mismatched persisted expectedBatchCount values with the bounded resume mismatch and does not normalize them' {
         $batches = Get-TestSingleItemBatchSet
         $baseline = Get-TestResumePlanCheckpoint -Batches $batches -BatchSize 100
         $cases = @(
             [pscustomobject]@{ Name = 'string numeric'; Remove = $false; Value = '1' },
             [pscustomobject]@{ Name = 'Boolean'; Remove = $false; Value = $true },
             [pscustomobject]@{ Name = 'fractional'; Remove = $false; Value = [double]1.4 },
-            [pscustomobject]@{ Name = 'zero'; Remove = $false; Value = 0 },
+            [pscustomobject]@{ Name = 'near integer double'; Remove = $false; Value = [double]::Parse('1.0000000000000002', [Globalization.CultureInfo]::InvariantCulture) },
+            [pscustomobject]@{ Name = 'zero mismatch'; Remove = $false; Value = 0 },
             [pscustomobject]@{ Name = 'negative'; Remove = $false; Value = -1 },
             [pscustomobject]@{ Name = 'object'; Remove = $false; Value = [pscustomobject]@{ value = 1 } },
             [pscustomobject]@{ Name = 'out of range'; Remove = $false; Value = ([long][int]::MaxValue + 1) },
@@ -119,7 +122,7 @@ Describe 'Resume checkpoint plan numeric integrity' {
             }
 
             if ([string]::IsNullOrWhiteSpace([string]$errorMessage) -or $errorMessage -notmatch '^Resume plan mismatch') {
-                throw ('Expected malformed expectedBatchCount case [{0}] to fail with bounded resume mismatch; actual: {1}' -f $case.Name, [string]$errorMessage)
+                throw ('Expected expectedBatchCount case [{0}] to fail with bounded resume mismatch; actual: {1}' -f $case.Name, [string]$errorMessage)
             }
 
             if ($case.Remove) {
@@ -177,18 +180,31 @@ Describe 'Resume checkpoint plan numeric integrity' {
         }
     }
 
-    It 'preserves legitimate zero-item planning as one positive expected batch' {
+    It 'resumes the exported initializer empty-batch plan with expectedBatchCount zero' {
+        $emptyBatches = [object[]]@()
+        $baseline = Get-TestResumePlanCheckpoint -Batches $emptyBatches -BatchSize 100
+        if ([int]$baseline.plan.expectedBatchCount -ne 0 -or @($baseline.plan.batches).Count -ne 0) {
+            throw 'Expected the exported initializer to persist zero expected batches for an explicitly empty batch collection.'
+        }
+
+        $resumed = Initialize-CollectorCheckpointPlan -Checkpoint (Copy-TestResumePlanCheckpoint -Checkpoint $baseline) -Batches $emptyBatches -BatchSize 100 -Resume
+        if ([int]$resumed.plan.expectedBatchCount -ne 0 -or @($resumed.plan.batches).Count -ne 0) {
+            throw 'Expected an explicitly empty persisted plan to remain resume-compatible.'
+        }
+    }
+
+    It 'preserves runtime-style zero-item planning as one positive empty batch' {
         $zeroBatches = New-Object 'object[]' 1
         $zeroBatches[0] = [object[]]@()
 
         $baseline = Get-TestResumePlanCheckpoint -Batches $zeroBatches -BatchSize 100
         if ([int]$baseline.plan.expectedBatchCount -ne 1 -or [int]$baseline.plan.batches[0].itemCount -ne 0) {
-            throw 'Expected zero-item input to persist one planned empty batch.'
+            throw 'Expected runtime-style zero-item input to persist one planned empty batch.'
         }
 
         $resumed = Initialize-CollectorCheckpointPlan -Checkpoint (Copy-TestResumePlanCheckpoint -Checkpoint $baseline) -Batches $zeroBatches -BatchSize 100 -Resume
         if ([int]$resumed.plan.expectedBatchCount -ne 1 -or [int]$resumed.plan.batches[0].itemCount -ne 0) {
-            throw 'Expected legitimate zero-item plan to remain resume-compatible.'
+            throw 'Expected runtime-style zero-item plan to remain resume-compatible.'
         }
     }
 }
