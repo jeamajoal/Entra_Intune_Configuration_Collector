@@ -26,30 +26,6 @@ function Get-CollectorFamilyResult {
     }
 }
 
-function Get-CollectorStage1BatchFingerprint {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyCollection()]
-        [object[]]$Items
-    )
-
-    $serializedBatch = ConvertTo-Json -InputObject ([object[]]@($Items)) -Depth 50 -Compress
-    if ([string]::IsNullOrWhiteSpace($serializedBatch)) {
-        $serializedBatch = '[]'
-    }
-
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($serializedBatch)
-        $hashBytes = $sha256.ComputeHash($bytes)
-        return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
-    }
-    finally {
-        $sha256.Dispose()
-    }
-}
-
 function Test-CollectorStage1ResumeArtifact {
     [CmdletBinding()]
     param(
@@ -141,7 +117,7 @@ function Test-CollectorStage1ResumeArtifact {
         return $false
     }
 
-    return (Get-CollectorStage1BatchFingerprint -Items @($snapshot.items)) -eq $ExpectedFingerprint
+    return (Get-CollectorSnapshotBatchFingerprint -Items @($snapshot.items)) -eq $ExpectedFingerprint
 }
 
 function Invoke-CollectorStage1Family {
@@ -216,7 +192,7 @@ function Invoke-CollectorStage1Family {
         $batchId = '{0:D4}' -f $batchNumber
         $batchItems = @($batch)
         $batchItemCount = $batchItems.Count
-        $batchFingerprint = Get-CollectorStage1BatchFingerprint -Items $batchItems
+        $batchFingerprint = Get-CollectorSnapshotBatchFingerprint -Items $batchItems
         $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
 
         if (
