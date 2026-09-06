@@ -105,14 +105,16 @@ function New-CollectorCheckpointPlan {
     }
 }
 
-function Get-CollectorPositivePlanIntegerValue {
+function Get-CollectorPlanIntegerValue {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
         [object]$Plan,
 
         [Parameter(Mandatory = $true)]
-        [string]$PropertyName
+        [string]$PropertyName,
+
+        [int]$MinimumValue = 0
     )
 
     if ($null -eq $Plan -or $Plan.PSObject.Properties.Match($PropertyName).Count -eq 0) {
@@ -124,32 +126,41 @@ function Get-CollectorPositivePlanIntegerValue {
         return $null
     }
 
-    $isSupportedNumericType = (
-        $rawValue -is [int] -or
-        $rawValue -is [long] -or
-        $rawValue -is [double] -or
-        $rawValue -is [decimal]
-    )
-    if (-not $isSupportedNumericType) {
-        return $null
+    if ($rawValue -is [int] -or $rawValue -is [long]) {
+        $integerValue = [long]$rawValue
+        if ($integerValue -lt $MinimumValue -or $integerValue -gt [int]::MaxValue) {
+            return $null
+        }
+        return [int]$integerValue
     }
 
-    try {
-        $numericValue = [decimal]$rawValue
-    }
-    catch {
-        return $null
+    if ($rawValue -is [double]) {
+        $doubleValue = [double]$rawValue
+        if (
+            [double]::IsNaN($doubleValue) -or
+            [double]::IsInfinity($doubleValue) -or
+            $doubleValue -ne [math]::Truncate($doubleValue) -or
+            $doubleValue -lt $MinimumValue -or
+            $doubleValue -gt [int]::MaxValue
+        ) {
+            return $null
+        }
+        return [int]$doubleValue
     }
 
-    if (
-        $numericValue -ne [decimal]::Truncate($numericValue) -or
-        $numericValue -le 0 -or
-        $numericValue -gt [int]::MaxValue
-    ) {
-        return $null
+    if ($rawValue -is [decimal]) {
+        $decimalValue = [decimal]$rawValue
+        if (
+            $decimalValue -ne [decimal]::Truncate($decimalValue) -or
+            $decimalValue -lt $MinimumValue -or
+            $decimalValue -gt [int]::MaxValue
+        ) {
+            return $null
+        }
+        return [int]$decimalValue
     }
 
-    return [int]$numericValue
+    return $null
 }
 
 function Initialize-CollectorCheckpointPlan {
@@ -173,8 +184,8 @@ function Initialize-CollectorCheckpointPlan {
 
     if ($Resume -and $hasPlan) {
         $existingPlan = $Checkpoint.plan
-        $existingBatchSize = Get-CollectorPositivePlanIntegerValue -Plan $existingPlan -PropertyName 'batchSize'
-        $existingExpectedBatchCount = Get-CollectorPositivePlanIntegerValue -Plan $existingPlan -PropertyName 'expectedBatchCount'
+        $existingBatchSize = Get-CollectorPlanIntegerValue -Plan $existingPlan -PropertyName 'batchSize' -MinimumValue 1
+        $existingExpectedBatchCount = Get-CollectorPlanIntegerValue -Plan $existingPlan -PropertyName 'expectedBatchCount' -MinimumValue 0
         $compatible = (
             [string]$existingPlan.planVersion -eq [string]$currentPlan.planVersion -and
             $null -ne $existingBatchSize -and
