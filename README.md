@@ -72,7 +72,7 @@ Resume previous run and reprocess failed or missing batches only:
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
 - Sections: entra-apps, entra-pim, intune-core, onprem-ad-gpo. Default is all sections.
 - Resume: resume the valid run named by `current-run.json`; if that marker is unusable, fall back to the latest valid collector run under OutputRoot. If no valid prior run exists, fail without creating or initializing run state.
-- ReprocessFailedOnly: during resume, skip a succeeded Stage1 batch only when the persisted family plan is compatible and its canonical snapshot still exists and matches the current run/stage/section/family/batch identity and planned/checkpoint/snapshot item cardinality; rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches.
+- ReprocessFailedOnly: during resume, rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches. Stage1 and Stage2 skip a succeeded batch only when the persisted family plan is compatible and the canonical snapshot still exists, is readable/non-null, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality. Stage3 currently uses compatible-plan plus artifact-existence reuse semantics and is audited separately.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
 - BatchSize: batch size for snapshot partitioning. Default 100. A different BatchSize is an incompatible resume plan and is rejected rather than reinterpreting existing batch IDs.
 - MaxRetries: retry count for transient Graph failures. Default 5.
@@ -107,6 +107,7 @@ Stage2 detail collection:
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
 - Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
 - Stage2 persists its own plan before processing so resume cannot silently reuse numeric batch IDs after Stage1 input, order, membership, or BatchSize changes.
+- During Stage2 resume, a prior successful Graph or on-prem batch is reused only when its existing canonical snapshot still matches current run/stage/section/family/batch identity and current planned/checkpoint/snapshot item cardinality; an invalid prior success is reprocessed through the normal Stage2 write/checkpoint path.
 
 Stage3 relationship families:
 
