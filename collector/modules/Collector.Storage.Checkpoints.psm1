@@ -503,7 +503,7 @@ function Get-CollectorCheckpointSummary {
     )
 
     $summary = @()
-    $checkpointFiles = Get-CollectorCheckpointFiles -RunPath $RunPath
+    $checkpointFiles = @(Get-CollectorCheckpointFiles -RunPath $RunPath)
     if ($checkpointFiles.Count -eq 0) {
         return $summary
     }
