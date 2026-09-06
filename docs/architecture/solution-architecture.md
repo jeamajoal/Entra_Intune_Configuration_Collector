@@ -128,8 +128,9 @@ Credential metadata is collected in separate families so its security and thrott
 - If no valid prior collector run can be identified, resume fails before writing `current-run.json` or initializing collector child directories.
 - Resume with ReprocessFailedOnly:
   - reruns Failed, InProgress, Missing, and missing-artifact batches;
-  - for Stage1, reuses a Succeeded batch only after current-input plan compatibility is established and the canonical snapshot is readable/non-null, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality;
-  - a Stage1 prior success that fails that validation is recorded as non-success and reprocessed through the normal write/checkpoint path in the same resume invocation without deleting the artifact first.
+  - Stage1 and Stage2 reuse a Succeeded batch only after current-input plan compatibility is established and the canonical snapshot is readable/non-null, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality;
+  - a Stage1 or Stage2 prior success that fails that validation is recorded as non-success and reprocessed through that stage's normal write/checkpoint path in the same resume invocation without deleting the artifact first;
+  - Stage3 currently retains compatible-plan plus artifact-existence prior-success reuse semantics and remains a separate correctness-audit target.
 - Checkpoint writes use same-directory validated temporary files and atomic replacement so a failed replacement does not destroy the last valid checkpoint.
 - Persisted artifact paths are normalized from run/stage/section/family/batch identity rather than interpreted relative to process working directory.
 
