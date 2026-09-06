@@ -346,9 +346,22 @@ function Get-CollectorSnapshotItems {
     $items = @()
     foreach ($plannedBatch in $plannedBatches) {
         $batchId = [string]$plannedBatch.batchId
+        $plannedItemCount = 0
+        if ($plannedBatch.PSObject.Properties.Match('itemCount').Count -eq 0 -or -not [int]::TryParse([string]$plannedBatch.itemCount, [ref]$plannedItemCount) -or $plannedItemCount -lt 0) {
+            throw ('Snapshot checkpoint plan has an invalid itemCount for {0}/{1}/{2} batch {3}.' -f $Stage, $Section, $Family, $batchId)
+        }
+
         $checkpointBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
         if ($null -eq $checkpointBatch -or [string]$checkpointBatch.status -ne 'Succeeded' -or [string]::IsNullOrWhiteSpace([string]$checkpointBatch.artifactPath)) {
             throw ('Snapshot checkpoint batch {0} is not a successful persisted batch for {1}/{2}/{3}.' -f $batchId, $Stage, $Section, $Family)
+        }
+
+        $checkpointItemCount = 0
+        if ($checkpointBatch.PSObject.Properties.Match('itemCount').Count -eq 0 -or -not [int]::TryParse([string]$checkpointBatch.itemCount, [ref]$checkpointItemCount) -or $checkpointItemCount -lt 0) {
+            throw ('Snapshot checkpoint batch has an invalid itemCount for {0}/{1}/{2} batch {3}.' -f $Stage, $Section, $Family, $batchId)
+        }
+        if ($checkpointItemCount -ne $plannedItemCount) {
+            throw ('Snapshot cardinality mismatch for {0}/{1}/{2} batch {3}: planned itemCount={4}; checkpoint itemCount={5}.' -f $Stage, $Section, $Family, $batchId, $plannedItemCount, $checkpointItemCount)
         }
 
         $artifactPath = Get-CollectorCanonicalArtifactPath -RunPath $RunPath -Stage $Stage -Section $Section -Family $Family -BatchId $batchId
@@ -388,6 +401,16 @@ function Get-CollectorSnapshotItems {
 
         if ($snapshot.PSObject.Properties.Match('items').Count -eq 0) {
             throw ('Expected snapshot artifact has no items property for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
+        }
+
+        $snapshotItemCount = 0
+        if ($snapshot.PSObject.Properties.Match('itemCount').Count -eq 0 -or -not [int]::TryParse([string]$snapshot.itemCount, [ref]$snapshotItemCount) -or $snapshotItemCount -lt 0) {
+            throw ('Expected snapshot artifact has an invalid itemCount for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
+        }
+
+        $actualItemCount = @($snapshot.items).Count
+        if ($snapshotItemCount -ne $plannedItemCount -or $actualItemCount -ne $plannedItemCount) {
+            throw ('Snapshot cardinality mismatch for {0}/{1}/{2} batch {3}: planned itemCount={4}; snapshot itemCount={5}; actual items={6}.' -f $Stage, $Section, $Family, $batchId, $plannedItemCount, $snapshotItemCount, $actualItemCount)
         }
 
         $items += @($snapshot.items)
