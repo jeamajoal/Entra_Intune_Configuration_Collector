@@ -29,9 +29,11 @@ jobs:
     steps:
       - name: Require dispatch from main
         shell: pwsh
+        env:
+          DISPATCH_REF: ${{ github.ref }}
         run: |
-          if ('${{ github.ref }}' -ne 'refs/heads/main') {
-              throw "Trusted self-hosted acceptance must be dispatched from refs/heads/main; found '${{ github.ref }}'."
+          if ($env:DISPATCH_REF -ne 'refs/heads/main') {
+              throw "Trusted self-hosted acceptance must be dispatched from refs/heads/main; found '$env:DISPATCH_REF'."
           }
 
       - name: Checkout trusted binding code
