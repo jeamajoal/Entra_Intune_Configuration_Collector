@@ -585,32 +585,56 @@ function Get-CollectorBatchExecutionDecision {
         }
     }
 
-    if ([string]$existingBatch.status -eq 'Succeeded' -and -not (Test-CollectorSucceededBatchCountIntegrity -Batch $existingBatch)) {
-        return [pscustomobject]@{
-            ShouldProcess = $true
-            MarkMissing = $false
-            Reason = 'InvalidSucceededCounts'
-        }
-    }
-
     $artifactExists = $false
     if ($existingBatch.artifactPath) {
         $artifactExists = Test-Path -LiteralPath $existingBatch.artifactPath
     }
 
-    if ($existingBatch.status -eq 'Succeeded' -and $artifactExists) {
-        return [pscustomobject]@{
-            ShouldProcess = $false
-            MarkMissing = $false
-            Reason = 'SucceededWithArtifact'
-        }
-    }
-
-    if ($existingBatch.status -eq 'Succeeded' -and -not $artifactExists) {
+    if ([string]$existingBatch.status -eq 'Succeeded' -and -not $artifactExists) {
         return [pscustomobject]@{
             ShouldProcess = $true
             MarkMissing = $true
             Reason = 'MissingArtifact'
+        }
+    }
+
+    if ([string]$existingBatch.status -eq 'Succeeded' -and $artifactExists) {
+        if (-not (Test-CollectorSucceededBatchCountIntegrity -Batch $existingBatch)) {
+            return [pscustomobject]@{
+                ShouldProcess = $true
+                MarkMissing = $false
+                Reason = 'InvalidSucceededCounts'
+            }
+        }
+
+        $snapshot = $null
+        try {
+            $snapshot = Get-Content -LiteralPath $existingBatch.artifactPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            $snapshot = $null
+        }
+
+        $checkpointItemCount = Get-CollectorBatchCountValue -Batch $existingBatch -PropertyName 'itemCount'
+        $snapshotItemCount = if ($null -ne $snapshot) {
+            Get-CollectorBatchCountValue -Batch $snapshot -PropertyName 'itemCount'
+        }
+        else {
+            $null
+        }
+
+        if ($null -eq $snapshotItemCount -or $null -eq $checkpointItemCount -or $snapshotItemCount -ne $checkpointItemCount) {
+            return [pscustomobject]@{
+                ShouldProcess = $true
+                MarkMissing = $false
+                Reason = 'InvalidSnapshotItemCount'
+            }
+        }
+
+        return [pscustomobject]@{
+            ShouldProcess = $false
+            MarkMissing = $false
+            Reason = 'SucceededWithArtifact'
         }
     }
 
@@ -720,6 +744,7 @@ Export-ModuleMember -Function @(
     'Get-CollectorCheckpointBatch',
     'Set-CollectorCheckpointBatch',
     'Get-CollectorBatchExecutionDecision',
+    'Get-CollectorBatchCountValue',
     'Initialize-CollectorCheckpointPlan',
     'Test-CollectorSucceededBatchCountIntegrity',
     'Complete-CollectorCheckpointPlan',
