@@ -159,6 +159,58 @@ function Initialize-CollectorCheckpointPlan {
     return $Checkpoint
 }
 
+function Test-CollectorSucceededBatchCountIntegrity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Batch
+    )
+
+    $countValues = @{}
+    foreach ($propertyName in @('itemCount', 'successCount', 'failedCount')) {
+        if ($null -eq $Batch -or $Batch.PSObject.Properties.Match($propertyName).Count -eq 0) {
+            return $false
+        }
+
+        $rawValue = $Batch.$propertyName
+        if ($null -eq $rawValue -or $rawValue -is [string] -or $rawValue -is [bool]) {
+            return $false
+        }
+
+        $isSupportedNumericType = (
+            $rawValue -is [int] -or
+            $rawValue -is [long] -or
+            $rawValue -is [double] -or
+            $rawValue -is [decimal]
+        )
+        if (-not $isSupportedNumericType) {
+            return $false
+        }
+
+        try {
+            $numericValue = [decimal]$rawValue
+        }
+        catch {
+            return $false
+        }
+
+        if (
+            $numericValue -ne [decimal]::Truncate($numericValue) -or
+            $numericValue -lt 0 -or
+            $numericValue -gt [int]::MaxValue
+        ) {
+            return $false
+        }
+
+        $countValues[$propertyName] = [int]$numericValue
+    }
+
+    return (
+        $countValues['successCount'] -eq $countValues['itemCount'] -and
+        $countValues['failedCount'] -eq 0
+    )
+}
+
 function Complete-CollectorCheckpointPlan {
     [CmdletBinding()]
     param(
@@ -173,7 +225,13 @@ function Complete-CollectorCheckpointPlan {
     $isComplete = $true
     foreach ($plannedBatch in @($Checkpoint.plan.batches)) {
         $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $Checkpoint -BatchId ([string]$plannedBatch.batchId)
-        if (-not $existingBatch -or [string]$existingBatch.status -ne 'Succeeded' -or [string]::IsNullOrWhiteSpace([string]$existingBatch.artifactPath) -or -not (Test-Path -LiteralPath $existingBatch.artifactPath)) {
+        if (
+            -not $existingBatch -or
+            [string]$existingBatch.status -ne 'Succeeded' -or
+            [string]::IsNullOrWhiteSpace([string]$existingBatch.artifactPath) -or
+            -not (Test-Path -LiteralPath $existingBatch.artifactPath) -or
+            -not (Test-CollectorSucceededBatchCountIntegrity -Batch $existingBatch)
+        ) {
             $isComplete = $false
             break
         }
