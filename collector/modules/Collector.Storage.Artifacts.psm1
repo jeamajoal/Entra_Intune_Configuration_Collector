@@ -503,7 +503,28 @@ function Test-CollectorInventoryArtifacts {
     }
 
     $batches = @($checkpoint.batches)
-    if ($batches.Count -eq 0 -or $batches.Count -ne [int]$checkpoint.plan.expectedBatchCount -or @($checkpoint.plan.batches).Count -ne [int]$checkpoint.plan.expectedBatchCount) {
+    $plannedBatches = @($checkpoint.plan.batches)
+    if ($batches.Count -eq 0 -or $batches.Count -ne [int]$checkpoint.plan.expectedBatchCount -or $plannedBatches.Count -ne [int]$checkpoint.plan.expectedBatchCount) {
+        return $false
+    }
+
+    $plannedBatchIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($plannedBatch in $plannedBatches) {
+        $batchId = [string]$plannedBatch.batchId
+        if ([string]::IsNullOrWhiteSpace($batchId) -or -not $plannedBatchIdSet.Add($batchId)) {
+            return $false
+        }
+    }
+
+    $checkpointBatchIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($batch in $batches) {
+        $batchId = [string]$batch.batchId
+        if ([string]::IsNullOrWhiteSpace($batchId) -or -not $checkpointBatchIdSet.Add($batchId)) {
+            return $false
+        }
+    }
+
+    if (-not $plannedBatchIdSet.SetEquals($checkpointBatchIdSet)) {
         return $false
     }
 
