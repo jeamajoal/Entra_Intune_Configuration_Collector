@@ -131,7 +131,7 @@ Describe 'Checkpoint plan completion count integrity' {
                 $batch.PSObject.Properties.Remove([string]$case.Property)
             }
             else {
-                $batch.([string]$case.Property) = $case.Value
+                $batch.PSObject.Properties[[string]$case.Property].Value = $case.Value
             }
 
             try {
