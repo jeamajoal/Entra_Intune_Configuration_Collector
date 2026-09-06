@@ -388,7 +388,31 @@ function Save-CollectorManifest {
     $manifestDirectory = Split-Path -Path $manifestPath -Parent
 
     Initialize-CollectorDirectory -Path $manifestDirectory | Out-Null
-    $Manifest | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+    $manifestJson = $Manifest | ConvertTo-Json -Depth 30
+    $uniqueSuffix = [Guid]::NewGuid().ToString('N')
+    $fileName = [System.IO.Path]::GetFileName($manifestPath)
+    $tempPath = Join-Path -Path $manifestDirectory -ChildPath ('.{0}.{1}.tmp' -f $fileName, $uniqueSuffix)
+    $backupPath = Join-Path -Path $manifestDirectory -ChildPath ('.{0}.{1}.bak' -f $fileName, $uniqueSuffix)
+
+    try {
+        [System.IO.File]::WriteAllText($tempPath, $manifestJson, [System.Text.UTF8Encoding]::new($false))
+        Get-Content -LiteralPath $tempPath -Raw | ConvertFrom-Json | Out-Null
+
+        if (Test-Path -LiteralPath $manifestPath) {
+            [System.IO.File]::Replace($tempPath, $manifestPath, $backupPath, $true)
+        }
+        else {
+            [System.IO.File]::Move($tempPath, $manifestPath)
+        }
+    }
+    finally {
+        foreach ($temporaryPath in @($tempPath, $backupPath)) {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 
     return $manifestPath
 }
