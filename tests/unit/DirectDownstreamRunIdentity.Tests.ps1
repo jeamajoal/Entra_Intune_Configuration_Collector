@@ -42,7 +42,7 @@ BeforeAll {
             batches = @([pscustomobject]@{
                 batchId = '0001'
                 itemCount = 1
-                fingerprint = 'direct-run-identity-batch'
+                fingerprint = Get-CollectorSnapshotBatchFingerprint -Items @($snapshot.items)
             })
         }
         Save-CollectorCheckpoint -RunPath $RunPath -Checkpoint $checkpoint | Out-Null

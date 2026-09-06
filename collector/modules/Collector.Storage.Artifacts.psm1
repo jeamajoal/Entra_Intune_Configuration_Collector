@@ -307,6 +307,30 @@ function Get-CollectorExpectedBatchCountValue {
     return [int]$numericValue
 }
 
+function Get-CollectorSnapshotBatchFingerprint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Items
+    )
+
+    $serializedBatch = ConvertTo-Json -InputObject ([object[]]@($Items)) -Depth 50 -Compress
+    if ([string]::IsNullOrWhiteSpace($serializedBatch)) {
+        $serializedBatch = '[]'
+    }
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($serializedBatch)
+        $hashBytes = $sha256.ComputeHash($bytes)
+        return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
 function Get-CollectorSnapshotItems {
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported function intentionally returns the collection of items across snapshot files.')]
@@ -488,6 +512,17 @@ function Get-CollectorSnapshotItems {
             throw ('Snapshot cardinality mismatch for {0}/{1}/{2} batch {3}: planned itemCount={4}; checkpoint itemCount={5}; snapshot itemCount={6}; actual items={7}.' -f $Stage, $Section, $Family, $batchId, $plannedItemCount, $checkpointItemCount, $snapshotItemCount, $actualItemCount)
         }
 
+        if ([string]$Stage -eq 'stage1') {
+            if ($plannedBatch.PSObject.Properties.Match('fingerprint').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$plannedBatch.fingerprint)) {
+                throw ('Snapshot checkpoint plan has an invalid fingerprint for {0}/{1}/{2} batch {3}.' -f $Stage, $Section, $Family, $batchId)
+            }
+
+            $snapshotFingerprint = Get-CollectorSnapshotBatchFingerprint -Items @($snapshot.items)
+            if ($snapshotFingerprint -ne [string]$plannedBatch.fingerprint) {
+                throw ('Snapshot fingerprint mismatch for {0}/{1}/{2} batch {3}: canonical snapshot items do not match the persisted Stage1 plan.' -f $Stage, $Section, $Family, $batchId)
+            }
+        }
+
         $items += @($snapshot.items)
     }
 
@@ -663,6 +698,7 @@ Export-ModuleMember -Function @(
     'Split-CollectorItems',
     'Write-CollectorSnapshotArtifact',
     'Get-CollectorSnapshotFiles',
+    'Get-CollectorSnapshotBatchFingerprint',
     'Get-CollectorSnapshotItems',
     'Test-CollectorInventoryArtifacts',
     'Get-CollectorManifestPath',
