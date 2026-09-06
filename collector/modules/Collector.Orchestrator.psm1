@@ -385,24 +385,33 @@ function Start-CollectorRun {
         $manifest.status = $invocation.status
     }
     catch {
+        $caughtError = $_
+
         foreach ($stageResult in @($context.PartialStageResults)) {
             Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
         }
         $context.PartialStageResults.Clear()
 
         $failure = [pscustomobject]@{
-            stage = if ($_.Exception.Data['CollectorStage']) { [string]$_.Exception.Data['CollectorStage'] } else { 'orchestration' }
-            section = if ($_.Exception.Data['CollectorSection']) { [string]$_.Exception.Data['CollectorSection'] } else { 'all' }
-            family = if ($_.Exception.Data['CollectorFamily']) { [string]$_.Exception.Data['CollectorFamily'] } else { 'all' }
-            error = $_.Exception.Message
+            stage = if ($caughtError.Exception.Data['CollectorStage']) { [string]$caughtError.Exception.Data['CollectorStage'] } else { 'orchestration' }
+            section = if ($caughtError.Exception.Data['CollectorSection']) { [string]$caughtError.Exception.Data['CollectorSection'] } else { 'all' }
+            family = if ($caughtError.Exception.Data['CollectorFamily']) { [string]$caughtError.Exception.Data['CollectorFamily'] } else { 'all' }
+            error = $caughtError.Exception.Message
         }
 
         $invocation.failures += $failure
         $manifest.failures += $failure
-        $manifest.checkpointSummary = @(Get-CollectorCheckpointSummary -RunPath $run.runPath)
         $invocation.status = 'Failed'
         $manifest.status = 'Failed'
-        throw
+
+        try {
+            $manifest.checkpointSummary = @(Get-CollectorCheckpointSummary -RunPath $run.runPath)
+        }
+        catch {
+            Write-Verbose ('Checkpoint summary refresh failed while preserving terminal collector failure state: {0}' -f $_.Exception.Message)
+        }
+
+        throw $caughtError
     }
     finally {
         $completedUtc = (Get-Date).ToUniversalTime().ToString('o')
