@@ -374,6 +374,7 @@ function Start-CollectorRun {
             foreach ($stageResult in $resultsToPersist) {
                 Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
             }
+            $context.PartialStageResults.Clear()
 
             if ($resultsToPersist.Count -gt 0) {
                 Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
@@ -408,6 +409,7 @@ function Start-CollectorRun {
             $manifest.checkpointSummary = @(Get-CollectorCheckpointSummary -RunPath $run.runPath)
         }
         catch {
+            $manifest.checkpointSummary = @()
             Write-Verbose ('Checkpoint summary refresh failed while preserving terminal collector failure state: {0}' -f $_.Exception.Message)
         }
 
