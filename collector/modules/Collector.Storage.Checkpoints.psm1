@@ -504,9 +504,39 @@ function Get-CollectorCheckpointSummary {
 
     $summary = @()
     $checkpointFiles = Get-CollectorCheckpointFiles -RunPath $RunPath
+    if ($checkpointFiles.Count -eq 0) {
+        return $summary
+    }
+
+    $runId = ([System.IO.DirectoryInfo]$RunPath).Name
+    if ([string]::IsNullOrWhiteSpace($runId)) {
+        throw ('Cannot determine checkpoint summary run identity from run path: {0}' -f $RunPath)
+    }
+
+    $checkpointRoot = [System.IO.Path]::GetFullPath((Join-Path -Path $RunPath -ChildPath 'checkpoints'))
+    $separatorChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $checkpointRootPrefix = $checkpointRoot.TrimEnd($separatorChars) + [System.IO.Path]::DirectorySeparatorChar
 
     foreach ($checkpointFile in $checkpointFiles) {
-        $checkpoint = Get-Content -LiteralPath $checkpointFile.FullName -Raw | ConvertFrom-Json
+        $checkpointPath = [System.IO.Path]::GetFullPath($checkpointFile.FullName)
+        if (-not $checkpointPath.StartsWith($checkpointRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ('Checkpoint summary path is outside the canonical checkpoint root: {0}' -f $checkpointPath)
+        }
+
+        $relativePath = $checkpointPath.Substring($checkpointRootPrefix.Length)
+        $pathParts = @($relativePath -split '[\\/]')
+        if ($pathParts.Count -ne 3 -or [System.IO.Path]::GetExtension($pathParts[2]) -ne '.json') {
+            throw ('Checkpoint summary path does not match checkpoints/<stage>/<section>/<family>.json: {0}' -f $checkpointPath)
+        }
+
+        $stage = [string]$pathParts[0]
+        $section = [string]$pathParts[1]
+        $family = [System.IO.Path]::GetFileNameWithoutExtension([string]$pathParts[2])
+        if ([string]::IsNullOrWhiteSpace($stage) -or [string]::IsNullOrWhiteSpace($section) -or [string]::IsNullOrWhiteSpace($family)) {
+            throw ('Checkpoint summary path contains an empty identity component: {0}' -f $checkpointPath)
+        }
+
+        $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $runId -Stage $stage -Section $section -Family $family
         $batchCount = @($checkpoint.batches).Count
         $succeededBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'Succeeded' }).Count
         $failedBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'Failed' }).Count
