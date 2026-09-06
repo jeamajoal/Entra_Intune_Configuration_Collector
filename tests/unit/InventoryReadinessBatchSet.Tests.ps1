@@ -15,14 +15,15 @@ BeforeAll {
         $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $runId -Stage 'stage1' -Section $section -Family $family
 
         if ($ZeroItem) {
-            $batches = [object[]]@([object][object[]]@())
+            $items = [object[]]@()
         }
         else {
-            $batches = [object[]]@(
-                [object][object[]]@([pscustomobject]@{ id = 'one' }),
-                [object][object[]]@([pscustomobject]@{ id = 'two' })
+            $items = [object[]]@(
+                [pscustomobject]@{ id = 'one' },
+                [pscustomobject]@{ id = 'two' }
             )
         }
+        $batches = Split-CollectorItems -Items $items -BatchSize 1
 
         $checkpoint = Initialize-CollectorCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 1
         foreach ($plannedBatch in @($checkpoint.plan.batches)) {
