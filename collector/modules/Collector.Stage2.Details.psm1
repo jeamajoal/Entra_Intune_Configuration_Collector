@@ -226,11 +226,13 @@ function Assert-CollectorInventoryFirstForStage2 {
         [string]$Section,
 
         [Parameter(Mandatory = $true)]
-        [string]$Family
+        [string]$Family,
+
+        [string]$RunId
     )
 
-    if (-not (Test-CollectorInventoryArtifacts -RunPath $RunPath -Section $Section -Family $Family)) {
-        $exception = [System.InvalidOperationException]::new(('Stage2 inventory-first enforcement failed. Missing Stage1 artifact for section {0}, family {1}.' -f $Section, $Family))
+    if (-not (Test-CollectorInventoryArtifacts -RunPath $RunPath -Section $Section -Family $Family -ExpectedRunId $RunId)) {
+        $exception = [System.InvalidOperationException]::new(('Stage2 inventory-first enforcement failed. Missing or mismatched Stage1 artifact for section {0}, family {1}.' -f $Section, $Family))
         $exception.Data['CollectorStage'] = 'stage2'
         $exception.Data['CollectorSection'] = $Section
         $exception.Data['CollectorFamily'] = $Family
@@ -267,7 +269,7 @@ function Invoke-CollectorStage2GraphFamily {
         $DependencyFamily = $Family
     }
 
-    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $DependencyFamily
+    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $DependencyFamily -RunId $Context.RunId
 
     $stageName = 'stage2'
     $selectedProperties = @($SelectedProperties)
@@ -291,7 +293,7 @@ function Invoke-CollectorStage2GraphFamily {
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
     $result = Get-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
-    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily)
+    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily -ExpectedRunId $Context.RunId)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
 
     if ($batches.Count -eq 0) {
@@ -422,7 +424,7 @@ function Invoke-CollectorStage2OnPremFamily {
         [string]$Family
     )
 
-    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $Family
+    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $Family -RunId $Context.RunId
 
     $stageName = 'stage2'
     $provenanceProfile = Get-CollectorOnPremProvenanceProfile -Phase 'Details' -Family $Family
@@ -436,7 +438,7 @@ function Invoke-CollectorStage2OnPremFamily {
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
     $result = Get-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
-    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $Family)
+    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $Family -ExpectedRunId $Context.RunId)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
 
     if ($batches.Count -eq 0) {
