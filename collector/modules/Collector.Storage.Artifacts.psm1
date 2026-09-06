@@ -318,7 +318,14 @@ function Get-CollectorSnapshotItems {
     }
 
     $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $runId -Stage $Stage -Section $Section -Family $Family
-    if ($checkpoint.PSObject.Properties.Match('plan').Count -eq 0 -or $null -eq $checkpoint.plan -or -not [bool]$checkpoint.plan.completed) {
+    $planIsCompleted = (
+        $checkpoint.PSObject.Properties.Match('plan').Count -gt 0 -and
+        $null -ne $checkpoint.plan -and
+        $checkpoint.plan.PSObject.Properties.Match('completed').Count -gt 0 -and
+        $checkpoint.plan.completed -is [bool] -and
+        $checkpoint.plan.completed -eq $true
+    )
+    if (-not $planIsCompleted) {
         throw ('Snapshot loading requires a completed checkpoint plan for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
     }
 
@@ -498,7 +505,14 @@ function Test-CollectorInventoryArtifacts {
         }
     }
 
-    if ($checkpoint.PSObject.Properties.Match('plan').Count -eq 0 -or $null -eq $checkpoint.plan -or -not [bool]$checkpoint.plan.completed) {
+    $planIsCompleted = (
+        $checkpoint.PSObject.Properties.Match('plan').Count -gt 0 -and
+        $null -ne $checkpoint.plan -and
+        $checkpoint.plan.PSObject.Properties.Match('completed').Count -gt 0 -and
+        $checkpoint.plan.completed -is [bool] -and
+        $checkpoint.plan.completed -eq $true
+    )
+    if (-not $planIsCompleted) {
         return $false
     }
 
