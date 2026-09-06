@@ -14,13 +14,13 @@ BeforeAll {
         $family = 'applications'
         $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $runId -Stage 'stage1' -Section $section -Family $family
 
-        $batches = if ($ZeroItem) {
-            [object[]]@([object[]]@())
+        if ($ZeroItem) {
+            $batches = [object[]]@([object][object[]]@())
         }
         else {
-            [object[]]@(
-                [object[]]@([pscustomobject]@{ id = 'one' }),
-                [object[]]@([pscustomobject]@{ id = 'two' })
+            $batches = [object[]]@(
+                [object][object[]]@([pscustomobject]@{ id = 'one' }),
+                [object][object[]]@([pscustomobject]@{ id = 'two' })
             )
         }
 
