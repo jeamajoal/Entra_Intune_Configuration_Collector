@@ -105,6 +105,53 @@ function New-CollectorCheckpointPlan {
     }
 }
 
+function Get-CollectorPositivePlanIntegerValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Plan,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyName
+    )
+
+    if ($null -eq $Plan -or $Plan.PSObject.Properties.Match($PropertyName).Count -eq 0) {
+        return $null
+    }
+
+    $rawValue = $Plan.$PropertyName
+    if ($null -eq $rawValue -or $rawValue -is [string] -or $rawValue -is [bool]) {
+        return $null
+    }
+
+    $isSupportedNumericType = (
+        $rawValue -is [int] -or
+        $rawValue -is [long] -or
+        $rawValue -is [double] -or
+        $rawValue -is [decimal]
+    )
+    if (-not $isSupportedNumericType) {
+        return $null
+    }
+
+    try {
+        $numericValue = [decimal]$rawValue
+    }
+    catch {
+        return $null
+    }
+
+    if (
+        $numericValue -ne [decimal]::Truncate($numericValue) -or
+        $numericValue -le 0 -or
+        $numericValue -gt [int]::MaxValue
+    ) {
+        return $null
+    }
+
+    return [int]$numericValue
+}
+
 function Initialize-CollectorCheckpointPlan {
     [CmdletBinding()]
     param(
@@ -126,10 +173,14 @@ function Initialize-CollectorCheckpointPlan {
 
     if ($Resume -and $hasPlan) {
         $existingPlan = $Checkpoint.plan
+        $existingBatchSize = Get-CollectorPositivePlanIntegerValue -Plan $existingPlan -PropertyName 'batchSize'
+        $existingExpectedBatchCount = Get-CollectorPositivePlanIntegerValue -Plan $existingPlan -PropertyName 'expectedBatchCount'
         $compatible = (
             [string]$existingPlan.planVersion -eq [string]$currentPlan.planVersion -and
-            [int]$existingPlan.batchSize -eq [int]$currentPlan.batchSize -and
-            [int]$existingPlan.expectedBatchCount -eq [int]$currentPlan.expectedBatchCount -and
+            $null -ne $existingBatchSize -and
+            $existingBatchSize -eq [int]$currentPlan.batchSize -and
+            $null -ne $existingExpectedBatchCount -and
+            $existingExpectedBatchCount -eq [int]$currentPlan.expectedBatchCount -and
             [string]$existingPlan.sourceFingerprint -eq [string]$currentPlan.sourceFingerprint
         )
 
@@ -373,7 +424,7 @@ function Save-CollectorCheckpoint {
     $checkpointDirectory = Split-Path -Path $checkpointPath -Parent
 
     if (-not (Test-Path -LiteralPath $checkpointDirectory)) {
-        New-Item -Path $checkpointDirectory -ItemType Directory -Force | Out-Null
+        New-Item -LiteralPath $checkpointDirectory -ItemType Directory -Force | Out-Null
     }
 
     $Checkpoint.updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
