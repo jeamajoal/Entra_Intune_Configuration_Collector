@@ -99,4 +99,31 @@ Describe 'Graph pagination cycle detection' {
 
         Assert-MockCalled -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -Times 2 -Exactly
     }
+
+    It 'does not collapse distinct case-sensitive OData page tokens into a false cycle' {
+        Mock -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -MockWith {
+            if ($Uri -ceq 'https://graph.microsoft.com/v1.0/a?$skiptoken=AbC') {
+                return [pscustomobject]@{
+                    value = @([pscustomobject]@{ id = 'upper-token' })
+                    '@odata.nextLink' = 'https://graph.microsoft.com/v1.0/a?$skiptoken=aBc'
+                }
+            }
+
+            if ($Uri -ceq 'https://graph.microsoft.com/v1.0/a?$skiptoken=aBc') {
+                return [pscustomobject]@{
+                    value = @([pscustomobject]@{ id = 'lower-token' })
+                }
+            }
+
+            throw ('Unexpected HTTP request URI: {0}' -f $Uri)
+        }
+
+        $result = @(Invoke-CollectorGraphCollection -GraphToken 'test-token' -Endpoint '/v1.0/a?$skiptoken=AbC' -ThrottleMilliseconds 0 -MaxRetries 0)
+
+        if ($result.Count -ne 2 -or [string]$result[0].id -ne 'upper-token' -or [string]$result[1].id -ne 'lower-token') {
+            throw 'Expected case-distinct OData page tokens to be requested as distinct canonical page URIs.'
+        }
+
+        Assert-MockCalled -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -Times 2 -Exactly
+    }
 }
