@@ -3,7 +3,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 
-    function New-TestSnapshotLoaderFixture {
+    function Get-TestSnapshotLoaderFixture {
         param(
             [Parameter(Mandatory = $true)][string]$RunPath,
             [Parameter(Mandatory = $true)][string]$Stage,
@@ -100,7 +100,7 @@ Describe 'Stage3 snapshot loader output cardinality' {
     }
 
     It 'loads valid Stage3 relationship output when one planned source item emits two rows' {
-        $fixture = New-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 2 -Items @(
+        $fixture = Get-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 2 -Items @(
             [pscustomobject]@{ id = 'edge-1' },
             [pscustomobject]@{ id = 'edge-2' }
         )
@@ -112,7 +112,7 @@ Describe 'Stage3 snapshot loader output cardinality' {
     }
 
     It 'rejects Stage3 snapshot output cardinality that disagrees with its succeeded checkpoint' {
-        $fixture = New-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 1 -Items @(
+        $fixture = Get-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 1 -Items @(
             [pscustomobject]@{ id = 'edge-1' },
             [pscustomobject]@{ id = 'edge-2' }
         )
@@ -121,7 +121,7 @@ Describe 'Stage3 snapshot loader output cardinality' {
     }
 
     It 'keeps Stage3 succeeded checkpoint success and failure count integrity enforced' {
-        $fixture = New-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 2 -SuccessCount 1 -FailedCount 0 -Items @(
+        $fixture = Get-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 2 -SuccessCount 1 -FailedCount 0 -Items @(
             [pscustomobject]@{ id = 'edge-1' },
             [pscustomobject]@{ id = 'edge-2' }
         )
@@ -134,7 +134,7 @@ Describe 'Stage3 snapshot loader output cardinality' {
             $caseRoot = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-loader-' + $stage + '-' + [Guid]::NewGuid().ToString('N'))
             New-Item -Path $caseRoot -ItemType Directory -Force | Out-Null
             try {
-                $fixture = New-TestSnapshotLoaderFixture -RunPath $caseRoot -Stage $stage -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 2 -Items @(
+                $fixture = Get-TestSnapshotLoaderFixture -RunPath $caseRoot -Stage $stage -PlannedItemCount 1 -CheckpointItemCount 2 -SnapshotItemCount 2 -Items @(
                     [pscustomobject]@{ id = 'item-1' },
                     [pscustomobject]@{ id = 'item-2' }
                 )
@@ -149,7 +149,7 @@ Describe 'Stage3 snapshot loader output cardinality' {
     }
 
     It 'keeps legitimate zero-item Stage3 output loadable' {
-        $fixture = New-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 0 -CheckpointItemCount 0 -SnapshotItemCount 0 -Items @()
+        $fixture = Get-TestSnapshotLoaderFixture -RunPath $script:testRoot -Stage 'stage3' -PlannedItemCount 0 -CheckpointItemCount 0 -SnapshotItemCount 0 -Items @()
         $items = @(Get-CollectorSnapshotItems -RunPath $script:testRoot -Stage 'stage3' -Section $fixture.Section -Family $fixture.Family -ExpectedRunId $fixture.RunId)
         if ($items.Count -ne 0) {
             throw ('Expected zero Stage3 rows; actual count: {0}.' -f $items.Count)
