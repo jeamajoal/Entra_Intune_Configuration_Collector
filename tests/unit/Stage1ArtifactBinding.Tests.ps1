@@ -79,6 +79,7 @@ BeforeAll {
                     }
                 }
                 catch {
+                    $artifactSnapshot = $null
                     # Malformed fixtures intentionally fail before fingerprint validation.
                 }
             }
