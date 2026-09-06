@@ -69,10 +69,24 @@ BeforeAll {
         foreach ($batchId in $BatchIds) {
             $artifactPath = Get-TestArtifactPath -RunPath $RunPath -Section $Section -Family $Family -BatchId $batchId
             $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'Succeeded' -Attempts 1 -ItemCount 1 -SuccessCount 1 -FailedCount 0 -ArtifactPath $artifactPath -ErrorMessage $null
+
+            $fixtureFingerprint = 'test-' + $batchId
+            if (Test-Path -LiteralPath $artifactPath -PathType Leaf) {
+                try {
+                    $artifactSnapshot = Get-Content -LiteralPath $artifactPath -Raw | ConvertFrom-Json
+                    if ($null -ne $artifactSnapshot -and $artifactSnapshot.PSObject.Properties.Match('items').Count -gt 0) {
+                        $fixtureFingerprint = Get-CollectorSnapshotBatchFingerprint -Items @($artifactSnapshot.items)
+                    }
+                }
+                catch {
+                    # Malformed fixtures intentionally fail before fingerprint validation.
+                }
+            }
+
             $planBatches += [pscustomobject]@{
                 batchId = $batchId
                 itemCount = 1
-                fingerprint = 'test-' + $batchId
+                fingerprint = $fixtureFingerprint
             }
         }
 
