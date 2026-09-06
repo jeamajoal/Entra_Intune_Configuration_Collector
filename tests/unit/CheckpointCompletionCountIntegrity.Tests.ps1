@@ -24,7 +24,7 @@ BeforeAll {
             [switch]$OmitRecordedBatch
         )
 
-        $artifactPath = Join-Path -Path $RunPath -ChildPath ('{0}-batch-0001.json' -f $Stage)
+        $artifactPath = Join-Path -Path $RunPath -ChildPath ('{0}-batch-0001-{1}.json' -f $Stage, [Guid]::NewGuid().ToString('N'))
         if (-not $OmitArtifact) {
             '{}' | Set-Content -LiteralPath $artifactPath -Encoding UTF8
         }
