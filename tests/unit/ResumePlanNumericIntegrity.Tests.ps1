@@ -33,14 +33,14 @@ BeforeAll {
         return ($Checkpoint | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
     }
 
-    function Get-TestSingleItemBatches {
+    function Get-TestSingleItemBatchSet {
         return [object[]]@([object[]]@([pscustomobject]@{ id = 'one' }))
     }
 }
 
 Describe 'Resume checkpoint plan numeric integrity' {
     It 'rejects malformed persisted batchSize values with the bounded resume mismatch and does not normalize them' {
-        $batches = Get-TestSingleItemBatches
+        $batches = Get-TestSingleItemBatchSet
         $baseline = Get-TestResumePlanCheckpoint -Batches $batches -BatchSize 100
         $cases = @(
             [pscustomobject]@{ Name = 'string numeric'; Remove = $false; Value = '100' },
@@ -87,7 +87,7 @@ Describe 'Resume checkpoint plan numeric integrity' {
     }
 
     It 'rejects malformed persisted expectedBatchCount values with the bounded resume mismatch and does not normalize them' {
-        $batches = Get-TestSingleItemBatches
+        $batches = Get-TestSingleItemBatchSet
         $baseline = Get-TestResumePlanCheckpoint -Batches $batches -BatchSize 100
         $cases = @(
             [pscustomobject]@{ Name = 'string numeric'; Remove = $false; Value = '1' },
@@ -134,7 +134,7 @@ Describe 'Resume checkpoint plan numeric integrity' {
     }
 
     It 'accepts supported integral numeric runtime forms that match the current plan' {
-        $batches = Get-TestSingleItemBatches
+        $batches = Get-TestSingleItemBatchSet
         $baseline = Get-TestResumePlanCheckpoint -Batches $batches -BatchSize 100
         $typeCases = @(
             [pscustomobject]@{ BatchSize = [int]100; ExpectedBatchCount = [int]1 },
@@ -156,7 +156,7 @@ Describe 'Resume checkpoint plan numeric integrity' {
     }
 
     It 'preserves existing planVersion and sourceFingerprint mismatch behavior' {
-        $batches = Get-TestSingleItemBatches
+        $batches = Get-TestSingleItemBatchSet
         $baseline = Get-TestResumePlanCheckpoint -Batches $batches -BatchSize 100
 
         foreach ($propertyName in @('planVersion', 'sourceFingerprint')) {
