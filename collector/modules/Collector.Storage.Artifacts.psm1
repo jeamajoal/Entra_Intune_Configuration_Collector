@@ -698,6 +698,7 @@ Export-ModuleMember -Function @(
     'Split-CollectorItems',
     'Write-CollectorSnapshotArtifact',
     'Get-CollectorSnapshotFiles',
+    'Get-CollectorSnapshotBatchFingerprint',
     'Get-CollectorSnapshotItems',
     'Test-CollectorInventoryArtifacts',
     'Get-CollectorManifestPath',
