@@ -323,13 +323,29 @@ function Get-CollectorSnapshotItems {
         throw ('Snapshot checkpoint plan is incomplete or inconsistent for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
     }
 
+    $plannedBatchIds = @($plannedBatches | ForEach-Object { [string]$_.batchId })
+    $checkpointBatchIds = @($checkpointBatches | ForEach-Object { [string]$_.batchId })
+    $plannedBatchIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($batchId in $plannedBatchIds) {
+        if ([string]::IsNullOrWhiteSpace($batchId) -or -not $plannedBatchIdSet.Add($batchId)) {
+            throw ('Snapshot checkpoint plan contains an empty or duplicate batch identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $batchId)
+        }
+    }
+
+    $checkpointBatchIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($batchId in $checkpointBatchIds) {
+        if ([string]::IsNullOrWhiteSpace($batchId) -or -not $checkpointBatchIdSet.Add($batchId)) {
+            throw ('Snapshot checkpoint contains an empty or duplicate recorded batch identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $batchId)
+        }
+    }
+
+    if (-not $plannedBatchIdSet.SetEquals($checkpointBatchIdSet)) {
+        throw ('Snapshot checkpoint planned and recorded batch identities do not match for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
     $items = @()
     foreach ($plannedBatch in $plannedBatches) {
         $batchId = [string]$plannedBatch.batchId
-        if ([string]::IsNullOrWhiteSpace($batchId)) {
-            throw ('Snapshot checkpoint plan contains an empty batch identity for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
-        }
-
         $checkpointBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
         if ($null -eq $checkpointBatch -or [string]$checkpointBatch.status -ne 'Succeeded' -or [string]::IsNullOrWhiteSpace([string]$checkpointBatch.artifactPath)) {
             throw ('Snapshot checkpoint batch {0} is not a successful persisted batch for {1}/{2}/{3}.' -f $batchId, $Stage, $Section, $Family)
