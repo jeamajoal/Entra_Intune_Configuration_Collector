@@ -105,6 +105,64 @@ function New-CollectorCheckpointPlan {
     }
 }
 
+function Get-CollectorPlanIntegerValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Plan,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyName,
+
+        [int]$MinimumValue = 0
+    )
+
+    if ($null -eq $Plan -or $Plan.PSObject.Properties.Match($PropertyName).Count -eq 0) {
+        return $null
+    }
+
+    $rawValue = $Plan.$PropertyName
+    if ($null -eq $rawValue -or $rawValue -is [string] -or $rawValue -is [bool]) {
+        return $null
+    }
+
+    if ($rawValue -is [int] -or $rawValue -is [long]) {
+        $integerValue = [long]$rawValue
+        if ($integerValue -lt $MinimumValue -or $integerValue -gt [int]::MaxValue) {
+            return $null
+        }
+        return [int]$integerValue
+    }
+
+    if ($rawValue -is [double]) {
+        $doubleValue = [double]$rawValue
+        if (
+            [double]::IsNaN($doubleValue) -or
+            [double]::IsInfinity($doubleValue) -or
+            $doubleValue -ne [math]::Truncate($doubleValue) -or
+            $doubleValue -lt $MinimumValue -or
+            $doubleValue -gt [int]::MaxValue
+        ) {
+            return $null
+        }
+        return [int]$doubleValue
+    }
+
+    if ($rawValue -is [decimal]) {
+        $decimalValue = [decimal]$rawValue
+        if (
+            $decimalValue -ne [decimal]::Truncate($decimalValue) -or
+            $decimalValue -lt $MinimumValue -or
+            $decimalValue -gt [int]::MaxValue
+        ) {
+            return $null
+        }
+        return [int]$decimalValue
+    }
+
+    return $null
+}
+
 function Initialize-CollectorCheckpointPlan {
     [CmdletBinding()]
     param(
@@ -126,10 +184,14 @@ function Initialize-CollectorCheckpointPlan {
 
     if ($Resume -and $hasPlan) {
         $existingPlan = $Checkpoint.plan
+        $existingBatchSize = Get-CollectorPlanIntegerValue -Plan $existingPlan -PropertyName 'batchSize' -MinimumValue 1
+        $existingExpectedBatchCount = Get-CollectorPlanIntegerValue -Plan $existingPlan -PropertyName 'expectedBatchCount' -MinimumValue 0
         $compatible = (
             [string]$existingPlan.planVersion -eq [string]$currentPlan.planVersion -and
-            [int]$existingPlan.batchSize -eq [int]$currentPlan.batchSize -and
-            [int]$existingPlan.expectedBatchCount -eq [int]$currentPlan.expectedBatchCount -and
+            $null -ne $existingBatchSize -and
+            $existingBatchSize -eq [int]$currentPlan.batchSize -and
+            $null -ne $existingExpectedBatchCount -and
+            $existingExpectedBatchCount -eq [int]$currentPlan.expectedBatchCount -and
             [string]$existingPlan.sourceFingerprint -eq [string]$currentPlan.sourceFingerprint
         )
 
