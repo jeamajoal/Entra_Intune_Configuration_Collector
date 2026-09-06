@@ -127,8 +127,9 @@ Credential metadata is collected in separate families so its security and thrott
 - A valid `current-run.json` target is preferred. If the marker is missing or unusable, fallback selects the newest directory that contains a readable run manifest whose `runId` matches that directory; unrelated or malformed directories are skipped.
 - If no valid prior collector run can be identified, resume fails before writing `current-run.json` or initializing collector child directories.
 - Resume with ReprocessFailedOnly:
-  - skips Succeeded batches only when the persisted plan remains compatible and the artifact exists,
-  - reruns Failed, InProgress, Missing, and missing-artifact batches.
+  - reruns Failed, InProgress, Missing, and missing-artifact batches;
+  - for Stage1, reuses a Succeeded batch only after current-input plan compatibility is established and the canonical snapshot is readable/non-null, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality;
+  - a Stage1 prior success that fails that validation is recorded as non-success and reprocessed through the normal write/checkpoint path in the same resume invocation without deleting the artifact first.
 - Checkpoint writes use same-directory validated temporary files and atomic replacement so a failed replacement does not destroy the last valid checkpoint.
 - Persisted artifact paths are normalized from run/stage/section/family/batch identity rather than interpreted relative to process working directory.
 
