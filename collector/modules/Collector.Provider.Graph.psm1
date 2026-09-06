@@ -115,7 +115,7 @@ function Invoke-CollectorGraphCollection {
     $items = @()
     $currentEndpoint = $Endpoint
     $isAbsoluteUri = $false
-    $visitedPageUris = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $visitedPageUris = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 
     while ($currentEndpoint) {
         $canonicalPageUri = Resolve-CollectorGraphUri -Endpoint $currentEndpoint -AbsoluteUri:$isAbsoluteUri
