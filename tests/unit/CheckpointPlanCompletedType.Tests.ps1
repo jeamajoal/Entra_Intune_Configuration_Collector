@@ -49,6 +49,7 @@ BeforeAll {
     }
 
     function Set-TestPlanCompletedValue {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This test helper mutates only temporary checkpoint fixture files.')]
         param(
             [Parameter(Mandatory = $true)]
             [string]$CheckpointPath,
