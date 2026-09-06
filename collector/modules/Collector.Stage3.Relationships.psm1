@@ -119,12 +119,14 @@ function Assert-CollectorInventoryFirstForStage3 {
         [string]$Section,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$Families
+        [string[]]$Families,
+
+        [string]$RunId
     )
 
     foreach ($family in $Families) {
-        if (-not (Test-CollectorInventoryArtifacts -RunPath $RunPath -Section $Section -Family $family)) {
-            $exception = [System.InvalidOperationException]::new(('Stage3 inventory-first enforcement failed. Missing Stage1 artifact for section {0}, family {1}.' -f $Section, $family))
+        if (-not (Test-CollectorInventoryArtifacts -RunPath $RunPath -Section $Section -Family $family -ExpectedRunId $RunId)) {
+            $exception = [System.InvalidOperationException]::new(('Stage3 inventory-first enforcement failed. Missing or mismatched Stage1 artifact for section {0}, family {1}.' -f $Section, $family))
             $exception.Data['CollectorStage'] = 'stage3'
             $exception.Data['CollectorSection'] = $Section
             $exception.Data['CollectorFamily'] = $family
@@ -310,9 +312,9 @@ function Invoke-CollectorStage3GraphPerObjectFamily {
         [scriptblock]$RelationshipTransform
     )
 
-    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @($DependencyFamily)
+    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @($DependencyFamily) -RunId $Context.RunId
 
-    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily)
+    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily -ExpectedRunId $Context.RunId)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
     $effectiveRelationshipTransform = $RelationshipTransform
 
@@ -383,7 +385,7 @@ function Invoke-CollectorStage3DelegatedGrantFamily {
         [string]$Section
     )
 
-    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @('servicePrincipals')
+    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @('servicePrincipals') -RunId $Context.RunId
 
     $grants = @()
     $seedError = $null
@@ -448,10 +450,10 @@ function Invoke-CollectorStage3PimScheduleEdgeCollection {
         [string]$Section
     )
 
-    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @('roleAssignmentScheduleInstances', 'roleEligibilityScheduleInstances')
+    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @('roleAssignmentScheduleInstances', 'roleEligibilityScheduleInstances') -RunId $Context.RunId
 
-    $assignmentSchedules = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family 'roleAssignmentScheduleInstances')
-    $eligibilitySchedules = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family 'roleEligibilityScheduleInstances')
+    $assignmentSchedules = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family 'roleAssignmentScheduleInstances' -ExpectedRunId $Context.RunId)
+    $eligibilitySchedules = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family 'roleEligibilityScheduleInstances' -ExpectedRunId $Context.RunId)
 
     $edges = @()
     foreach ($assignment in $assignmentSchedules) {
@@ -492,9 +494,9 @@ function Invoke-CollectorStage3OnPremFamily {
         [string]$DependencyFamily
     )
 
-    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @($DependencyFamily)
+    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @($DependencyFamily) -RunId $Context.RunId
 
-    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily)
+    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily -ExpectedRunId $Context.RunId)
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
     $provenanceProfile = Get-CollectorOnPremProvenanceProfile -Phase 'Relationships' -Family $Family
     $requestContext = @{

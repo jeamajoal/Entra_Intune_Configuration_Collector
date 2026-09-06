@@ -277,7 +277,9 @@ function Get-CollectorSnapshotItems {
         [string]$Section,
 
         [Parameter(Mandatory = $true)]
-        [string]$Family
+        [string]$Family,
+
+        [string]$ExpectedRunId
     )
 
     $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path (Join-Path -Path 'checkpoints' -ChildPath $Stage) -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json')))
@@ -297,6 +299,10 @@ function Get-CollectorSnapshotItems {
     }
 
     $runId = [string]$checkpointIdentity.runId
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedRunId) -and $runId -ne $ExpectedRunId) {
+        throw ('Snapshot loading run identity mismatch for {0}/{1}/{2}: expected runId={3}; found {4}.' -f $Stage, $Section, $Family, $ExpectedRunId, $runId)
+    }
+
     $manifestPath = Get-CollectorManifestPath -RunPath $RunPath
     if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
         try {
@@ -430,7 +436,9 @@ function Test-CollectorInventoryArtifacts {
         [string]$Section,
 
         [Parameter(Mandatory = $true)]
-        [string]$Family
+        [string]$Family,
+
+        [string]$ExpectedRunId
     )
 
     $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path (Join-Path -Path 'checkpoints' -ChildPath 'stage1') -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json')))
@@ -447,6 +455,12 @@ function Test-CollectorInventoryArtifacts {
 
     if ([string]$checkpoint.stage -ne 'stage1' -or [string]$checkpoint.section -ne $Section -or [string]$checkpoint.family -ne $Family) {
         return $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedRunId)) {
+        if ($checkpoint.PSObject.Properties.Match('runId').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$checkpoint.runId) -or [string]$checkpoint.runId -ne $ExpectedRunId) {
+            return $false
+        }
     }
 
     $manifestPath = Join-Path -Path $RunPath -ChildPath 'manifest\run-manifest.json'
