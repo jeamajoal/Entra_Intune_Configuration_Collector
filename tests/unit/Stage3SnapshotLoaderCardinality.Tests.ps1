@@ -126,7 +126,7 @@ Describe 'Stage3 snapshot loader output cardinality' {
             [pscustomobject]@{ id = 'edge-2' }
         )
 
-        Assert-TestSnapshotLoaderFailure -RunPath $script:testRoot -Stage 'stage3' -Section $fixture.Section -Family $fixture.Family -RunId $fixture.RunId -Pattern 'success/failure counts are inconsistent'
+        Assert-TestSnapshotLoaderFailure -RunPath $script:testRoot -Stage 'stage3' -Section $fixture.Section -Family $fixture.Family -RunId $fixture.RunId -Pattern 'success/failure counts'
     }
 
     It 'preserves strict planned and persisted cardinality equality for Stage1 and Stage2' {

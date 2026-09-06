@@ -221,6 +221,62 @@ function Initialize-CollectorCheckpointPlan {
     return $Checkpoint
 }
 
+function Get-CollectorBatchCountValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Batch,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyName
+    )
+
+    if ($null -eq $Batch -or $Batch.PSObject.Properties.Match($PropertyName).Count -eq 0) {
+        return $null
+    }
+
+    $rawValue = $Batch.$PropertyName
+    if ($null -eq $rawValue -or $rawValue -is [string] -or $rawValue -is [bool]) {
+        return $null
+    }
+
+    if ($rawValue -is [int] -or $rawValue -is [long]) {
+        $integerValue = [long]$rawValue
+        if ($integerValue -lt 0 -or $integerValue -gt [int]::MaxValue) {
+            return $null
+        }
+        return [int]$integerValue
+    }
+
+    if ($rawValue -is [double]) {
+        $doubleValue = [double]$rawValue
+        if (
+            [double]::IsNaN($doubleValue) -or
+            [double]::IsInfinity($doubleValue) -or
+            $doubleValue -ne [math]::Truncate($doubleValue) -or
+            $doubleValue -lt 0 -or
+            $doubleValue -gt [int]::MaxValue
+        ) {
+            return $null
+        }
+        return [int]$doubleValue
+    }
+
+    if ($rawValue -is [decimal]) {
+        $decimalValue = [decimal]$rawValue
+        if (
+            $decimalValue -ne [decimal]::Truncate($decimalValue) -or
+            $decimalValue -lt 0 -or
+            $decimalValue -gt [int]::MaxValue
+        ) {
+            return $null
+        }
+        return [int]$decimalValue
+    }
+
+    return $null
+}
+
 function Test-CollectorSucceededBatchCountIntegrity {
     [CmdletBinding()]
     param(
@@ -228,49 +284,15 @@ function Test-CollectorSucceededBatchCountIntegrity {
         [object]$Batch
     )
 
-    $countValues = @{}
-    foreach ($propertyName in @('itemCount', 'successCount', 'failedCount')) {
-        if ($null -eq $Batch -or $Batch.PSObject.Properties.Match($propertyName).Count -eq 0) {
-            return $false
-        }
+    $itemCount = Get-CollectorBatchCountValue -Batch $Batch -PropertyName 'itemCount'
+    $successCount = Get-CollectorBatchCountValue -Batch $Batch -PropertyName 'successCount'
+    $failedCount = Get-CollectorBatchCountValue -Batch $Batch -PropertyName 'failedCount'
 
-        $rawValue = $Batch.$propertyName
-        if ($null -eq $rawValue -or $rawValue -is [string] -or $rawValue -is [bool]) {
-            return $false
-        }
-
-        $isSupportedNumericType = (
-            $rawValue -is [int] -or
-            $rawValue -is [long] -or
-            $rawValue -is [double] -or
-            $rawValue -is [decimal]
-        )
-        if (-not $isSupportedNumericType) {
-            return $false
-        }
-
-        try {
-            $numericValue = [decimal]$rawValue
-        }
-        catch {
-            return $false
-        }
-
-        if (
-            $numericValue -ne [decimal]::Truncate($numericValue) -or
-            $numericValue -lt 0 -or
-            $numericValue -gt [int]::MaxValue
-        ) {
-            return $false
-        }
-
-        $countValues[$propertyName] = [int]$numericValue
+    if ($null -eq $itemCount -or $null -eq $successCount -or $null -eq $failedCount) {
+        return $false
     }
 
-    return (
-        $countValues['successCount'] -eq $countValues['itemCount'] -and
-        $countValues['failedCount'] -eq 0
-    )
+    return ($successCount -eq $itemCount -and $failedCount -eq 0)
 }
 
 function Complete-CollectorCheckpointPlan {
@@ -563,6 +585,14 @@ function Get-CollectorBatchExecutionDecision {
         }
     }
 
+    if ([string]$existingBatch.status -eq 'Succeeded' -and -not (Test-CollectorSucceededBatchCountIntegrity -Batch $existingBatch)) {
+        return [pscustomobject]@{
+            ShouldProcess = $true
+            MarkMissing = $false
+            Reason = 'InvalidSucceededCounts'
+        }
+    }
+
     $artifactExists = $false
     if ($existingBatch.artifactPath) {
         $artifactExists = Test-Path -LiteralPath $existingBatch.artifactPath
@@ -691,6 +721,7 @@ Export-ModuleMember -Function @(
     'Set-CollectorCheckpointBatch',
     'Get-CollectorBatchExecutionDecision',
     'Initialize-CollectorCheckpointPlan',
+    'Test-CollectorSucceededBatchCountIntegrity',
     'Complete-CollectorCheckpointPlan',
     'Get-CollectorCheckpointSummary'
 )
