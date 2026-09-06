@@ -26,6 +26,30 @@ function Get-CollectorFamilyResult {
     }
 }
 
+function Get-CollectorStage1BatchFingerprint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Items
+    )
+
+    $serializedBatch = ConvertTo-Json -InputObject ([object[]]@($Items)) -Depth 50 -Compress
+    if ([string]::IsNullOrWhiteSpace($serializedBatch)) {
+        $serializedBatch = '[]'
+    }
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($serializedBatch)
+        $hashBytes = $sha256.ComputeHash($bytes)
+        return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
 function Test-CollectorStage1ResumeArtifact {
     [CmdletBinding()]
     param(
@@ -45,7 +69,10 @@ function Test-CollectorStage1ResumeArtifact {
         [pscustomobject]$CheckpointBatch,
 
         [Parameter(Mandatory = $true)]
-        [int]$ExpectedItemCount
+        [int]$ExpectedItemCount,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedFingerprint
     )
 
     if ([string]$CheckpointBatch.status -ne 'Succeeded' -or [string]::IsNullOrWhiteSpace([string]$CheckpointBatch.artifactPath)) {
@@ -110,7 +137,11 @@ function Test-CollectorStage1ResumeArtifact {
         return $false
     }
 
-    return @($snapshot.items).Count -eq $ExpectedItemCount
+    if (@($snapshot.items).Count -ne $ExpectedItemCount) {
+        return $false
+    }
+
+    return (Get-CollectorStage1BatchFingerprint -Items @($snapshot.items)) -eq $ExpectedFingerprint
 }
 
 function Invoke-CollectorStage1Family {
@@ -185,6 +216,7 @@ function Invoke-CollectorStage1Family {
         $batchId = '{0:D4}' -f $batchNumber
         $batchItems = @($batch)
         $batchItemCount = $batchItems.Count
+        $batchFingerprint = Get-CollectorStage1BatchFingerprint -Items $batchItems
         $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId
 
         if (
@@ -193,7 +225,7 @@ function Invoke-CollectorStage1Family {
             [string]$existingBatch.status -eq 'Succeeded' -and
             -not [string]::IsNullOrWhiteSpace([string]$existingBatch.artifactPath) -and
             (Test-Path -LiteralPath $existingBatch.artifactPath -PathType Leaf) -and
-            -not (Test-CollectorStage1ResumeArtifact -Context $Context -Section $Section -Family $Family -BatchId $batchId -CheckpointBatch $existingBatch -ExpectedItemCount $batchItemCount)
+            -not (Test-CollectorStage1ResumeArtifact -Context $Context -Section $Section -Family $Family -BatchId $batchId -CheckpointBatch $existingBatch -ExpectedItemCount $batchItemCount -ExpectedFingerprint $batchFingerprint)
         ) {
             $attempts = [int]$existingBatch.attempts
             $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId $batchId -Status 'Failed' -Attempts $attempts -ItemCount $batchItemCount -SuccessCount 0 -FailedCount $batchItemCount -ArtifactPath $existingBatch.artifactPath -Error 'Previously successful Stage1 artifact failed resume validation and will be reprocessed.'
