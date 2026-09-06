@@ -4,7 +4,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 
-    function New-TestStage1ResumeContext {
+    function Get-TestStage1ResumeContext {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath
@@ -94,7 +94,7 @@ Describe 'Stage1 resume artifact integrity' {
     BeforeEach {
         $script:testRoot = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-stage1-resume-integrity-' + [Guid]::NewGuid().ToString('N'))
         New-Item -Path $script:testRoot -ItemType Directory -Force | Out-Null
-        $script:context = New-TestStage1ResumeContext -RunPath $script:testRoot
+        $script:context = Get-TestStage1ResumeContext -RunPath $script:testRoot
 
         Mock -ModuleName 'Collector.Stage1.Inventory' -CommandName Invoke-CollectorGraphCollection -MockWith {
             @([pscustomobject]@{ id = 'current-item' })
