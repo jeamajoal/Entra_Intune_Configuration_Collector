@@ -263,6 +263,50 @@ function Get-CollectorSnapshotFiles {
     return @(Get-ChildItem -LiteralPath $familyPath -Filter 'batch-*.json' -File | Sort-Object -Property Name)
 }
 
+function Get-CollectorExpectedBatchCountValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Plan
+    )
+
+    if ($null -eq $Plan -or $Plan.PSObject.Properties.Match('expectedBatchCount').Count -eq 0) {
+        return $null
+    }
+
+    $rawValue = $Plan.expectedBatchCount
+    if ($null -eq $rawValue -or $rawValue -is [string] -or $rawValue -is [bool]) {
+        return $null
+    }
+
+    $isSupportedNumericType = (
+        $rawValue -is [int] -or
+        $rawValue -is [long] -or
+        $rawValue -is [double] -or
+        $rawValue -is [decimal]
+    )
+    if (-not $isSupportedNumericType) {
+        return $null
+    }
+
+    try {
+        $numericValue = [decimal]$rawValue
+    }
+    catch {
+        return $null
+    }
+
+    if (
+        $numericValue -ne [decimal]::Truncate($numericValue) -or
+        $numericValue -le 0 -or
+        $numericValue -gt [int]::MaxValue
+    ) {
+        return $null
+    }
+
+    return [int]$numericValue
+}
+
 function Get-CollectorSnapshotItems {
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'This exported function intentionally returns the collection of items across snapshot files.')]
@@ -331,8 +375,8 @@ function Get-CollectorSnapshotItems {
 
     $plannedBatches = @($checkpoint.plan.batches)
     $checkpointBatches = @($checkpoint.batches)
-    $expectedBatchCount = [int]$checkpoint.plan.expectedBatchCount
-    if ($expectedBatchCount -le 0 -or $plannedBatches.Count -ne $expectedBatchCount -or $checkpointBatches.Count -ne $expectedBatchCount) {
+    $expectedBatchCount = Get-CollectorExpectedBatchCountValue -Plan $checkpoint.plan
+    if ($null -eq $expectedBatchCount -or $plannedBatches.Count -ne $expectedBatchCount -or $checkpointBatches.Count -ne $expectedBatchCount) {
         throw ('Snapshot checkpoint plan is incomplete or inconsistent for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
     }
 
@@ -518,7 +562,8 @@ function Test-CollectorInventoryArtifacts {
 
     $batches = @($checkpoint.batches)
     $plannedBatches = @($checkpoint.plan.batches)
-    if ($batches.Count -eq 0 -or $batches.Count -ne [int]$checkpoint.plan.expectedBatchCount -or $plannedBatches.Count -ne [int]$checkpoint.plan.expectedBatchCount) {
+    $expectedBatchCount = Get-CollectorExpectedBatchCountValue -Plan $checkpoint.plan
+    if ($null -eq $expectedBatchCount -or $batches.Count -eq 0 -or $batches.Count -ne $expectedBatchCount -or $plannedBatches.Count -ne $expectedBatchCount) {
         return $false
     }
 
