@@ -424,7 +424,7 @@ function Save-CollectorCheckpoint {
     $checkpointDirectory = Split-Path -Path $checkpointPath -Parent
 
     if (-not (Test-Path -LiteralPath $checkpointDirectory)) {
-        New-Item -LiteralPath $checkpointDirectory -ItemType Directory -Force | Out-Null
+        New-Item -Path $checkpointDirectory -ItemType Directory -Force | Out-Null
     }
 
     $Checkpoint.updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
