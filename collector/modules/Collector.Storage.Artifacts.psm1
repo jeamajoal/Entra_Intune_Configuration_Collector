@@ -383,7 +383,7 @@ function Get-CollectorSnapshotItems {
             throw ('Snapshot checkpoint batch success/failure counts are inconsistent for {0}/{1}/{2} batch {3}: itemCount={4}; successCount={5}; failedCount={6}.' -f $Stage, $Section, $Family, $batchId, $checkpointItemCount, $checkpointSuccessCount, $checkpointFailedCount)
         }
 
-        if ($checkpointItemCount -ne $plannedItemCount) {
+        if ([string]$Stage -ne 'stage3' -and $checkpointItemCount -ne $plannedItemCount) {
             throw ('Snapshot cardinality mismatch for {0}/{1}/{2} batch {3}: planned itemCount={4}; checkpoint itemCount={5}.' -f $Stage, $Section, $Family, $batchId, $plannedItemCount, $checkpointItemCount)
         }
 
@@ -432,8 +432,9 @@ function Get-CollectorSnapshotItems {
         }
 
         $actualItemCount = @($snapshot.items).Count
-        if ($snapshotItemCount -ne $plannedItemCount -or $actualItemCount -ne $plannedItemCount) {
-            throw ('Snapshot cardinality mismatch for {0}/{1}/{2} batch {3}: planned itemCount={4}; snapshot itemCount={5}; actual items={6}.' -f $Stage, $Section, $Family, $batchId, $plannedItemCount, $snapshotItemCount, $actualItemCount)
+        $expectedPersistedItemCount = if ([string]$Stage -eq 'stage3') { $checkpointItemCount } else { $plannedItemCount }
+        if ($snapshotItemCount -ne $expectedPersistedItemCount -or $actualItemCount -ne $expectedPersistedItemCount) {
+            throw ('Snapshot cardinality mismatch for {0}/{1}/{2} batch {3}: planned itemCount={4}; checkpoint itemCount={5}; snapshot itemCount={6}; actual items={7}.' -f $Stage, $Section, $Family, $batchId, $plannedItemCount, $checkpointItemCount, $snapshotItemCount, $actualItemCount)
         }
 
         $items += @($snapshot.items)
