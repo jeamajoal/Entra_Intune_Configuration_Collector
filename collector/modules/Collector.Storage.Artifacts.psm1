@@ -280,9 +280,35 @@ function Get-CollectorSnapshotItems {
         [string]$Family
     )
 
-    $runId = ([System.IO.DirectoryInfo]([System.IO.Path]::GetFullPath($RunPath))).Name
-    if ([string]::IsNullOrWhiteSpace($runId)) {
-        throw ('Cannot determine snapshot run identity from run path: {0}' -f $RunPath)
+    $checkpointPath = Join-Path -Path $RunPath -ChildPath (Join-Path -Path (Join-Path -Path 'checkpoints' -ChildPath $Stage) -ChildPath (Join-Path -Path $Section -ChildPath ($Family + '.json')))
+    if (-not (Test-Path -LiteralPath $checkpointPath -PathType Leaf)) {
+        throw ('Snapshot loading requires a persisted checkpoint for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
+    try {
+        $checkpointIdentity = Get-Content -LiteralPath $checkpointPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw ('Snapshot loading cannot read checkpoint identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $_.Exception.Message)
+    }
+
+    if ($null -eq $checkpointIdentity -or $checkpointIdentity.PSObject.Properties.Match('runId').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$checkpointIdentity.runId)) {
+        throw ('Snapshot loading requires a checkpoint run identity for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+    }
+
+    $runId = [string]$checkpointIdentity.runId
+    $manifestPath = Get-CollectorManifestPath -RunPath $RunPath
+    if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+        try {
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            throw ('Snapshot loading cannot validate manifest run identity for {0}/{1}/{2}: {3}' -f $Stage, $Section, $Family, $_.Exception.Message)
+        }
+
+        if ($null -eq $manifest -or $manifest.PSObject.Properties.Match('runId').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$manifest.runId) -or [string]$manifest.runId -ne $runId) {
+            throw ('Snapshot loading run identity does not match the persisted manifest for {0}/{1}/{2}.' -f $Stage, $Section, $Family)
+        }
     }
 
     $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $runId -Stage $Stage -Section $Section -Family $Family
