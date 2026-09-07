@@ -109,7 +109,10 @@ Describe 'Checkpoint resume behavior' {
 
     It 'skips succeeded batch when artifact exists during resume failed-only mode' {
         $artifactPath = Join-Path -Path $script:testRoot -ChildPath 'batch-0001.json'
-        '{}' | Set-Content -Path $artifactPath -Encoding UTF8
+        [pscustomobject]@{
+            itemCount = 10
+            items = @(1..10 | ForEach-Object { [pscustomobject]@{ id = ('item-{0}' -f $_) } })
+        } | ConvertTo-Json -Depth 5 | Set-Content -Path $artifactPath -Encoding UTF8
 
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:testRoot -RunId 'run-a' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
         $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status 'Succeeded' -Attempts 1 -ItemCount 10 -SuccessCount 10 -FailedCount 0 -ArtifactPath $artifactPath -ErrorMessage $null
