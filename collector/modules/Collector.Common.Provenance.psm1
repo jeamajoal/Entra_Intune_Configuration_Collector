@@ -20,7 +20,7 @@ function New-CollectorProvenanceSnapshot {
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function constructs and returns an in-memory provenance snapshot; it does not change external state.')]
     param(
-        [string]$SchemaVersion = '1.0',
+        [string]$SchemaVersion = $script:CollectorSnapshotSchemaVersion,
 
         [Parameter(Mandatory = $true)]
         [string]$RunId,
