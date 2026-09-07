@@ -77,7 +77,16 @@ function Test-CollectorResumeRun {
         return $false
     }
 
-    if ($null -eq $manifest -or $manifest.PSObject.Properties.Match('runId').Count -eq 0) {
+    if ($null -eq $manifest) {
+        return $false
+    }
+
+    $hasValidRunId = (
+        $manifest.PSObject.Properties.Match('runId').Count -gt 0 -and
+        $manifest.runId -is [string] -and
+        -not [string]::IsNullOrWhiteSpace([string]$manifest.runId)
+    )
+    if (-not $hasValidRunId) {
         return $false
     }
 
@@ -90,7 +99,7 @@ function Test-CollectorResumeRun {
         return $false
     }
 
-    return -not [string]::IsNullOrWhiteSpace([string]$manifest.runId) -and [string]$manifest.runId -eq $RunId
+    return $manifest.runId -eq $RunId
 }
 
 function Resolve-CollectorRun {
