@@ -427,7 +427,11 @@ function Get-CollectorCheckpoint {
             throw ('Checkpoint identity mismatch at {0}: required identity property {1} is missing.' -f $checkpointPath, $identityName)
         }
 
-        $actualValue = [string]$checkpoint.$identityName
+        $actualValue = $checkpoint.$identityName
+        if (-not ($actualValue -is [string]) -or [string]::IsNullOrWhiteSpace([string]$actualValue)) {
+            throw ('Checkpoint identity mismatch at {0}: required identity property {1} must be a non-empty string.' -f $checkpointPath, $identityName)
+        }
+
         $expectedValue = [string]$expectedIdentity[$identityName]
         if ($actualValue -ne $expectedValue) {
             throw ('Checkpoint identity mismatch at {0}: expected {1}={2}; found {3}.' -f $checkpointPath, $identityName, $expectedValue, $actualValue)
