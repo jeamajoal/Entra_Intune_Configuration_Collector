@@ -110,6 +110,7 @@ Describe 'Checkpoint resume behavior' {
     It 'skips succeeded batch when artifact exists during resume failed-only mode' {
         $artifactPath = Join-Path -Path $script:testRoot -ChildPath 'batch-0001.json'
         [pscustomobject]@{
+            schemaVersion = '1.0'
             itemCount = 10
             items = @(1..10 | ForEach-Object { [pscustomobject]@{ id = ('item-{0}' -f $_) } })
         } | ConvertTo-Json -Depth 5 | Set-Content -Path $artifactPath -Encoding UTF8

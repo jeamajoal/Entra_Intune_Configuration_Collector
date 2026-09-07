@@ -55,7 +55,7 @@ BeforeAll {
             [Parameter(Mandatory = $true)][string]$ItemCountJson
         )
 
-        $json = '{"itemCount":' + $ItemCountJson + ',"items":[{"id":"seed-1"}]}'
+        $json = '{"schemaVersion":"1.0","itemCount":' + $ItemCountJson + ',"items":[{"id":"seed-1"}]}'
         Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
     }
 
@@ -157,7 +157,7 @@ Describe 'Persisted plan and snapshot itemCount type integrity' {
             }
         }
 
-        Set-Content -LiteralPath $script:artifactPath -Value '{"items":[{"id":"seed-1"}]}' -Encoding UTF8
+        Set-Content -LiteralPath $script:artifactPath -Value '{"schemaVersion":"1.0","items":[{"id":"seed-1"}]}' -Encoding UTF8
         $missingDecision = Get-CollectorBatchExecutionDecision -Checkpoint (Get-TestItemCountDecisionCheckpoint -ArtifactPath $script:artifactPath) -BatchId '0001' -Resume
         if (-not $missingDecision.ShouldProcess -or [string]$missingDecision.Reason -ne 'InvalidSnapshotItemCount') {
             throw 'Expected missing persisted snapshot itemCount to force reprocessing.'
@@ -173,7 +173,7 @@ Describe 'Persisted plan and snapshot itemCount type integrity' {
 
         foreach ($case in $validCases) {
             $itemsJson = if ($case.Count -eq 0) { '[]' } else { '[{"id":"seed-1"}]' }
-            Set-Content -LiteralPath $script:artifactPath -Value ('{"itemCount":' + $case.Json + ',"items":' + $itemsJson + '}') -Encoding UTF8
+            Set-Content -LiteralPath $script:artifactPath -Value ('{"schemaVersion":"1.0","itemCount":' + $case.Json + ',"items":' + $itemsJson + '}') -Encoding UTF8
             $checkpoint = Get-TestItemCountDecisionCheckpoint -ArtifactPath $script:artifactPath -ItemCount $case.Count -SuccessCount $case.Count -FailedCount 0
             $decision = Get-CollectorBatchExecutionDecision -Checkpoint $checkpoint -BatchId '0001' -Resume
 

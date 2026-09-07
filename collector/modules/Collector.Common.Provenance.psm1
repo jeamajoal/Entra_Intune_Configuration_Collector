@@ -1,5 +1,21 @@
 Set-StrictMode -Version Latest
 
+$script:CollectorSnapshotSchemaVersion = '1.0'
+
+function Test-CollectorSnapshotSchemaVersion {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Snapshot
+    )
+
+    if ($null -eq $Snapshot -or $Snapshot.PSObject.Properties.Match('schemaVersion').Count -eq 0) {
+        return $false
+    }
+
+    return ($Snapshot.schemaVersion -is [string]) -and [string]$Snapshot.schemaVersion -eq $script:CollectorSnapshotSchemaVersion
+}
+
 function New-CollectorProvenanceSnapshot {
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function constructs and returns an in-memory provenance snapshot; it does not change external state.')]
@@ -60,4 +76,7 @@ function New-CollectorProvenanceSnapshot {
     }
 }
 
-Export-ModuleMember -Function New-CollectorProvenanceSnapshot
+Export-ModuleMember -Function @(
+    'Test-CollectorSnapshotSchemaVersion',
+    'New-CollectorProvenanceSnapshot'
+)

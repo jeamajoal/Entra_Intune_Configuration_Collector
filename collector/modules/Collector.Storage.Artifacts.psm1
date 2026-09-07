@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
 function Initialize-CollectorDirectory {
     [CmdletBinding()]
@@ -460,6 +461,10 @@ function Get-CollectorSnapshotItems {
 
         if ($null -eq $snapshot) {
             throw ('Expected snapshot artifact is null for {0}/{1}/{2} batch {3}: {4}' -f $Stage, $Section, $Family, $batchId, $artifactPath)
+        }
+
+        if (-not (Test-CollectorSnapshotSchemaVersion -Snapshot $snapshot)) {
+            throw ('Unsupported snapshot schemaVersion for {0}/{1}/{2} batch {3}: expected string version 1.0.' -f $Stage, $Section, $Family, $batchId)
         }
 
         $expectedIdentity = @{
