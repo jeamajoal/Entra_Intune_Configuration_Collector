@@ -36,13 +36,21 @@ BeforeAll {
         param(
             [Parameter(Mandatory = $true)][string]$CheckpointPath,
             [AllowNull()][object]$Value,
-            [switch]$Omit
+            [switch]$Omit,
+            [switch]$SingleElementSucceededArray
         )
 
         $persisted = Get-Content -LiteralPath $CheckpointPath -Raw | ConvertFrom-Json
         $batch = $persisted.batches[0]
         if ($Omit) {
             $batch.PSObject.Properties.Remove('status')
+        }
+        elseif ($SingleElementSucceededArray) {
+            $batch.status = '__single_element_succeeded_array__'
+            $json = $persisted | ConvertTo-Json -Depth 30
+            $json = $json -replace '"status"\s*:\s*"__single_element_succeeded_array__"', '"status": ["Succeeded"]'
+            Set-Content -LiteralPath $CheckpointPath -Value $json -Encoding UTF8
+            return
         }
         else {
             $batch.status = $Value
@@ -94,21 +102,21 @@ Describe 'Persisted checkpoint batch status type integrity' {
 
     It 'rejects missing, null, empty, whitespace, non-string, unsupported, and wrong-case persisted statuses without mutation' {
         $invalidCases = @(
-            [pscustomobject]@{ Label = 'missing'; Omit = $true; Value = 'placeholder' },
-            [pscustomobject]@{ Label = 'null'; Omit = $false; Value = $null },
-            [pscustomobject]@{ Label = 'empty'; Omit = $false; Value = '' },
-            [pscustomobject]@{ Label = 'whitespace'; Omit = $false; Value = '   ' },
-            [pscustomobject]@{ Label = 'numeric'; Omit = $false; Value = 1 },
-            [pscustomobject]@{ Label = 'boolean'; Omit = $false; Value = $true },
-            [pscustomobject]@{ Label = 'object'; Omit = $false; Value = ([pscustomobject]@{ value = 'Succeeded' }) },
-            [pscustomobject]@{ Label = 'single-element-array'; Omit = $false; Value = @('Succeeded') },
-            [pscustomobject]@{ Label = 'unsupported-string'; Omit = $false; Value = 'Completed' },
-            [pscustomobject]@{ Label = 'wrong-case'; Omit = $false; Value = 'succeeded' }
+            [pscustomobject]@{ Label = 'missing'; Omit = $true; Array = $false; Value = 'placeholder' },
+            [pscustomobject]@{ Label = 'null'; Omit = $false; Array = $false; Value = $null },
+            [pscustomobject]@{ Label = 'empty'; Omit = $false; Array = $false; Value = '' },
+            [pscustomobject]@{ Label = 'whitespace'; Omit = $false; Array = $false; Value = '   ' },
+            [pscustomobject]@{ Label = 'numeric'; Omit = $false; Array = $false; Value = 1 },
+            [pscustomobject]@{ Label = 'boolean'; Omit = $false; Array = $false; Value = $true },
+            [pscustomobject]@{ Label = 'object'; Omit = $false; Array = $false; Value = ([pscustomobject]@{ value = 'Succeeded' }) },
+            [pscustomobject]@{ Label = 'single-element-array'; Omit = $false; Array = $true; Value = 'placeholder' },
+            [pscustomobject]@{ Label = 'unsupported-string'; Omit = $false; Array = $false; Value = 'Completed' },
+            [pscustomobject]@{ Label = 'wrong-case'; Omit = $false; Array = $false; Value = 'succeeded' }
         )
 
         foreach ($case in $invalidCases) {
             $checkpointPath = Write-TestStatusCheckpointFixture -RunPath $script:testRoot
-            Write-TestPersistedStatus -CheckpointPath $checkpointPath -Value $case.Value -Omit:$case.Omit
+            Write-TestPersistedStatus -CheckpointPath $checkpointPath -Value $case.Value -Omit:$case.Omit -SingleElementSucceededArray:$case.Array
             $before = Get-Content -LiteralPath $checkpointPath -Raw
 
             $errorMessage = $null
@@ -154,7 +162,7 @@ Describe 'Persisted checkpoint batch status type integrity' {
         Invoke-CollectorStage1 -Context $context -Sections @('entra-apps') | Out-Null
 
         $checkpointPath = Get-CollectorCheckpointPath -RunPath $script:testRoot -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
-        Write-TestPersistedStatus -CheckpointPath $checkpointPath -Value @('Succeeded')
+        Write-TestPersistedStatus -CheckpointPath $checkpointPath -SingleElementSucceededArray
         $before = Get-Content -LiteralPath $checkpointPath -Raw
 
         $context.Resume = $true
