@@ -480,12 +480,11 @@ function Get-CollectorCheckpoint {
         }
 
         $hasStatus = $batch.PSObject.Properties.Match('status').Count -gt 0
-        $batchStatus = if ($hasStatus) { $batch.status } else { $null }
         if (
             -not $hasStatus -or
-            -not ($batchStatus -is [string]) -or
-            [string]::IsNullOrWhiteSpace([string]$batchStatus) -or
-            @('Succeeded', 'Failed', 'InProgress', 'Missing') -cnotcontains [string]$batchStatus
+            -not ($batch.status -is [string]) -or
+            [string]::IsNullOrWhiteSpace([string]$batch.status) -or
+            @('Succeeded', 'Failed', 'InProgress', 'Missing') -cnotcontains [string]$batch.status
         ) {
             throw ('Checkpoint batch {0} at {1} has invalid persisted status; expected Succeeded, Failed, InProgress, or Missing.' -f $batchOrdinal, $checkpointPath)
         }
