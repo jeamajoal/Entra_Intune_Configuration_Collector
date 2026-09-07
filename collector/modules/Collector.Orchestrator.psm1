@@ -196,8 +196,17 @@ function Get-CollectorRunManifestForInvocation {
         throw ('Unsupported resume manifest schemaVersion for run {0}. Expected string version 1.0 or 1.1.' -f $RunId)
     }
 
-    if ([string]$manifest.runId -ne $RunId) {
-        throw ('Resume manifest runId mismatch. Expected {0}; found {1}.' -f $RunId, [string]$manifest.runId)
+    $hasValidRunId = (
+        $manifest.PSObject.Properties.Match('runId').Count -gt 0 -and
+        $manifest.runId -is [string] -and
+        -not [string]::IsNullOrWhiteSpace([string]$manifest.runId)
+    )
+    if (-not $hasValidRunId) {
+        throw ('Resume manifest runId is invalid for run {0}. Expected a non-empty string.' -f $RunId)
+    }
+
+    if ($manifest.runId -ne $RunId) {
+        throw ('Resume manifest runId mismatch. Expected {0}; found {1}.' -f $RunId, $manifest.runId)
     }
 
     foreach ($propertyName in @('stageResults', 'checkpointSummary', 'failures')) {
