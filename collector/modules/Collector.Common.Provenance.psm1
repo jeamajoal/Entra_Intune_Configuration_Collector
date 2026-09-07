@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 
 $script:CollectorSnapshotSchemaVersion = '1.0'
+$script:CollectorSnapshotIdentityProperties = @('runId', 'stage', 'section', 'family', 'batchId')
 
 function Test-CollectorSnapshotSchemaVersion {
     [CmdletBinding()]
@@ -13,7 +14,21 @@ function Test-CollectorSnapshotSchemaVersion {
         return $false
     }
 
-    return ($Snapshot.schemaVersion -is [string]) -and [string]$Snapshot.schemaVersion -eq $script:CollectorSnapshotSchemaVersion
+    if (-not ($Snapshot.schemaVersion -is [string]) -or [string]$Snapshot.schemaVersion -ne $script:CollectorSnapshotSchemaVersion) {
+        return $false
+    }
+
+    foreach ($identityName in $script:CollectorSnapshotIdentityProperties) {
+        if (
+            $Snapshot.PSObject.Properties.Match($identityName).Count -eq 0 -or
+            -not ($Snapshot.$identityName -is [string]) -or
+            [string]::IsNullOrWhiteSpace([string]$Snapshot.$identityName)
+        ) {
+            return $false
+        }
+    }
+
+    return $true
 }
 
 function New-CollectorProvenanceSnapshot {
