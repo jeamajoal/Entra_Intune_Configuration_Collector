@@ -6,6 +6,7 @@ BeforeAll {
     function Get-TestManifestDocument {
         param(
             [Parameter(Mandatory = $true)]
+            [AllowNull()]
             [object]$SchemaVersion,
 
             [switch]$IncludeInvocations
@@ -24,7 +25,7 @@ BeforeAll {
         }
 
         if ($IncludeInvocations) {
-            $manifest.invocations = @()
+            $manifest['invocations'] = @()
         }
 
         return [pscustomobject]$manifest
