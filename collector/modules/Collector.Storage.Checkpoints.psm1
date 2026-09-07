@@ -698,6 +698,10 @@ function Get-CollectorCheckpointSummary {
     $checkpointRoot = [System.IO.Path]::GetFullPath((Join-Path -Path $RunPath -ChildPath 'checkpoints'))
     $separatorChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
     $checkpointRootPrefix = $checkpointRoot.TrimEnd($separatorChars) + [System.IO.Path]::DirectorySeparatorChar
+    $validBatchStatuses = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($validBatchStatus in @('Succeeded', 'Failed', 'Missing', 'InProgress')) {
+        $validBatchStatuses.Add($validBatchStatus) | Out-Null
+    }
 
     foreach ($checkpointFile in $checkpointFiles) {
         $checkpointPath = [System.IO.Path]::GetFullPath($checkpointFile.FullName)
@@ -720,13 +724,36 @@ function Get-CollectorCheckpointSummary {
 
         $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $runId -Stage $stage -Section $section -Family $family
         $batchCount = @($checkpoint.batches).Count
-        $succeededBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'Succeeded' }).Count
-        $failedBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'Failed' }).Count
-        $missingBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'Missing' }).Count
-        $inProgressBatches = @($checkpoint.batches | Where-Object { $_.status -eq 'InProgress' }).Count
-        $itemCount = 0
-        if ($checkpoint.batches) {
-            $itemCount = ($checkpoint.batches | Measure-Object -Property itemCount -Sum).Sum
+        $succeededBatches = 0
+        $failedBatches = 0
+        $missingBatches = 0
+        $inProgressBatches = 0
+        $itemCount = [long]0
+        $batchOrdinal = 0
+
+        foreach ($batch in @($checkpoint.batches)) {
+            $batchOrdinal++
+            if ($null -eq $batch -or $batch.PSObject.Properties.Match('status').Count -eq 0) {
+                throw ('Checkpoint summary batch {0} for {1}/{2}/{3} has a missing status.' -f $batchOrdinal, $stage, $section, $family)
+            }
+
+            $batchStatus = $batch.status
+            if ($null -eq $batchStatus -or -not ($batchStatus -is [string]) -or [string]::IsNullOrWhiteSpace([string]$batchStatus) -or -not $validBatchStatuses.Contains([string]$batchStatus)) {
+                throw ('Checkpoint summary batch {0} for {1}/{2}/{3} has an invalid status.' -f $batchOrdinal, $stage, $section, $family)
+            }
+
+            $batchItemCount = Get-CollectorBatchCountValue -Batch $batch -PropertyName 'itemCount'
+            if ($null -eq $batchItemCount) {
+                throw ('Checkpoint summary batch {0} for {1}/{2}/{3} has an invalid itemCount.' -f $batchOrdinal, $stage, $section, $family)
+            }
+
+            $itemCount += [long]$batchItemCount
+            switch ([string]$batchStatus) {
+                'Succeeded' { $succeededBatches++ }
+                'Failed' { $failedBatches++ }
+                'Missing' { $missingBatches++ }
+                'InProgress' { $inProgressBatches++ }
+            }
         }
 
         $summary += [pscustomobject]@{
