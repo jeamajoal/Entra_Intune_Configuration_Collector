@@ -427,7 +427,8 @@ function Get-CollectorCheckpoint {
         }
     }
 
-    if (-not $checkpoint.batches) {
+    $hasBatchesProperty = $checkpoint.PSObject.Properties.Match('batches').Count -gt 0
+    if (-not $hasBatchesProperty -or [object]::ReferenceEquals($checkpoint.batches, $null)) {
         $checkpoint | Add-Member -MemberType NoteProperty -Name batches -Value @() -Force
     }
     if ($checkpoint.PSObject.Properties.Match('plan').Count -eq 0) {
