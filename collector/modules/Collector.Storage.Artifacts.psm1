@@ -81,6 +81,15 @@ function Test-CollectorResumeRun {
         return $false
     }
 
+    $hasSupportedSchemaVersion = (
+        $manifest.PSObject.Properties.Match('schemaVersion').Count -gt 0 -and
+        $manifest.schemaVersion -is [string] -and
+        @('1.0', '1.1') -contains [string]$manifest.schemaVersion
+    )
+    if (-not $hasSupportedSchemaVersion) {
+        return $false
+    }
+
     return -not [string]::IsNullOrWhiteSpace([string]$manifest.runId) -and [string]$manifest.runId -eq $RunId
 }
 
