@@ -446,11 +446,37 @@ function Get-CollectorCheckpoint {
         $checkpoint | Add-Member -MemberType NoteProperty -Name plan -Value $null
     }
 
+    if ($null -ne $checkpoint.plan -and $checkpoint.plan.PSObject.Properties.Match('batches').Count -gt 0) {
+        $plannedBatchOrdinal = 0
+        foreach ($plannedBatch in @($checkpoint.plan.batches)) {
+            $plannedBatchOrdinal++
+            if ($null -eq $plannedBatch) {
+                continue
+            }
+
+            if (
+                $plannedBatch.PSObject.Properties.Match('batchId').Count -eq 0 -or
+                -not ($plannedBatch.batchId -is [string]) -or
+                [string]::IsNullOrWhiteSpace([string]$plannedBatch.batchId)
+            ) {
+                throw ('Checkpoint planned batch {0} at {1} has invalid persisted batchId; expected a non-empty string.' -f $plannedBatchOrdinal, $checkpointPath)
+            }
+        }
+    }
+
     $batchOrdinal = 0
     foreach ($batch in @($checkpoint.batches)) {
         $batchOrdinal++
         if ($null -eq $batch) {
             continue
+        }
+
+        if (
+            $batch.PSObject.Properties.Match('batchId').Count -eq 0 -or
+            -not ($batch.batchId -is [string]) -or
+            [string]::IsNullOrWhiteSpace([string]$batch.batchId)
+        ) {
+            throw ('Checkpoint batch {0} at {1} has invalid persisted batchId; expected a non-empty string.' -f $batchOrdinal, $checkpointPath)
         }
 
         $attempts = Get-CollectorBatchCountValue -Batch $batch -PropertyName 'attempts'
