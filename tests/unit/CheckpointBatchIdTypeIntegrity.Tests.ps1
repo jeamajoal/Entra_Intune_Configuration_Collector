@@ -32,7 +32,7 @@ BeforeAll {
         return Save-CollectorCheckpoint -RunPath $RunPath -Checkpoint $checkpoint
     }
 
-    function Set-TestPersistedBatchId {
+    function Write-TestPersistedBatchId {
         param(
             [Parameter(Mandatory = $true)][string]$CheckpointPath,
             [Parameter(Mandatory = $true)][ValidateSet('Plan', 'Recorded')][string]$Target,
@@ -108,7 +108,7 @@ Describe 'Persisted checkpoint batchId type integrity' {
         foreach ($target in @('Plan', 'Recorded')) {
             foreach ($case in $invalidCases) {
                 $checkpointPath = Write-TestCheckpointBatchFixture -RunPath $script:testRoot
-                Set-TestPersistedBatchId -CheckpointPath $checkpointPath -Target $target -Value $case.Value -Omit:$case.Omit
+                Write-TestPersistedBatchId -CheckpointPath $checkpointPath -Target $target -Value $case.Value -Omit:$case.Omit
                 $before = Get-Content -LiteralPath $checkpointPath -Raw
 
                 $errorMessage = $null
@@ -155,7 +155,7 @@ Describe 'Persisted checkpoint batchId type integrity' {
         Invoke-CollectorStage1 -Context $context -Sections @('entra-apps') | Out-Null
 
         $checkpointPath = Get-CollectorCheckpointPath -RunPath $script:testRoot -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
-        Set-TestPersistedBatchId -CheckpointPath $checkpointPath -Target Recorded -Value @('0001')
+        Write-TestPersistedBatchId -CheckpointPath $checkpointPath -Target Recorded -Value @('0001')
         $before = Get-Content -LiteralPath $checkpointPath -Raw
 
         $context.Resume = $true
@@ -186,7 +186,7 @@ Describe 'Persisted checkpoint batchId type integrity' {
         Invoke-CollectorStage1 -Context $context -Sections @('entra-apps') | Out-Null
 
         $checkpointPath = Get-CollectorCheckpointPath -RunPath $script:testRoot -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
-        Set-TestPersistedBatchId -CheckpointPath $checkpointPath -Target Plan -Value @('0001')
+        Write-TestPersistedBatchId -CheckpointPath $checkpointPath -Target Plan -Value @('0001')
         $before = Get-Content -LiteralPath $checkpointPath -Raw
 
         $context.Resume = $true
