@@ -111,6 +111,11 @@ Describe 'Checkpoint resume behavior' {
         $artifactPath = Join-Path -Path $script:testRoot -ChildPath 'batch-0001.json'
         [pscustomobject]@{
             schemaVersion = '1.0'
+            runId = 'run-a'
+            stage = 'stage1'
+            section = 'entra-apps'
+            family = 'applications'
+            batchId = '0001'
             itemCount = 10
             items = @(1..10 | ForEach-Object { [pscustomobject]@{ id = ('item-{0}' -f $_) } })
         } | ConvertTo-Json -Depth 5 | Set-Content -Path $artifactPath -Encoding UTF8
