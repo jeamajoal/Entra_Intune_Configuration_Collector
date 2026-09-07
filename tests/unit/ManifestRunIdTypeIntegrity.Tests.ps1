@@ -2,7 +2,6 @@ BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Orchestrator.psm1') -Force -ErrorAction Stop
     $script:orchestratorModule = Get-Module -Name 'Collector.Orchestrator' -ErrorAction Stop
-    $script:artifactsModule = Get-Module -Name 'Collector.Storage.Artifacts' -ErrorAction Stop
 
     function Write-TestRunIdManifest {
         param(
@@ -47,18 +46,6 @@ BeforeAll {
             param($InnerRunPath, $InnerRunId, $InnerParameters)
             Get-CollectorRunManifestForInvocation -RunPath $InnerRunPath -RunId $InnerRunId -Parameters $InnerParameters -Resume
         } $RunPath $RunId $parameters
-    }
-
-    function Test-TestResumeCandidate {
-        param(
-            [Parameter(Mandatory = $true)][string]$OutputRoot,
-            [Parameter(Mandatory = $true)][string]$RunId
-        )
-
-        return & $script:artifactsModule {
-            param($InnerOutputRoot, $InnerRunId)
-            Test-CollectorResumeRun -OutputRoot $InnerOutputRoot -RunId $InnerRunId
-        } $OutputRoot $RunId
     }
 
     function Write-TestRunIdMarker {
@@ -128,10 +115,6 @@ Describe 'Persisted manifest runId type integrity' {
         Write-TestRunIdManifest -RunPath $invalidRunPath -RunId 123 | Out-Null
         Write-TestRunIdMarker -OutputRoot $script:testRoot -RunId $invalidRunId
 
-        if (Test-TestResumeCandidate -OutputRoot $script:testRoot -RunId $invalidRunId) {
-            throw 'Expected numeric persisted runId 123 to be rejected as candidate identity even though it stringifies to directory name 123.'
-        }
-
         $resumed = Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage3') -Sections @('onprem-ad-gpo') -Resume
         if ([string]$resumed.runId -ne [string]$validRun.runId) {
             throw ('Expected numeric-runId marker target to fall back to older valid run {0}; actual {1}.' -f $validRun.runId, $resumed.runId)
@@ -143,34 +126,43 @@ Describe 'Persisted manifest runId type integrity' {
         }
     }
 
-    It 'keeps matching non-empty string runId values valid for supported manifest versions' {
+    It 'keeps matching non-empty string runId values selectable for supported manifest versions' {
         foreach ($supportedVersion in @('1.0', '1.1')) {
+            $caseRoot = Join-Path -Path $script:testRoot -ChildPath ('supported-' + $supportedVersion.Replace('.', '-'))
+            New-Item -Path $caseRoot -ItemType Directory -Force | Out-Null
             $runId = ('supported-runid-' + $supportedVersion.Replace('.', '-'))
-            $runPath = Join-Path -Path $script:testRoot -ChildPath $runId
+            $runPath = Join-Path -Path $caseRoot -ChildPath $runId
             Write-TestRunIdManifest -RunPath $runPath -RunId $runId -SchemaVersion $supportedVersion | Out-Null
+            Write-TestRunIdMarker -OutputRoot $caseRoot -RunId $runId
 
-            if (-not (Test-TestResumeCandidate -OutputRoot $script:testRoot -RunId $runId)) {
-                throw ('Expected matching string runId to remain a valid resume candidate for manifest version {0}.' -f $supportedVersion)
+            $resumed = Start-CollectorRun -OutputRoot $caseRoot -Stages @('Stage3') -Sections @('onprem-ad-gpo') -Resume
+            if ([string]$resumed.runId -ne $runId) {
+                throw ('Expected matching string runId to remain selectable for manifest version {0}.' -f $supportedVersion)
             }
 
-            $loaded = Invoke-TestRunIdManifestLoad -RunPath $runPath -RunId $runId
-            if ([string]$loaded.runId -ne $runId -or [string]$loaded.schemaVersion -ne '1.1') {
-                throw ('Expected supported manifest version {0} with matching string runId to load and normalize normally.' -f $supportedVersion)
+            $manifest = Get-Content -LiteralPath (Join-Path -Path $runPath -ChildPath 'manifest/run-manifest.json') -Raw | ConvertFrom-Json
+            if ([string]$manifest.runId -ne $runId -or [string]$manifest.schemaVersion -ne '1.1') {
+                throw ('Expected supported manifest version {0} with matching string runId to resume and normalize normally.' -f $supportedVersion)
             }
         }
     }
 
     It 'continues to reject a valid string runId that does not match the selected run' {
-        $runPath = Join-Path -Path $script:testRoot -ChildPath 'selected-run'
-        Write-TestRunIdManifest -RunPath $runPath -RunId 'different-run' | Out-Null
+        $validRun = Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo')
 
-        if (Test-TestResumeCandidate -OutputRoot $script:testRoot -RunId 'selected-run') {
-            throw 'Expected a valid string manifest runId mismatch to remain an invalid resume candidate.'
+        $mismatchedRunId = 'selected-run'
+        $mismatchedRunPath = Join-Path -Path $script:testRoot -ChildPath $mismatchedRunId
+        Write-TestRunIdManifest -RunPath $mismatchedRunPath -RunId 'different-run' | Out-Null
+        Write-TestRunIdMarker -OutputRoot $script:testRoot -RunId $mismatchedRunId
+
+        $resumed = Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage3') -Sections @('onprem-ad-gpo') -Resume
+        if ([string]$resumed.runId -ne [string]$validRun.runId) {
+            throw ('Expected mismatched string runId candidate to fall back to valid run {0}; actual {1}.' -f $validRun.runId, $resumed.runId)
         }
 
         $threw = $false
         try {
-            Invoke-TestRunIdManifestLoad -RunPath $runPath -RunId 'selected-run' | Out-Null
+            Invoke-TestRunIdManifestLoad -RunPath $mismatchedRunPath -RunId $mismatchedRunId | Out-Null
         }
         catch {
             $threw = $true
