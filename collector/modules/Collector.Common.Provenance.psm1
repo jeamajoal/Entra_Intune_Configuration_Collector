@@ -19,11 +19,11 @@ function Test-CollectorSnapshotSchemaVersion {
     }
 
     foreach ($identityName in $script:CollectorSnapshotIdentityProperties) {
-        if (
-            $Snapshot.PSObject.Properties.Match($identityName).Count -eq 0 -or
-            -not ($Snapshot.$identityName -is [string]) -or
-            [string]::IsNullOrWhiteSpace([string]$Snapshot.$identityName)
-        ) {
+        if ($Snapshot.PSObject.Properties.Match($identityName).Count -eq 0) {
+            continue
+        }
+
+        if (-not ($Snapshot.$identityName -is [string]) -or [string]::IsNullOrWhiteSpace([string]$Snapshot.$identityName)) {
             return $false
         }
     }
