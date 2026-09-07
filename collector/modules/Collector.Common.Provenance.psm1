@@ -20,7 +20,7 @@ function New-CollectorProvenanceSnapshot {
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'This function constructs and returns an in-memory provenance snapshot; it does not change external state.')]
     param(
-        [string]$SchemaVersion = $script:CollectorSnapshotSchemaVersion,
+        [string]$SchemaVersion,
 
         [Parameter(Mandatory = $true)]
         [string]$RunId,
@@ -57,6 +57,10 @@ function New-CollectorProvenanceSnapshot {
         [AllowEmptyCollection()]
         [object[]]$Items
     )
+
+    if (-not $PSBoundParameters.ContainsKey('SchemaVersion')) {
+        $SchemaVersion = $script:CollectorSnapshotSchemaVersion
+    }
 
     [ordered]@{
         schemaVersion = $SchemaVersion
