@@ -128,9 +128,9 @@ Credential metadata is collected in separate families so its security and thrott
 - If no valid prior collector run can be identified, resume fails before writing `current-run.json` or initializing collector child directories.
 - Resume with ReprocessFailedOnly:
   - reruns Failed, InProgress, Missing, and missing-artifact batches;
-  - Stage1 and Stage2 reuse a Succeeded batch only after current-input plan compatibility is established and the canonical snapshot is readable/non-null, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality;
+  - Stage1 and Stage2 reuse a Succeeded batch only after current-input plan compatibility is established and the canonical snapshot is readable/non-null, declares supported schema version `1.0`, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality;
   - a Stage1 or Stage2 prior success that fails that validation is recorded as non-success and reprocessed through that stage's normal write/checkpoint path in the same resume invocation without deleting the artifact first;
-  - Stage3 also reuses a Succeeded batch only after current-input plan compatibility and canonical snapshot validation. The snapshot must be readable/non-null, match current run/stage/section/family/batch identity, and agree across checkpoint `itemCount`/`successCount`, snapshot `itemCount`, and actual `items.Count`, with zero checkpoint failures;
+  - Stage3 also reuses a Succeeded batch only after current-input plan compatibility and canonical snapshot validation. The snapshot must be readable/non-null, declare supported schema version `1.0`, match current run/stage/section/family/batch identity, and agree across checkpoint `itemCount`/`successCount`, snapshot `itemCount`, and actual `items.Count`, with zero checkpoint failures;
   - Stage3 intentionally does not require relationship output `itemCount` to equal the source batch item count because relationship collectors may emit multiple output rows per source object. The compatible Stage3 plan binds source identity/cardinality separately from output-cardinality validation;
   - a Stage3 prior success that fails validation is recorded as non-success and reprocessed through the normal Stage3 collector/write/checkpoint path in the same resume invocation without deleting the artifact first.
 - Checkpoint writes use same-directory validated temporary files and atomic replacement so a failed replacement does not destroy the last valid checkpoint.
@@ -177,6 +177,8 @@ Snapshot provenance envelope fields:
 - requestContext
 - itemCount
 - items
+
+The current supported snapshot `schemaVersion` is string `1.0`. Persisted snapshots with a missing, non-string, or unsupported version fail closed at both successful-resume reuse and shared downstream snapshot loading.
 
 For on-prem families, sourceName is cmdlet-specific and requestContext includes cmdletNames for concrete execution traceability.
 
