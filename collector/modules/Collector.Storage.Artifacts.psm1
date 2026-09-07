@@ -568,6 +568,18 @@ function Test-CollectorInventoryArtifacts {
         }
     }
 
+    if ($checkpoint.PSObject.Properties.Match('runId').Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$checkpoint.runId)) {
+        return $false
+    }
+
+    $checkpointRunId = [string]$checkpoint.runId
+    try {
+        $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $checkpointRunId -Stage 'stage1' -Section $Section -Family $Family
+    }
+    catch {
+        return $false
+    }
+
     $planIsCompleted = (
         $checkpoint.PSObject.Properties.Match('plan').Count -gt 0 -and
         $null -ne $checkpoint.plan -and
