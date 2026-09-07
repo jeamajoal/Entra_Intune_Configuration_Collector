@@ -183,13 +183,19 @@ Describe 'Persisted plan and snapshot itemCount type integrity' {
         }
     }
 
-    It 'restores MissingArtifact precedence even when succeeded terminal counts are malformed' {
+    It 'marks missing artifacts only when succeeded terminal counts are safe to consume' {
         $missingPath = Join-Path -Path $script:testRoot -ChildPath 'does-not-exist.json'
-        $checkpoint = Get-TestItemCountDecisionCheckpoint -ArtifactPath $missingPath -ItemCount '1' -SuccessCount '1' -FailedCount '0'
-        $decision = Get-CollectorBatchExecutionDecision -Checkpoint $checkpoint -BatchId '0001' -Resume
 
-        if (-not $decision.ShouldProcess -or -not $decision.MarkMissing -or [string]$decision.Reason -ne 'MissingArtifact') {
-            throw ('Expected missing artifact precedence; ShouldProcess={0}; MarkMissing={1}; Reason={2}.' -f $decision.ShouldProcess, $decision.MarkMissing, $decision.Reason)
+        $validCheckpoint = Get-TestItemCountDecisionCheckpoint -ArtifactPath $missingPath -ItemCount 1 -SuccessCount 1 -FailedCount 0
+        $validDecision = Get-CollectorBatchExecutionDecision -Checkpoint $validCheckpoint -BatchId '0001' -Resume
+        if (-not $validDecision.ShouldProcess -or -not $validDecision.MarkMissing -or [string]$validDecision.Reason -ne 'MissingArtifact') {
+            throw ('Expected valid-count missing artifact to retain MissingArtifact behavior; ShouldProcess={0}; MarkMissing={1}; Reason={2}.' -f $validDecision.ShouldProcess, $validDecision.MarkMissing, $validDecision.Reason)
+        }
+
+        $malformedCheckpoint = Get-TestItemCountDecisionCheckpoint -ArtifactPath $missingPath -ItemCount ([pscustomobject]@{ value = 1 }) -SuccessCount 1 -FailedCount 0
+        $malformedDecision = Get-CollectorBatchExecutionDecision -Checkpoint $malformedCheckpoint -BatchId '0001' -Resume
+        if (-not $malformedDecision.ShouldProcess -or $malformedDecision.MarkMissing -or [string]$malformedDecision.Reason -ne 'MissingArtifactInvalidCounts') {
+            throw ('Expected malformed-count missing artifact to bypass unsafe MarkMissing handling; ShouldProcess={0}; MarkMissing={1}; Reason={2}.' -f $malformedDecision.ShouldProcess, $malformedDecision.MarkMissing, $malformedDecision.Reason)
         }
     }
 
@@ -270,6 +276,37 @@ Describe 'Persisted plan and snapshot itemCount type integrity' {
         $repairedSnapshot = Get-Content -LiteralPath $repairedBatch.artifactPath -Raw | ConvertFrom-Json
         if ($repairedSnapshot.itemCount -is [string] -or [int]$repairedSnapshot.itemCount -ne 1 -or -not [bool]$repairedCheckpoint.plan.completed) {
             throw 'Expected Stage1 reprocessing to restore numeric snapshot itemCount and completed plan state.'
+        }
+    }
+
+    It 'reprocesses a missing Stage1 artifact with malformed persisted itemCount without unsafe casting' {
+        $context = Get-TestItemCountContext -RunPath $script:testRoot
+        Invoke-CollectorStage1 -Context $context -Sections @('entra-apps') | Out-Null
+
+        $checkpoint = Get-TestStage1Checkpoint -RunPath $script:testRoot -Family 'applications'
+        $batch = Get-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001'
+        $artifactPath = [string]$batch.artifactPath
+        Remove-Item -LiteralPath $artifactPath -Force
+        $batch.itemCount = [pscustomobject]@{ value = 1 }
+        Save-CollectorCheckpoint -RunPath $script:testRoot -Checkpoint $checkpoint | Out-Null
+
+        $context.Resume = $true
+        $resumeResults = @(Invoke-CollectorStage1 -Context $context -Sections @('entra-apps'))
+        $applications = $resumeResults | Where-Object { $_.family -eq 'applications' } | Select-Object -First 1
+        $servicePrincipals = $resumeResults | Where-Object { $_.family -eq 'servicePrincipals' } | Select-Object -First 1
+        $groups = $resumeResults | Where-Object { $_.family -eq 'groups' } | Select-Object -First 1
+
+        if ($applications.succeededBatches -ne 1 -or $applications.skippedBatches -ne 0) {
+            throw ('Expected malformed-count missing applications artifact to reprocess successfully; succeeded={0}; skipped={1}.' -f $applications.succeededBatches, $applications.skippedBatches)
+        }
+        if ($servicePrincipals.skippedBatches -ne 1 -or $groups.skippedBatches -ne 1) {
+            throw ('Expected valid neighboring families to remain skipped; servicePrincipals={0}; groups={1}.' -f $servicePrincipals.skippedBatches, $groups.skippedBatches)
+        }
+
+        $repairedCheckpoint = Get-TestStage1Checkpoint -RunPath $script:testRoot -Family 'applications'
+        $repairedBatch = Get-CollectorCheckpointBatch -Checkpoint $repairedCheckpoint -BatchId '0001'
+        if ($repairedBatch.itemCount -isnot [int] -or [int]$repairedBatch.itemCount -ne 1 -or -not (Test-Path -LiteralPath $repairedBatch.artifactPath -PathType Leaf) -or -not [bool]$repairedCheckpoint.plan.completed) {
+            throw 'Expected Stage1 reprocessing to replace malformed missing-artifact state with valid numeric counts, artifact, and completed plan.'
         }
     }
 }
