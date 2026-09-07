@@ -91,30 +91,24 @@ Describe 'Persisted snapshot identity type integrity' {
         }
     }
 
-    It 'requires every persisted snapshot identity property to be a non-empty string' {
+    It 'rejects every present persisted snapshot identity property unless it is a non-empty string' {
         $identityNames = @('runId', 'stage', 'section', 'family', 'batchId')
         $invalidCases = @(
-            [pscustomobject]@{ Label = 'missing'; Value = 'placeholder'; Omit = $true },
-            [pscustomobject]@{ Label = 'null'; Value = $null; Omit = $false },
-            [pscustomobject]@{ Label = 'empty'; Value = ''; Omit = $false },
-            [pscustomobject]@{ Label = 'numeric'; Value = 123; Omit = $false },
-            [pscustomobject]@{ Label = 'boolean'; Value = $true; Omit = $false },
-            [pscustomobject]@{ Label = 'object'; Value = ([pscustomobject]@{ value = '123' }); Omit = $false },
-            [pscustomobject]@{ Label = 'array'; Value = @('123'); Omit = $false }
+            [pscustomobject]@{ Label = 'null'; Value = $null },
+            [pscustomobject]@{ Label = 'empty'; Value = '' },
+            [pscustomobject]@{ Label = 'numeric'; Value = 123 },
+            [pscustomobject]@{ Label = 'boolean'; Value = $true },
+            [pscustomobject]@{ Label = 'object'; Value = ([pscustomobject]@{ value = '123' }) },
+            [pscustomobject]@{ Label = 'array'; Value = @('123') }
         )
 
         foreach ($identityName in $identityNames) {
             foreach ($case in $invalidCases) {
                 $snapshot = Get-TestIdentitySnapshot
-                if ($case.Omit) {
-                    $snapshot.PSObject.Properties.Remove($identityName)
-                }
-                else {
-                    $snapshot.$identityName = $case.Value
-                }
+                $snapshot.$identityName = $case.Value
 
                 if (Test-CollectorSnapshotSchemaVersion -Snapshot $snapshot) {
-                    throw ('Expected identity [{0}] case [{1}] to fail the persisted snapshot contract.' -f $identityName, $case.Label)
+                    throw ('Expected identity [{0}] case [{1}] to fail the supported snapshot contract.' -f $identityName, $case.Label)
                 }
             }
         }
@@ -153,7 +147,7 @@ Describe 'Persisted snapshot identity type integrity' {
         }
     }
 
-    It 'fails closed in the downstream loader for numeric runId 123 instead of coercing it to logical run string 123' {
+    It 'fails closed in the downstream loader for numeric and missing runId instead of coercing or accepting them' {
         $invalidSnapshot = Get-TestIdentitySnapshot -RunId 123
         $artifactPath = Save-TestIdentityLoaderFixture -RunPath $script:testRoot -Snapshot $invalidSnapshot
 
@@ -166,6 +160,21 @@ Describe 'Persisted snapshot identity type integrity' {
         }
         if (-not $threw) {
             throw 'Expected downstream loading to reject numeric persisted snapshot runId 123 for logical run string 123.'
+        }
+
+        $missingSnapshot = Get-TestIdentitySnapshot -RunId '123'
+        $missingSnapshot.PSObject.Properties.Remove('runId')
+        $missingSnapshot | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $artifactPath -Encoding UTF8
+
+        $threw = $false
+        try {
+            Get-CollectorSnapshotItems -RunPath $script:testRoot -Stage 'stage1' -Section 'entra-apps' -Family 'applications' -ExpectedRunId '123' | Out-Null
+        }
+        catch {
+            $threw = $true
+        }
+        if (-not $threw) {
+            throw 'Expected downstream loading to reject a persisted snapshot whose required runId identity is missing.'
         }
 
         $validSnapshot = Get-TestIdentitySnapshot -RunId '123'
