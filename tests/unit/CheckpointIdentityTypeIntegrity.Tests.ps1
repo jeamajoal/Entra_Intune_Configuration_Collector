@@ -17,7 +17,16 @@ BeforeAll {
         )
 
         $identity = Get-TestCheckpointIdentity
-        $checkpoint = Get-CollectorCheckpoint -RunPath $RunPath -RunId $identity.runId -Stage $identity.stage -Section $identity.section -Family $identity.family
+        $checkpoint = [pscustomobject]@{
+            schemaVersion = '1.0'
+            runId = [string]$identity.runId
+            stage = [string]$identity.stage
+            section = [string]$identity.section
+            family = [string]$identity.family
+            updatedUtc = '2026-09-07T00:00:00.0000000Z'
+            plan = $null
+            batches = @()
+        }
         return Save-CollectorCheckpoint -RunPath $RunPath -Checkpoint $checkpoint
     }
 
@@ -44,7 +53,6 @@ Describe 'Persisted checkpoint identity type integrity' {
     }
 
     It 'rejects missing, null, empty, whitespace, and non-string persisted top-level identities without mutating the file' {
-        $identity = Get-TestCheckpointIdentity
         $identityNames = @('runId', 'stage', 'section', 'family')
         $invalidCases = @(
             [pscustomobject]@{ Label = 'missing'; Omit = $true; Value = 'placeholder' },
