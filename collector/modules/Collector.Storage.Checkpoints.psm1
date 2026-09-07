@@ -409,6 +409,11 @@ function Get-CollectorCheckpoint {
         throw ('Checkpoint identity mismatch at {0}: checkpoint document is null.' -f $checkpointPath)
     }
 
+    $hasSchemaVersion = $checkpoint.PSObject.Properties.Match('schemaVersion').Count -gt 0
+    if (-not $hasSchemaVersion -or -not ($checkpoint.schemaVersion -is [string]) -or [string]$checkpoint.schemaVersion -ne '1.0') {
+        throw ('Unsupported checkpoint schemaVersion at {0}. Expected string version 1.0.' -f $checkpointPath)
+    }
+
     $expectedIdentity = @{
         runId = $RunId
         stage = $Stage
