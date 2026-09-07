@@ -305,7 +305,8 @@ Describe 'Persisted plan and snapshot itemCount type integrity' {
 
         $repairedCheckpoint = Get-TestStage1Checkpoint -RunPath $script:testRoot -Family 'applications'
         $repairedBatch = Get-CollectorCheckpointBatch -Checkpoint $repairedCheckpoint -BatchId '0001'
-        if ($repairedBatch.itemCount -isnot [int] -or [int]$repairedBatch.itemCount -ne 1 -or -not (Test-Path -LiteralPath $repairedBatch.artifactPath -PathType Leaf) -or -not [bool]$repairedCheckpoint.plan.completed) {
+        $repairedItemCount = Get-CollectorBatchCountValue -Batch $repairedBatch -PropertyName 'itemCount'
+        if ($null -eq $repairedItemCount -or $repairedItemCount -ne 1 -or -not (Test-Path -LiteralPath $repairedBatch.artifactPath -PathType Leaf) -or -not [bool]$repairedCheckpoint.plan.completed) {
             throw 'Expected Stage1 reprocessing to replace malformed missing-artifact state with valid numeric counts, artifact, and completed plan.'
         }
     }
