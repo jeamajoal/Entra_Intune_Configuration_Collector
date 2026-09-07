@@ -479,6 +479,16 @@ function Get-CollectorCheckpoint {
             throw ('Checkpoint batch {0} at {1} has invalid persisted batchId; expected a non-empty string.' -f $batchOrdinal, $checkpointPath)
         }
 
+        $hasStatus = $batch.PSObject.Properties.Match('status').Count -gt 0
+        if (
+            -not $hasStatus -or
+            -not ($batch.status -is [string]) -or
+            [string]::IsNullOrWhiteSpace([string]$batch.status) -or
+            @('Succeeded', 'Failed', 'InProgress', 'Missing') -cnotcontains [string]$batch.status
+        ) {
+            throw ('Checkpoint batch {0} at {1} has invalid persisted status; expected Succeeded, Failed, InProgress, or Missing.' -f $batchOrdinal, $checkpointPath)
+        }
+
         $attempts = Get-CollectorBatchCountValue -Batch $batch -PropertyName 'attempts'
         if ($null -eq $attempts -or $attempts -ge [int]::MaxValue) {
             throw ('Checkpoint batch {0} at {1} has invalid persisted attempts.' -f $batchOrdinal, $checkpointPath)
