@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
+
 function Get-CollectorCheckpointPath {
     [CmdletBinding()]
     param(
@@ -648,13 +650,16 @@ function Get-CollectorBatchExecutionDecision {
             $snapshot = $null
         }
 
+        if (-not (Test-CollectorSnapshotSchemaVersion -Snapshot $snapshot)) {
+            return [pscustomobject]@{
+                ShouldProcess = $true
+                MarkMissing = $false
+                Reason = 'InvalidSnapshotSchemaVersion'
+            }
+        }
+
         $checkpointItemCount = Get-CollectorBatchCountValue -Batch $existingBatch -PropertyName 'itemCount'
-        $snapshotItemCount = if ($null -ne $snapshot) {
-            Get-CollectorBatchCountValue -Batch $snapshot -PropertyName 'itemCount'
-        }
-        else {
-            $null
-        }
+        $snapshotItemCount = Get-CollectorBatchCountValue -Batch $snapshot -PropertyName 'itemCount'
 
         if ($null -eq $snapshotItemCount -or $null -eq $checkpointItemCount -or $snapshotItemCount -ne $checkpointItemCount) {
             return [pscustomobject]@{
