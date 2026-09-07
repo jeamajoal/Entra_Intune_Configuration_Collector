@@ -447,8 +447,16 @@ function Get-CollectorCheckpoint {
             throw ('Checkpoint batch {0} at {1} has invalid persisted attempts.' -f $batchOrdinal, $checkpointPath)
         }
 
-        if (-not [string]::IsNullOrWhiteSpace([string]$batch.artifactPath)) {
-            $batch.artifactPath = Get-CollectorCheckpointCanonicalArtifactPath -RunPath $RunPath -Stage ([string]$checkpoint.stage) -Section ([string]$checkpoint.section) -Family ([string]$checkpoint.family) -BatchId ([string]$batch.batchId)
+        $hasArtifactPath = $batch.PSObject.Properties.Match('artifactPath').Count -gt 0
+        if ($hasArtifactPath) {
+            $artifactPath = $batch.artifactPath
+            if ($null -ne $artifactPath -and -not ($artifactPath -is [string])) {
+                throw ('Checkpoint batch {0} at {1} has invalid persisted artifactPath.' -f $batchOrdinal, $checkpointPath)
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$artifactPath)) {
+                $batch.artifactPath = Get-CollectorCheckpointCanonicalArtifactPath -RunPath $RunPath -Stage ([string]$checkpoint.stage) -Section ([string]$checkpoint.section) -Family ([string]$checkpoint.family) -BatchId ([string]$batch.batchId)
+            }
         }
     }
 
