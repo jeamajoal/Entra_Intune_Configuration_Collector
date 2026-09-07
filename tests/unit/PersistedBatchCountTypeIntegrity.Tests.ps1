@@ -70,6 +70,11 @@ BeforeAll {
 
         [pscustomobject]@{
             schemaVersion = '1.0'
+            runId = 'persisted-batch-count-type'
+            stage = 'stage1'
+            section = 'entra-apps'
+            family = 'applications'
+            batchId = '0001'
             itemCount = $ItemCount
             items = @($items)
         } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding UTF8
