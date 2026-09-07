@@ -591,6 +591,14 @@ function Get-CollectorBatchExecutionDecision {
     }
 
     if ([string]$existingBatch.status -eq 'Succeeded' -and -not $artifactExists) {
+        if (-not (Test-CollectorSucceededBatchCountIntegrity -Batch $existingBatch)) {
+            return [pscustomobject]@{
+                ShouldProcess = $true
+                MarkMissing = $false
+                Reason = 'MissingArtifactInvalidCounts'
+            }
+        }
+
         return [pscustomobject]@{
             ShouldProcess = $true
             MarkMissing = $true
