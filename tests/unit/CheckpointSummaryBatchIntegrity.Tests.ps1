@@ -33,7 +33,7 @@ BeforeAll {
         return $checkpointPath
     }
 
-    function New-TestSummaryBatch {
+    function Get-TestSummaryBatch {
         param(
             [object]$Status = 'Succeeded',
             [object]$ItemCount = 1,
@@ -69,10 +69,10 @@ Describe 'Checkpoint summary consumed batch integrity' {
 
     It 'preserves valid status buckets and legitimate zero-item summary behavior' {
         $batches = @(
-            (New-TestSummaryBatch -BatchId '0001' -Status 'Succeeded' -ItemCount 3),
-            (New-TestSummaryBatch -BatchId '0002' -Status 'Failed' -ItemCount 2),
-            (New-TestSummaryBatch -BatchId '0003' -Status 'Missing' -ItemCount 1),
-            (New-TestSummaryBatch -BatchId '0004' -Status 'InProgress' -ItemCount 0)
+            (Get-TestSummaryBatch -BatchId '0001' -Status 'Succeeded' -ItemCount 3),
+            (Get-TestSummaryBatch -BatchId '0002' -Status 'Failed' -ItemCount 2),
+            (Get-TestSummaryBatch -BatchId '0003' -Status 'Missing' -ItemCount 1),
+            (Get-TestSummaryBatch -BatchId '0004' -Status 'InProgress' -ItemCount 0)
         )
         Write-TestSummaryCheckpoint -RunPath $script:runPath -Batches $batches | Out-Null
 
@@ -104,7 +104,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
         )
 
         foreach ($invalidStatus in $invalidStatuses) {
-            $batch = New-TestSummaryBatch -Status $invalidStatus -ItemCount 1
+            $batch = Get-TestSummaryBatch -Status $invalidStatus -ItemCount 1
             Write-TestSummaryCheckpoint -RunPath $script:runPath -Batches @($batch) | Out-Null
 
             $threw = $false
@@ -123,7 +123,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
             }
         }
 
-        $missingStatusBatch = New-TestSummaryBatch -Status 'Succeeded' -ItemCount 1
+        $missingStatusBatch = Get-TestSummaryBatch -Status 'Succeeded' -ItemCount 1
         $missingStatusBatch.PSObject.Properties.Remove('status')
         Write-TestSummaryCheckpoint -RunPath $script:runPath -Batches @($missingStatusBatch) | Out-Null
 
@@ -155,7 +155,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
         )
 
         foreach ($invalidValue in $invalidValues) {
-            $batch = New-TestSummaryBatch -Status 'Succeeded' -ItemCount $invalidValue
+            $batch = Get-TestSummaryBatch -Status 'Succeeded' -ItemCount $invalidValue
             Write-TestSummaryCheckpoint -RunPath $script:runPath -Batches @($batch) | Out-Null
 
             $threw = $false
@@ -174,7 +174,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
             }
         }
 
-        $missingItemCountBatch = New-TestSummaryBatch -Status 'Succeeded' -ItemCount 1
+        $missingItemCountBatch = Get-TestSummaryBatch -Status 'Succeeded' -ItemCount 1
         $missingItemCountBatch.PSObject.Properties.Remove('itemCount')
         Write-TestSummaryCheckpoint -RunPath $script:runPath -Batches @($missingItemCountBatch) | Out-Null
 
