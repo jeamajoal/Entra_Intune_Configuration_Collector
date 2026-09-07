@@ -69,6 +69,7 @@ BeforeAll {
         }
 
         [pscustomobject]@{
+            schemaVersion = '1.0'
             itemCount = $ItemCount
             items = @($items)
         } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding UTF8
