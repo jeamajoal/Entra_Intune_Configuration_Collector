@@ -63,8 +63,8 @@ Describe 'Persisted checkpoint attempts integrity' {
         }
     }
 
-    It 'accepts valid persisted zero and integral attempt values and preserves artifact canonicalization' {
-        foreach ($attemptsToken in @('0', '1', '1.0', '2147483647')) {
+    It 'accepts valid persisted zero and incrementable integral attempt values and preserves artifact canonicalization' {
+        foreach ($attemptsToken in @('0', '1', '1.0', '2147483646')) {
             Write-TestAttemptsCheckpoint -RunPath $script:runPath -AttemptsToken $attemptsToken | Out-Null
 
             $checkpoint = Get-CollectorCheckpoint -RunPath $script:runPath -RunId 'run-attempts' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
@@ -79,7 +79,7 @@ Describe 'Persisted checkpoint attempts integrity' {
         }
     }
 
-    It 'rejects schema-invalid persisted attempt values instead of coercing them' {
+    It 'rejects schema-invalid or non-incrementable persisted attempt values instead of coercing them' {
         $invalidTokens = @(
             '"1"',
             'true',
@@ -87,6 +87,7 @@ Describe 'Persisted checkpoint attempts integrity' {
             '1.5',
             '1.0000000000000002',
             '-1',
+            '2147483647',
             '2147483648',
             'null'
         )
@@ -106,7 +107,7 @@ Describe 'Persisted checkpoint attempts integrity' {
             }
 
             if (-not $threw) {
-                throw ('Expected schema-invalid persisted attempts token {0} to be rejected.' -f $attemptsToken)
+                throw ('Expected invalid or non-incrementable persisted attempts token {0} to be rejected.' -f $attemptsToken)
             }
         }
     }
