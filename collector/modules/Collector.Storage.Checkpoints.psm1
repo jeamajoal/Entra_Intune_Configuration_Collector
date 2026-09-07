@@ -443,7 +443,7 @@ function Get-CollectorCheckpoint {
         }
 
         $attempts = Get-CollectorBatchCountValue -Batch $batch -PropertyName 'attempts'
-        if ($null -eq $attempts) {
+        if ($null -eq $attempts -or $attempts -ge [int]::MaxValue) {
             throw ('Checkpoint batch {0} at {1} has invalid persisted attempts.' -f $batchOrdinal, $checkpointPath)
         }
 
