@@ -187,6 +187,15 @@ function Get-CollectorRunManifestForInvocation {
         throw ('Resume requested for run {0}, but its run manifest is unreadable: {1}' -f $RunId, $_.Exception.Message)
     }
 
+    $hasSchemaVersion = $null -ne $manifest -and $manifest.PSObject.Properties.Match('schemaVersion').Count -gt 0
+    if (
+        -not $hasSchemaVersion -or
+        -not ($manifest.schemaVersion -is [string]) -or
+        @('1.0', '1.1') -notcontains [string]$manifest.schemaVersion
+    ) {
+        throw ('Unsupported resume manifest schemaVersion for run {0}. Expected string version 1.0 or 1.1.' -f $RunId)
+    }
+
     if ([string]$manifest.runId -ne $RunId) {
         throw ('Resume manifest runId mismatch. Expected {0}; found {1}.' -f $RunId, [string]$manifest.runId)
     }
