@@ -28,8 +28,13 @@ Describe 'Persisted snapshot schema-version integrity' {
 
     It 'accepts only the current string snapshot schema version' {
         $valid = New-CollectorProvenanceSnapshot -RunId 'snapshot-schema-version-test' -Stage 'stage1' -Section 'entra-apps' -Family 'applications' -BatchId '0001' -SourceType 'Test' -SourceName 'fixture' -ApiVersion 'n/a' -ItemCount 1 -Items @([pscustomobject]@{ id = 'one' })
-        if (-not (Test-CollectorSnapshotSchemaVersion -Snapshot $valid)) {
-            throw 'Expected current snapshot schemaVersion 1.0 to be accepted.'
+        if ([string]$valid.schemaVersion -ne '1.0') {
+            throw ('Expected the production snapshot writer to default schemaVersion to 1.0; actual: {0}.' -f [string]$valid.schemaVersion)
+        }
+
+        $persistedValid = $valid | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+        if (-not (Test-CollectorSnapshotSchemaVersion -Snapshot $persistedValid)) {
+            throw 'Expected persisted current snapshot schemaVersion 1.0 to be accepted.'
         }
 
         foreach ($invalidCase in $script:invalidCases) {
