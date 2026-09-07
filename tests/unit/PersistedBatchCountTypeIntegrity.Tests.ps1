@@ -55,6 +55,25 @@ BeforeAll {
         }
     }
 
+    function Write-TestDecisionSnapshot {
+        param(
+            [Parameter(Mandatory = $true)][string]$Path,
+            [Parameter(Mandatory = $true)][int]$ItemCount
+        )
+
+        $items = if ($ItemCount -eq 0) {
+            @()
+        }
+        else {
+            @([pscustomobject]@{ id = 'seed-1' })
+        }
+
+        [pscustomobject]@{
+            itemCount = $ItemCount
+            items = @($items)
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding UTF8
+    }
+
     function Save-TestCountMutation {
         param(
             [Parameter(Mandatory = $true)][string]$RunPath,
@@ -74,7 +93,7 @@ Describe 'Persisted succeeded batch count type integrity' {
         $script:testRoot = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-persisted-count-type-' + [Guid]::NewGuid().ToString('N'))
         New-Item -Path $script:testRoot -ItemType Directory -Force | Out-Null
         $script:artifactPath = Join-Path -Path $script:testRoot -ChildPath 'batch-0001.json'
-        Set-Content -LiteralPath $script:artifactPath -Value '{}' -Encoding UTF8
+        Write-TestDecisionSnapshot -Path $script:artifactPath -ItemCount 1
     }
 
     AfterEach {
@@ -141,6 +160,7 @@ Describe 'Persisted succeeded batch count type integrity' {
         )
 
         foreach ($validCase in $validCases) {
+            Write-TestDecisionSnapshot -Path $script:artifactPath -ItemCount ([int]$validCase.ItemCount)
             $batch = Get-TestSucceededBatch -ItemCount $validCase.ItemCount -SuccessCount $validCase.SuccessCount -FailedCount $validCase.FailedCount -ArtifactPath $script:artifactPath
             $decision = Get-CollectorBatchExecutionDecision -Checkpoint (Get-TestDecisionCheckpoint -Batch $batch) -BatchId '0001' -Resume
 
