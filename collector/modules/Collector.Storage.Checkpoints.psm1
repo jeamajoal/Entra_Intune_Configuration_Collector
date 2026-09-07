@@ -435,8 +435,19 @@ function Get-CollectorCheckpoint {
         $checkpoint | Add-Member -MemberType NoteProperty -Name plan -Value $null
     }
 
+    $batchOrdinal = 0
     foreach ($batch in @($checkpoint.batches)) {
-        if ($batch -and -not [string]::IsNullOrWhiteSpace([string]$batch.artifactPath)) {
+        $batchOrdinal++
+        if ($null -eq $batch) {
+            continue
+        }
+
+        $attempts = Get-CollectorBatchCountValue -Batch $batch -PropertyName 'attempts'
+        if ($null -eq $attempts) {
+            throw ('Checkpoint batch {0} at {1} has invalid persisted attempts.' -f $batchOrdinal, $checkpointPath)
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$batch.artifactPath)) {
             $batch.artifactPath = Get-CollectorCheckpointCanonicalArtifactPath -RunPath $RunPath -Stage ([string]$checkpoint.stage) -Section ([string]$checkpoint.section) -Family ([string]$checkpoint.family) -BatchId ([string]$batch.batchId)
         }
     }
