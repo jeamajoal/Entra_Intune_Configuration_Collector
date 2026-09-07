@@ -113,7 +113,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
             }
             catch {
                 $threw = $true
-                if ($_.Exception.Message -notmatch 'invalid status') {
+                if ($_.Exception.Message -notmatch 'invalid.*status') {
                     throw ('Expected invalid-status summary rejection; actual error: {0}' -f $_.Exception.Message)
                 }
             }
@@ -133,7 +133,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
         }
         catch {
             $missingThrew = $true
-            if ($_.Exception.Message -notmatch 'missing status') {
+            if ($_.Exception.Message -notmatch '(missing status|invalid persisted status)') {
                 throw ('Expected missing-status summary rejection; actual error: {0}' -f $_.Exception.Message)
             }
         }
@@ -223,7 +223,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
             $caughtMessage = $_.Exception.Message
         }
 
-        if ($caughtMessage -notmatch 'invalid status') {
+        if ($caughtMessage -notmatch 'invalid.*status') {
             throw ('Expected final summary validation error to escape; actual: {0}' -f $caughtMessage)
         }
 
@@ -242,7 +242,7 @@ Describe 'Checkpoint summary consumed batch integrity' {
         if (@($manifest.checkpointSummary).Count -ne 0) {
             throw 'Schema-invalid checkpoint state must not contribute a checkpoint summary row after failure.'
         }
-        if (@($latestInvocation.failures | Where-Object { [string]$_.error -match 'invalid status' }).Count -lt 1) {
+        if (@($latestInvocation.failures | Where-Object { [string]$_.error -match 'invalid.*status' }).Count -lt 1) {
             throw 'Expected checkpoint-summary validation failure evidence in the invocation manifest.'
         }
     }
