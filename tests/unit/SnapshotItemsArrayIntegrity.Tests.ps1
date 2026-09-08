@@ -8,6 +8,7 @@ BeforeAll {
     function New-TestSnapshotItemsDocument {
         param(
             [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
             [object[]]$Items,
 
             [string]$RunId = 'snapshot-items-array-test',
