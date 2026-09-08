@@ -108,7 +108,14 @@ BeforeAll {
         )
 
         $persisted = Get-Content -LiteralPath $CheckpointPath -Raw | ConvertFrom-Json
-        $currentArray = if ($Target -eq 'plan') { @($persisted.plan.batches) } else { @($persisted.batches) }
+        $currentArray = @(
+            if ($Target -eq 'plan') {
+                $persisted.plan.batches
+            }
+            else {
+                $persisted.batches
+            }
+        )
         if ($currentArray.Count -ne 1) {
             throw ('Expected one persisted batch before scalar-shape mutation; target={0}; count={1}.' -f $Target, $currentArray.Count)
         }
