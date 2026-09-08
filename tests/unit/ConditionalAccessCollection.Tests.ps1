@@ -78,7 +78,7 @@ Describe 'Conditional Access offline collection' {
             }
         }
 
-        Mock -ModuleName 'Collector.Stage2.Details' -CommandName Invoke-CollectorGraphCollection -MockWith {
+        Mock -ModuleName 'Collector.Stage2.Details' -CommandName Invoke-CollectorGraphRequest -MockWith {
             param(
                 [string]$GraphToken,
                 [string]$Endpoint,
@@ -89,16 +89,16 @@ Describe 'Conditional Access offline collection' {
             )
 
             if ($Endpoint -eq '/v1.0/identity/conditionalAccess/policies/policy-1') {
-                return @([pscustomobject]@{ id = 'policy-1'; displayName = 'Require strong access'; state = 'enabled'; conditions = [pscustomobject]@{ locations = [pscustomobject]@{ includeLocations = @('location-1') } }; grantControls = [pscustomobject]@{ authenticationStrength = [pscustomobject]@{ id = 'strength-1' } } })
+                return [pscustomobject]@{ id = 'policy-1'; displayName = 'Require strong access'; state = 'enabled'; conditions = [pscustomobject]@{ locations = [pscustomobject]@{ includeLocations = @('location-1') } }; grantControls = [pscustomobject]@{ authenticationStrength = [pscustomobject]@{ id = 'strength-1' } } }
             }
             if ($Endpoint -eq '/v1.0/identity/conditionalAccess/namedLocations/location-1') {
-                return @([pscustomobject]@{ id = 'location-1'; displayName = 'Trusted HQ'; isTrusted = $true; ipRanges = @([pscustomobject]@{ cidrAddress = '10.0.0.0/8' }) })
+                return [pscustomobject]@{ id = 'location-1'; displayName = 'Trusted HQ'; isTrusted = $true; ipRanges = @([pscustomobject]@{ cidrAddress = '10.0.0.0/8' }) }
             }
             if ($Endpoint -eq '/v1.0/policies/authenticationStrengthPolicies/strength-1') {
-                return @([pscustomobject]@{ id = 'strength-1'; displayName = 'Phishing resistant MFA'; policyType = 'custom'; requirementsSatisfied = 'mfa'; allowedCombinations = @('fido2') })
+                return [pscustomobject]@{ id = 'strength-1'; displayName = 'Phishing resistant MFA'; policyType = 'custom'; requirementsSatisfied = 'mfa'; allowedCombinations = @('fido2') }
             }
             if ($Endpoint -eq '/v1.0/identity/conditionalAccess/authenticationContextClassReferences/c1') {
-                return @([pscustomobject]@{ id = 'c1'; displayName = 'Sensitive data'; description = 'Step-up context'; isAvailable = $true })
+                return [pscustomobject]@{ id = 'c1'; displayName = 'Sensitive data'; description = 'Step-up context'; isAvailable = $true }
             }
             throw ('Unexpected Stage2 Graph endpoint: {0}' -f $Endpoint)
         }
@@ -185,7 +185,7 @@ Describe 'Conditional Access offline collection' {
 
     It 'preserves zero-item and resume behavior through the reused stage machinery' {
         Mock -ModuleName 'Collector.Stage1.Inventory' -CommandName Invoke-CollectorGraphCollection -MockWith { @() }
-        Mock -ModuleName 'Collector.Stage2.Details' -CommandName Invoke-CollectorGraphCollection -MockWith { @() }
+        Mock -ModuleName 'Collector.Stage2.Details' -CommandName Invoke-CollectorGraphRequest -MockWith { throw 'Stage2 must not call Graph when the Stage1 inventory family is empty.' }
 
         $initial = Start-CollectorRun -GraphToken 'test-token' -OutputRoot $script:testRoot -Stages @('Stage1', 'Stage2', 'Stage3') -Sections @('entra-ca') -BatchSize 25 -MaxRetries 0 -BaseBackoffSeconds 0 -MaxBackoffSeconds 0 -ThrottleMilliseconds 0
         if ([string]$initial.status -ne 'Completed') {
@@ -200,6 +200,7 @@ Describe 'Conditional Access offline collection' {
         }
         $stage3Snapshot = Get-Content -LiteralPath (Join-Path $initial.runPath 'stage3/entra-ca/conditionalAccessPolicyReferences/batch-0001.json') -Raw | ConvertFrom-Json
         [int]$stage3Snapshot.itemCount | Should -Be 0
+        Assert-MockCalled -ModuleName 'Collector.Stage2.Details' -CommandName Invoke-CollectorGraphRequest -Times 0 -Exactly
 
         $resumed = Start-CollectorRun -GraphToken 'test-token' -OutputRoot $script:testRoot -Stages @('Stage1', 'Stage2', 'Stage3') -Sections @('entra-ca') -Resume -BatchSize 25 -MaxRetries 0 -BaseBackoffSeconds 0 -MaxBackoffSeconds 0 -ThrottleMilliseconds 0
         $resumed.runId | Should -Be $initial.runId
