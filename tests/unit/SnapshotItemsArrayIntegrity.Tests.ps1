@@ -5,7 +5,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
-    function New-TestSnapshotItemsDocument {
+    function Get-TestSnapshotItemsDocument {
         param(
             [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
@@ -54,7 +54,7 @@ BeforeAll {
             [string]$Shape
         )
 
-        $snapshot = New-TestSnapshotItemsDocument -Items ([object[]]@([pscustomobject]@{ id = 'one' }))
+        $snapshot = Get-TestSnapshotItemsDocument -Items ([object[]]@([pscustomobject]@{ id = 'one' }))
         $persisted = $snapshot | ConvertTo-Json -Depth 30 | ConvertFrom-Json
 
         switch ($Shape) {
@@ -119,7 +119,7 @@ BeforeAll {
         Save-CollectorCheckpoint -RunPath $RunPath -Checkpoint $checkpoint | Out-Null
     }
 
-    function New-TestStage1Context {
+    function Get-TestStage1Context {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath
@@ -160,7 +160,7 @@ Describe 'Persisted snapshot items array integrity' {
         )
 
         foreach ($validCase in $validItemSets) {
-            $persisted = (New-TestSnapshotItemsDocument -Items $validCase.Items) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+            $persisted = (Get-TestSnapshotItemsDocument -Items $validCase.Items) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
             if (-not ($persisted.items -is [System.Array])) {
                 throw ('Expected persisted valid case [{0}] to retain an array runtime shape; actual type: {1}.' -f $validCase.Label, $(if ($null -eq $persisted.items) { '<null>' } else { $persisted.items.GetType().FullName }))
             }
@@ -193,7 +193,7 @@ Describe 'Persisted snapshot items array integrity' {
             }
         }
 
-        $valid = New-TestSnapshotItemsDocument -Items ([object[]]@([pscustomobject]@{ id = 'one' }))
+        $valid = Get-TestSnapshotItemsDocument -Items ([object[]]@([pscustomobject]@{ id = 'one' }))
         $valid | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $artifactPath -Encoding UTF8
         $validDecision = Get-CollectorBatchExecutionDecision -Checkpoint $checkpoint -BatchId '0001' -Resume
         if ($validDecision.ShouldProcess -or $validDecision.MarkMissing -or [string]$validDecision.Reason -ne 'SucceededWithArtifact') {
@@ -221,7 +221,7 @@ Describe 'Persisted snapshot items array integrity' {
     }
 
     It 'reprocesses a real Stage1 success after its one-item array wrapper is removed' {
-        $context = New-TestStage1Context -RunPath $script:testRoot
+        $context = Get-TestStage1Context -RunPath $script:testRoot
         Mock -ModuleName 'Collector.Stage1.Inventory' -CommandName Invoke-CollectorGraphCollection -MockWith {
             @([pscustomobject]@{ id = 'one' })
         }
