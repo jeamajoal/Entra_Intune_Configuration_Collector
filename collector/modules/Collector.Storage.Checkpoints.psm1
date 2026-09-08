@@ -381,6 +381,16 @@ function Invoke-CollectorAtomicFileReplace {
     [System.IO.File]::Move($SourcePath, $DestinationPath)
 }
 
+function Test-CollectorPersistedCheckpointTimestamp {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Value
+    )
+
+    return ($Value -is [string]) -or ($Value -is [datetime])
+}
+
 function Get-CollectorCheckpoint {
     [CmdletBinding()]
     param(
@@ -414,6 +424,13 @@ function Get-CollectorCheckpoint {
     $hasSchemaVersion = $checkpoint.PSObject.Properties.Match('schemaVersion').Count -gt 0
     if (-not $hasSchemaVersion -or -not ($checkpoint.schemaVersion -is [string]) -or [string]$checkpoint.schemaVersion -ne '1.0') {
         throw ('Unsupported checkpoint schemaVersion at {0}. Expected string version 1.0.' -f $checkpointPath)
+    }
+
+    if (
+        $checkpoint.PSObject.Properties.Match('updatedUtc').Count -eq 0 -or
+        -not (Test-CollectorPersistedCheckpointTimestamp -Value $checkpoint.updatedUtc)
+    ) {
+        throw ('Checkpoint at {0} has invalid persisted updatedUtc; expected a string timestamp.' -f $checkpointPath)
     }
 
     $expectedIdentity = @{
@@ -512,6 +529,20 @@ function Get-CollectorCheckpoint {
         $attempts = Get-CollectorBatchCountValue -Batch $batch -PropertyName 'attempts'
         if ($null -eq $attempts -or $attempts -ge [int]::MaxValue) {
             throw ('Checkpoint batch {0} at {1} has invalid persisted attempts.' -f $batchOrdinal, $checkpointPath)
+        }
+
+        if (
+            $batch.PSObject.Properties.Match('updatedUtc').Count -eq 0 -or
+            -not (Test-CollectorPersistedCheckpointTimestamp -Value $batch.updatedUtc)
+        ) {
+            throw ('Checkpoint batch {0} at {1} has invalid persisted updatedUtc; expected a string timestamp.' -f $batchOrdinal, $checkpointPath)
+        }
+
+        if ($batch.PSObject.Properties.Match('error').Count -gt 0) {
+            $persistedError = $batch.error
+            if ($null -ne $persistedError -and -not ($persistedError -is [string])) {
+                throw ('Checkpoint batch {0} at {1} has invalid persisted error; expected string or null.' -f $batchOrdinal, $checkpointPath)
+            }
         }
 
         $hasArtifactPath = $batch.PSObject.Properties.Match('artifactPath').Count -gt 0
