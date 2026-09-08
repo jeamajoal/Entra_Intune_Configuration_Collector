@@ -22,6 +22,7 @@ ACLs, memberships, and assignments are classified as metadata.
 
 - CLI entry: collector/Invoke-Collector.ps1
 - Offline catalog command: collector/Export-KnowledgeCatalog.ps1
+- Offline package validation command: collector/Test-KnowledgePackage.ps1
 - Orchestration: collector/modules/Collector.Orchestrator.psm1
 - Stage modules:
   - collector/modules/Collector.Stage1.Inventory.psm1
@@ -34,6 +35,7 @@ ACLs, memberships, and assignments are classified as metadata.
   - collector/modules/Collector.Storage.Artifacts.psm1
   - collector/modules/Collector.Storage.Checkpoints.psm1
   - collector/modules/Collector.Storage.Catalog.psm1
+  - collector/modules/Collector.Validation.Package.psm1
   - collector/modules/Collector.Common.Retry.psm1
   - collector/modules/Collector.Common.Provenance.psm1
 - Schemas:
@@ -195,11 +197,13 @@ The offline catalog is a justified boundary between provider-specific collection
 
 - Schema owner: `collector/schemas/catalog.schema.json`.
 - Runtime owner: `collector/modules/Collector.Storage.Catalog.psm1`.
-- Operator command: `collector/Export-KnowledgeCatalog.ps1 -RunPath output/<runId>`.
+- Catalog operator command: `collector/Export-KnowledgeCatalog.ps1 -RunPath output/<runId>`.
+- Package-validation owner: `collector/modules/Collector.Validation.Package.psm1`.
+- Package-validation command: `collector/Test-KnowledgePackage.ps1 -RunPath output/<runId>`.
 - Derived artifact: `output/<runId>/catalog/knowledge-catalog.json`.
 - Catalog schema version: string `1.0`.
 - Stable catalog identity: `catalog-v1:<runId>`.
-- Generation is explicit and offline; normal `Invoke-Collector.ps1` collection does not automatically emit or refresh the catalog.
+- Generation and validation are explicit and offline; normal `Invoke-Collector.ps1` collection does not automatically emit, refresh, or validate the catalog.
 
 The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence therefore produces the same identity and deterministic content rather than churn caused by generation time.
 
@@ -214,6 +218,20 @@ A `Completed` manifest requires all checkpoint batches to be successful. A `Comp
 Execution-input dependencies and Stage3 relationship identity-domain descriptors are emitted only for admitted consumer families. Required Stage1 providers must also resolve to admitted evidence; otherwise generation fails instead of publishing a broken navigation edge. The current runtime emits the concrete `execution-input` mappings defined by the collector; the `reference` dependency vocabulary remains available for future reviewed mappings rather than being guessed from payloads.
 
 The final document is serialized without a generation timestamp and with deterministic array ordering. It is first written to a same-directory temporary file and round-tripped as JSON, then atomically replaces the prior catalog. All source validation precedes replacement, so a failed regeneration leaves the previous catalog untouched.
+
+### Provider-independent package validation boundary
+
+Package validation is a read-only handoff gate after catalog generation and before external consumption. `Collector.Validation.Package.psm1` imports the catalog module but does not import Graph or on-prem provider modules and exposes no source-write path.
+
+To avoid a second, weaker parser stack, the validator invokes the catalog module's existing strict persisted-evidence functions in that module's own session state and recomputes the canonical expected catalog **in memory only**. It then reads the persisted `catalog/knowledge-catalog.json` and performs a recursive structural comparison against that canonical model. Object property sets and case, array ordering/counts, scalar types/values, catalog/run identity, source-manifest identity, artifact descriptors, dependency endpoints, and relationship descriptors must all agree. The source-manifest timestamp comparison deliberately accepts the cross-runtime JSON materialization used by the collector (`string`, `DateTime`, or `DateTimeOffset`) and compares canonical UTC time.
+
+Because the expected model is built through the generator's existing evidence pipeline, validation also reuses terminal-manifest checks, checkpoint-summary coherence, strict checkpoint loading, batch success/count rules, canonical snapshot existence/schema/identity/cardinality, Stage1 fingerprint validation, dependency resolution, and relationship-family semantics. A stale catalog therefore fails even when its JSON is syntactically valid.
+
+Validation never regenerates the catalog, repairs evidence, rewrites the manifest/checkpoints/snapshots, or contacts a provider. The default command output is one payload-safe PowerShell result object with `valid`, `status`, run/catalog identity, validated artifact/family/dependency/relationship counts, and a concise message. `-AsJson` emits the same result as compact JSON for machine handoff. Failure messages identify the contract/path that failed but do not include raw snapshot `items` or `requestContext` content.
+
+The operator flow is therefore:
+
+`collect -> catalog -> validate -> consume`
 
 ### Artifact descriptors
 
@@ -277,7 +295,7 @@ V1 identity-domain semantics for current relationship families are:
 
 The catalog does not assert that every raw row contains a single field named `sourceId` or `targetId`; it declares the identity domains the family contract uses so the offline consumer can interpret family-specific raw rows without guessing cross-family meaning.
 
-### Source compatibility and fail-closed generation
+### Source compatibility and fail-closed generation/validation
 
 A v1 catalog is bound to the canonical `manifest/run-manifest.json`. Its source-manifest descriptor records the manifest schema version, terminal status, completion timestamp, and invocation count. The catalog admits only manifest schema versions currently supported by the collector (`1.0` and `1.1`), checkpoint schema `1.0`, snapshot schema `1.0`, and catalog schema `1.0`.
 
@@ -294,7 +312,7 @@ Catalog generation/validation must fail closed rather than rewrite, repair, or s
 - duplicate logical artifact, dependency, or relationship descriptors;
 - dependency endpoints naming evidence that the catalog cannot resolve where the dependency is required for package navigation.
 
-`CompletedWithErrors` is terminal source-manifest evidence and may be represented, but it is not proof that all selected families were collected. Consumers and the future package validator must preserve that distinction rather than interpreting catalog existence as full-coverage success.
+`CompletedWithErrors` is terminal source-manifest evidence and may be represented, but it is not proof that all selected families were collected. Consumers and the package validator preserve that distinction rather than interpreting catalog existence as full-coverage success.
 
 ### Determinism, security, and product boundary
 
