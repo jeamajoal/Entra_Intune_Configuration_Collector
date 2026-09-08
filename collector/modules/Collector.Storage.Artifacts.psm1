@@ -3,6 +3,9 @@ Set-StrictMode -Version Latest
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
+$script:CollectorManifestStatusValues = @('InProgress', 'Completed', 'CompletedWithErrors', 'Failed')
+$script:CollectorPersistedJsonObjectTypeName = 'System.Management.Automation.PSCustomObject'
+
 function Initialize-CollectorDirectory {
     [CmdletBinding()]
     param(
@@ -88,6 +91,88 @@ function Test-CollectorManifestArrayContainerShape {
     return $true
 }
 
+function Test-CollectorPersistedManifestTimestamp {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Value,
+
+        [switch]$AllowNull
+    )
+
+    if ($null -eq $Value) {
+        return [bool]$AllowNull
+    }
+
+    return ($Value -is [string]) -or ($Value -is [datetime])
+}
+
+function Test-CollectorManifestEnvelopeRecord {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Record
+    )
+
+    if ($null -eq $Record -or $Record.GetType().FullName -ne $script:CollectorPersistedJsonObjectTypeName) {
+        return $false
+    }
+
+    if (
+        $Record.PSObject.Properties.Match('startedUtc').Count -eq 0 -or
+        -not (Test-CollectorPersistedManifestTimestamp -Value $Record.startedUtc)
+    ) {
+        return $false
+    }
+
+    if (
+        $Record.PSObject.Properties.Match('completedUtc').Count -eq 0 -or
+        -not (Test-CollectorPersistedManifestTimestamp -Value $Record.completedUtc -AllowNull)
+    ) {
+        return $false
+    }
+
+    if (
+        $Record.PSObject.Properties.Match('status').Count -eq 0 -or
+        -not ($Record.status -is [string]) -or
+        $script:CollectorManifestStatusValues -cnotcontains [string]$Record.status
+    ) {
+        return $false
+    }
+
+    if (
+        $Record.PSObject.Properties.Match('parameters').Count -eq 0 -or
+        $null -eq $Record.parameters -or
+        $Record.parameters.GetType().FullName -ne $script:CollectorPersistedJsonObjectTypeName
+    ) {
+        return $false
+    }
+
+    return $true
+}
+
+function Test-CollectorManifestScalarEnvelopeShape {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Manifest
+    )
+
+    if (-not (Test-CollectorManifestEnvelopeRecord -Record $Manifest)) {
+        return $false
+    }
+
+    if ($Manifest.PSObject.Properties.Match('invocations').Count -gt 0 -and $null -ne $Manifest.invocations) {
+        foreach ($invocation in $Manifest.invocations) {
+            if (-not (Test-CollectorManifestEnvelopeRecord -Record $invocation)) {
+                return $false
+            }
+        }
+    }
+
+    return $true
+}
+
 function Test-CollectorResumeRun {
     [CmdletBinding()]
     param(
@@ -142,6 +227,10 @@ function Test-CollectorResumeRun {
     }
 
     if (-not (Test-CollectorManifestArrayContainerShape -Manifest $manifest)) {
+        return $false
+    }
+
+    if (-not (Test-CollectorManifestScalarEnvelopeShape -Manifest $manifest)) {
         return $false
     }
 
