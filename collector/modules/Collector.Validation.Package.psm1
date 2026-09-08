@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 
 $catalogModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Catalog.psm1'
-$catalogModules = @(Import-Module -Name $catalogModulePath -Force -PassThru -ErrorAction Stop)
+$catalogModules = @(Import-Module -Name $catalogModulePath -PassThru -ErrorAction Stop)
 if ($catalogModules.Count -lt 1) {
     throw 'Offline package validation could not load the catalog module.'
 }
