@@ -208,7 +208,7 @@ Every admitted raw snapshot is represented by one metadata-only descriptor conta
 - validated `itemCount`;
 - bounded provenance: `sourceType`, `sourceName`, `apiVersion`, and `isBeta`.
 
-The descriptor does not copy `items`, `requestContext`, credentials, relationship rows, or other tenant payload. An offline consumer follows the relative path to the canonical raw snapshot when payload data is needed. Artifact descriptors are logically unique by `(runId, stage, section, family, batchId)` and must be emitted in ordinal stage/section/family/batchId order so regeneration from unchanged evidence is deterministic.
+The descriptor does not copy `items`, `requestContext`, credentials, relationship rows, or other tenant payload. An offline consumer follows the relative path to the canonical raw snapshot when payload data is needed. Artifact descriptors are logically unique by `(runId, stage, section, family, batchId)` and must be emitted in ordinal stage/section/family/batchId order so regeneration from unchanged evidence is deterministic. A completed-run catalog contains at least one artifact descriptor; legitimate zero-item families are still represented by their successful empty snapshot artifact.
 
 ### Dependency descriptors
 
@@ -255,7 +255,7 @@ V1 identity-domain semantics for current relationship families are:
 | servicePrincipalAppRoleAssignedTo | assignment | `entra.service-principal` | `entra.directory-object` |
 | applicationFederatedIdentityCredentials | federated-trust | `entra.application` | `entra.federated-identity-credential` |
 | delegatedGrants | grant | `entra.service-principal` | `entra.service-principal`, `entra.directory-object` |
-| pimScheduleEdges | role-governance | `entra.pim-role-assignment-schedule-instance`, `entra.pim-role-eligibility-schedule-instance` | `entra.directory-object`, `entra.directory-role-definition`, `entra.directory-scope` |
+| pimScheduleEdges | role-governance | `entra.pim-role-assignment-schedule-instance`, `entra.pim-role-eligibility-schedule-instance` | `entra.directory-object`, `entra.directory-role-definition`, `entra.directory-scope`, `entra.app-scope` |
 
 The catalog does not assert that every raw row contains a single field named `sourceId` or `targetId`; it declares the identity domains the family contract uses so the offline consumer can interpret family-specific raw rows without guessing cross-family meaning.
 
@@ -263,9 +263,11 @@ The catalog does not assert that every raw row contains a single field named `so
 
 A v1 catalog is bound to the canonical `manifest/run-manifest.json`. Its source-manifest descriptor records the manifest schema version, terminal status, completion timestamp, and invocation count. The catalog admits only manifest schema versions currently supported by the collector (`1.0` and `1.1`), checkpoint schema `1.0`, snapshot schema `1.0`, and catalog schema `1.0`.
 
+Catalog freshness is bound to the canonical manifest's exact `status`, `completedUtc`, and invocation count. Top-level `runStatus` and `sourceManifest.status` must both equal the canonical manifest status. If a run is resumed after catalog generation and any of those source-manifest facts change, the existing catalog is stale and must be regenerated before it is treated as current offline evidence.
+
 Catalog generation/validation must fail closed rather than rewrite, repair, or silently skip evidence when any required contract is violated, including:
 
-- source manifest missing/unreadable, non-terminal, unsupported, or runId-mismatched;
+- source manifest missing/unreadable, non-terminal, unsupported, runId-mismatched, or different from the catalog's recorded status/completion/invocation identity;
 - referenced checkpoint or raw snapshot missing/unreadable;
 - descriptor identity not matching run/stage/section/family/batch identity and canonical relative paths;
 - checkpoint batch not representing a schema-valid persisted `Succeeded` batch for the descriptor;
