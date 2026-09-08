@@ -13,6 +13,9 @@ Describe 'Offline knowledge catalog v1 schema contract' {
         if ([string]$script:catalogSchema.properties.catalogId.pattern -ne '^catalog-v1:.+$') {
             throw 'Expected catalogId to use the catalog-v1:<runId> identity namespace.'
         }
+        if ([int]$script:catalogSchema.properties.artifacts.minItems -ne 1) {
+            throw 'Expected a completed-run catalog to require at least one raw artifact descriptor.'
+        }
 
         $required = @($script:catalogSchema.required)
         foreach ($name in @('schemaVersion', 'catalogId', 'runId', 'runStatus', 'sourceManifest', 'artifacts', 'dependencies', 'relationships')) {
