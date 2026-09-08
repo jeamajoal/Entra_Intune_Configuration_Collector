@@ -439,6 +439,9 @@ function Get-CollectorCheckpoint {
     }
 
     $hasBatchesProperty = $checkpoint.PSObject.Properties.Match('batches').Count -gt 0
+    if ($hasBatchesProperty -and -not [object]::ReferenceEquals($checkpoint.batches, $null) -and -not ($checkpoint.batches -is [System.Array])) {
+        throw ('Checkpoint at {0} has invalid persisted batches container; expected an array.' -f $checkpointPath)
+    }
     if (-not $hasBatchesProperty -or [object]::ReferenceEquals($checkpoint.batches, $null)) {
         $checkpoint | Add-Member -MemberType NoteProperty -Name batches -Value @() -Force
     }
@@ -447,6 +450,11 @@ function Get-CollectorCheckpoint {
     }
 
     if ($null -ne $checkpoint.plan) {
+        $hasPlanBatchesProperty = $checkpoint.plan.PSObject.Properties.Match('batches').Count -gt 0
+        if ($hasPlanBatchesProperty -and -not [object]::ReferenceEquals($checkpoint.plan.batches, $null) -and -not ($checkpoint.plan.batches -is [System.Array])) {
+            throw ('Checkpoint plan at {0} has invalid persisted batches container; expected an array.' -f $checkpointPath)
+        }
+
         foreach ($planIdentityName in @('planVersion', 'sourceFingerprint')) {
             if (
                 $checkpoint.plan.PSObject.Properties.Match($planIdentityName).Count -eq 0 -or
