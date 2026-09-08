@@ -16,7 +16,7 @@
   "required": ["schemaVersion", "catalogId", "runId", "runStatus", "sourceManifest", "artifacts", "dependencies", "relationships"],
   "$defs": {
     "stage": {"type": "string", "enum": ["stage1", "stage2", "stage3"]},
-    "section": {"type": "string", "enum": ["entra-apps", "entra-pim", "intune-core", "onprem-ad-gpo"]},
+    "section": {"type": "string", "enum": ["entra-apps", "entra-pim", "entra-ca", "intune-core", "onprem-ad-gpo"]},
     "family": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
     "kind": {"type": "string", "enum": ["inventory", "detail", "relationship"]},
     "sourceManifest": {
@@ -52,8 +52,8 @@
         "family": {"$ref": "#/$defs/family"},
         "batchId": {"type": "string", "pattern": "^[0-9]{4,}$"},
         "kind": {"$ref": "#/$defs/kind"},
-        "relativePath": {"type": "string", "pattern": "^stage[123]/(entra-apps|entra-pim|intune-core|onprem-ad-gpo)/[A-Za-z0-9][A-Za-z0-9._-]*/batch-[0-9]{4,}\\.json$"},
-        "checkpointRelativePath": {"type": "string", "pattern": "^checkpoints/stage[123]/(entra-apps|entra-pim|intune-core|onprem-ad-gpo)/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$"},
+        "relativePath": {"type": "string", "pattern": "^stage[123]/(entra-apps|entra-pim|entra-ca|intune-core|onprem-ad-gpo)/[A-Za-z0-9][A-Za-z0-9._-]*/batch-[0-9]{4,}\\.json$"},
+        "checkpointRelativePath": {"type": "string", "pattern": "^checkpoints/stage[123]/(entra-apps|entra-pim|entra-ca|intune-core|onprem-ad-gpo)/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$"},
         "snapshotSchemaVersion": {"type": "string", "const": "1.0"},
         "checkpointSchemaVersion": {"type": "string", "const": "1.0"},
         "itemCount": {"type": "integer", "minimum": 0},
