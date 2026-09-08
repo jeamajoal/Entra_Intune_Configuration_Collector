@@ -49,25 +49,28 @@ Describe 'Offline knowledge catalog v1 schema contract' {
         }
     }
 
-    It 'binds artifact kind to stage' {
-        $artifact = $script:catalogDefinitions.artifact
-        $mappings = @{}
-        foreach ($rule in @($artifact.allOf)) {
-            $stage = [string]$rule.if.properties.stage.const
-            $kind = [string]$rule.then.properties.kind.const
-            if (-not [string]::IsNullOrWhiteSpace($stage)) {
-                $mappings[$stage] = $kind
-            }
-        }
-
+    It 'binds stage and kind consistently for artifact and dependency owners' {
         $expected = @{
             stage1 = 'inventory'
             stage2 = 'detail'
             stage3 = 'relationship'
         }
-        foreach ($stage in $expected.Keys) {
-            if (-not $mappings.ContainsKey($stage) -or [string]$mappings[$stage] -ne [string]$expected[$stage]) {
-                throw ('Expected catalog artifact stage {0} to require kind {1}.' -f $stage, $expected[$stage])
+
+        foreach ($ownerName in @('artifact', 'dependencyEndpoint')) {
+            $owner = $script:catalogDefinitions.PSObject.Properties[$ownerName].Value
+            $mappings = @{}
+            foreach ($rule in @($owner.allOf)) {
+                $stage = [string]$rule.if.properties.stage.const
+                $kind = [string]$rule.then.properties.kind.const
+                if (-not [string]::IsNullOrWhiteSpace($stage)) {
+                    $mappings[$stage] = $kind
+                }
+            }
+
+            foreach ($stage in $expected.Keys) {
+                if (-not $mappings.ContainsKey($stage) -or [string]$mappings[$stage] -ne [string]$expected[$stage]) {
+                    throw ('Expected catalog {0} stage {1} to require kind {2}.' -f $ownerName, $stage, $expected[$stage])
+                }
             }
         }
     }
