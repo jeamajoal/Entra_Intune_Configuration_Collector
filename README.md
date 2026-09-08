@@ -173,6 +173,27 @@ The current supported snapshot `schemaVersion` is string `1.0`. Resume reuse and
 
 For on-prem snapshots, sourceName records concrete cmdlet names and requestContext includes cmdletNames for the executed family.
 
+## Offline Knowledge Catalog v1 Contract
+
+Raw snapshots, checkpoints, and the run manifest remain the source of truth. Offline knowledge-store v1 is a **derived deterministic catalog/index** over those files; it is not a second tenant datastore and does not transform raw evidence into reconstruction-ready objects.
+
+The v1 contract is owned by `collector/schemas/catalog.schema.json` and reserves one derived file at `catalog/knowledge-catalog.json` beneath a run directory. This contract change defines the file shape only; catalog generation is a separate runtime capability and existing collector runs do not begin emitting the file merely because the schema exists.
+
+The catalog contract requires:
+
+- `schemaVersion` `1.0` and deterministic `catalogId` `catalog-v1:<runId>`;
+- the run id and terminal source-manifest identity/status;
+- one metadata-only descriptor per admitted raw snapshot with explicit run/stage/section/family/batch identity, canonical forward-slash relative snapshot path, canonical checkpoint relative path, snapshot/checkpoint schema versions, item count, and bounded provenance (`sourceType`, `sourceName`, `apiVersion`, `isBeta`);
+- artifact `kind` values `inventory`, `detail`, and `relationship`, with the v1 stage mapping `stage1 -> inventory`, `stage2 -> detail`, `stage3 -> relationship`;
+- dependency descriptors that link consumer and provider stage/section/family owners, distinguishing required `execution-input` dependencies from offline `reference` links;
+- Stage3 relationship descriptors that publish a relationship type plus one or more source and target identity domains so an offline consumer can interpret edge direction without inventing object semantics.
+
+Catalog descriptors deliberately do **not** copy snapshot `items`, `requestContext`, credential payloads, or other raw tenant content. Consumers follow `relativePath` back to canonical snapshots when payload data is needed. Existing credential boundaries therefore remain unchanged: raw key material and password secret text are still excluded by the collector, and the catalog adds no new secret-bearing surface.
+
+For v1, "offline queryable" means that after a catalog is generated and validated, a consumer can discover available families, navigate Stage1 inventory to dependent Stage2/Stage3 evidence, identify relationship source/target identity domains, and locate canonical raw JSON without contacting Microsoft Graph or an on-prem provider. It does **not** imply a database/query service, embeddings/vector search, LLM runtime, UI, or tenant reconstruction/import/export model.
+
+Catalog generation/validation must fail closed rather than repair or silently omit required evidence when the source manifest is non-terminal, a referenced checkpoint/snapshot is missing or unreadable, run/stage/section/family/batch identity disagrees with its descriptor/path, a checkpoint batch is not a valid persisted success, item counts disagree, or a referenced manifest/checkpoint/snapshot schema version is unsupported. `CompletedWithErrors` is a terminal run status the catalog can represent, but it must not be interpreted as proof of full collection coverage.
+
 ## Validation
 
 Ordinary `pull_request` and `main` push CI executes the same parser, PSScriptAnalyzer, and Pester validation gate on GitHub-hosted `windows-latest` runners under both PowerShell 7 (`pwsh`) and Windows PowerShell 5.1 (`powershell`). Automatic public-PR validation does not execute repository code on the persistent self-hosted runner. Both jobs pin Pester 5.9.1 and PSScriptAnalyzer 1.25.0. The Windows PowerShell job uses `-SkipPublisherCheck` only for the side-by-side Pester installation because Windows includes an older Microsoft-signed Pester with a different publisher; this does not skip or weaken Pester execution.
