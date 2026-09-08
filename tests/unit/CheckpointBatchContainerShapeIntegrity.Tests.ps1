@@ -93,7 +93,7 @@ BeforeAll {
         return $checkpointPath
     }
 
-    function Set-TestCheckpointContainerShape {
+    function Write-TestCheckpointContainerShape {
         param(
             [Parameter(Mandatory = $true)]
             [string]$CheckpointPath,
@@ -210,7 +210,7 @@ Describe 'Persisted checkpoint batch container shape integrity' {
         foreach ($target in @('plan', 'recorded')) {
             foreach ($shape in @('object', 'string', 'number', 'boolean')) {
                 $checkpointPath = Write-TestCheckpointDocument -RunPath $script:testRoot -PlanBatches ([object[]]@(Get-TestPlanBatch -BatchId '0001')) -RecordedBatches ([object[]]@(Get-TestRecordedBatch -BatchId '0001'))
-                Set-TestCheckpointContainerShape -CheckpointPath $checkpointPath -Target $target -Shape $shape
+                Write-TestCheckpointContainerShape -CheckpointPath $checkpointPath -Target $target -Shape $shape
 
                 $threw = $false
                 try {
@@ -252,7 +252,7 @@ Describe 'Persisted checkpoint batch container shape integrity' {
     It 'fails Stage1 readiness and downstream loading when either one-batch array wrapper is removed' {
         foreach ($target in @('plan', 'recorded')) {
             $fixture = Write-TestCompletedStage1Fixture -RunPath $script:testRoot
-            Set-TestCheckpointContainerShape -CheckpointPath $fixture.CheckpointPath -Target $target -Shape 'object'
+            Write-TestCheckpointContainerShape -CheckpointPath $fixture.CheckpointPath -Target $target -Shape 'object'
 
             if (Test-CollectorInventoryArtifacts -RunPath $script:testRoot -Section 'entra-apps' -Family 'applications' -ExpectedRunId $fixture.RunId) {
                 throw ('Expected Stage1 readiness to reject scalar {0} batch container.' -f $target)
@@ -280,7 +280,7 @@ Describe 'Persisted checkpoint batch container shape integrity' {
         Invoke-CollectorStage1 -Context $context -Sections @('entra-apps') | Out-Null
 
         $checkpointPath = Get-CollectorCheckpointPath -RunPath $script:testRoot -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
-        Set-TestCheckpointContainerShape -CheckpointPath $checkpointPath -Target 'recorded' -Shape 'object'
+        Write-TestCheckpointContainerShape -CheckpointPath $checkpointPath -Target 'recorded' -Shape 'object'
 
         $context.Resume = $true
         $threw = $false
