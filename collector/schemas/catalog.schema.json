@@ -179,6 +179,35 @@
         "checkpointSchemaVersion",
         "itemCount",
         "provenance"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"stage": {"const": "stage1"}},
+            "required": ["stage"]
+          },
+          "then": {
+            "properties": {"kind": {"const": "inventory"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"stage": {"const": "stage2"}},
+            "required": ["stage"]
+          },
+          "then": {
+            "properties": {"kind": {"const": "detail"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"stage": {"const": "stage3"}},
+            "required": ["stage"]
+          },
+          "then": {
+            "properties": {"kind": {"const": "relationship"}}
+          }
+        }
       ]
     },
     "dependencyEndpoint": {

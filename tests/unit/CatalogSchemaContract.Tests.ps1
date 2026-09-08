@@ -49,6 +49,29 @@ Describe 'Offline knowledge catalog v1 schema contract' {
         }
     }
 
+    It 'binds artifact kind to stage' {
+        $artifact = $script:catalogDefinitions.artifact
+        $mappings = @{}
+        foreach ($rule in @($artifact.allOf)) {
+            $stage = [string]$rule.if.properties.stage.const
+            $kind = [string]$rule.then.properties.kind.const
+            if (-not [string]::IsNullOrWhiteSpace($stage)) {
+                $mappings[$stage] = $kind
+            }
+        }
+
+        $expected = @{
+            stage1 = 'inventory'
+            stage2 = 'detail'
+            stage3 = 'relationship'
+        }
+        foreach ($stage in $expected.Keys) {
+            if (-not $mappings.ContainsKey($stage) -or [string]$mappings[$stage] -ne [string]$expected[$stage]) {
+                throw ('Expected catalog artifact stage {0} to require kind {1}.' -f $stage, $expected[$stage])
+            }
+        }
+    }
+
     It 'defines explicit execution and reference dependency semantics' {
         $dependency = $script:catalogDefinitions.dependency
         $dependencyTypes = @($dependency.properties.dependencyType.enum)
