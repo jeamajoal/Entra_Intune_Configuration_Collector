@@ -21,6 +21,7 @@ ACLs, memberships, and assignments are classified as metadata.
 ## Concretized Implementation Layout
 
 - CLI entry: collector/Invoke-Collector.ps1
+- Offline catalog command: collector/Export-KnowledgeCatalog.ps1
 - Orchestration: collector/modules/Collector.Orchestrator.psm1
 - Stage modules:
   - collector/modules/Collector.Stage1.Inventory.psm1
@@ -32,6 +33,7 @@ ACLs, memberships, and assignments are classified as metadata.
 - Control and storage:
   - collector/modules/Collector.Storage.Artifacts.psm1
   - collector/modules/Collector.Storage.Checkpoints.psm1
+  - collector/modules/Collector.Storage.Catalog.psm1
   - collector/modules/Collector.Common.Retry.psm1
   - collector/modules/Collector.Common.Provenance.psm1
 - Schemas:
@@ -161,6 +163,8 @@ Run artifacts are written under output/<runId>:
   - output/<runId>/checkpoints/stageX/<section>/<family>.json
 - manifest:
   - output/<runId>/manifest/run-manifest.json
+- derived catalog, when explicitly generated:
+  - output/<runId>/catalog/knowledge-catalog.json
 
 Snapshot provenance envelope fields:
 
@@ -190,12 +194,26 @@ The offline catalog is a justified boundary between provider-specific collection
 ### Durable owner and path
 
 - Schema owner: `collector/schemas/catalog.schema.json`.
-- Reserved derived artifact: `output/<runId>/catalog/knowledge-catalog.json`.
+- Runtime owner: `collector/modules/Collector.Storage.Catalog.psm1`.
+- Operator command: `collector/Export-KnowledgeCatalog.ps1 -RunPath output/<runId>`.
+- Derived artifact: `output/<runId>/catalog/knowledge-catalog.json`.
 - Catalog schema version: string `1.0`.
 - Stable catalog identity: `catalog-v1:<runId>`.
-- Runtime generation is intentionally separate from this contract; defining the schema does not by itself cause collector runs to emit the reserved artifact.
+- Generation is explicit and offline; normal `Invoke-Collector.ps1` collection does not automatically emit or refresh the catalog.
 
-The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence must therefore not require a new identity merely because generation occurred again.
+The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence therefore produces the same identity and deterministic content rather than churn caused by generation time.
+
+### Runtime generation boundary
+
+Catalog generation consumes only persisted local evidence. The catalog module imports storage/checkpoint/provenance modules and no Graph or on-prem provider module. Checkpoints are the discovery index; the generator does not infer collection families by heuristically walking raw snapshot directories.
+
+Before a snapshot is admitted, generation verifies terminal manifest/run identity, current checkpoint-summary agreement, canonical checkpoint plan/batch identity, succeeded-batch count integrity, canonical snapshot existence/readability/schema/identity/cardinality, and the Stage1 persisted plan fingerprint. Checkpoint, batch, and snapshot timestamps must not be newer than the terminal manifest completion timestamp.
+
+A `Completed` manifest requires all checkpoint batches to be successful. A `CompletedWithErrors` manifest may produce a catalog containing only validated successful batches, while `runStatus` preserves the incomplete-coverage fact. Any terminal package that still contains an `InProgress` batch is rejected. A successful zero-item family remains represented by its successful empty snapshot.
+
+Execution-input dependencies and Stage3 relationship identity-domain descriptors are emitted only for admitted consumer families. Required Stage1 providers must also resolve to admitted evidence; otherwise generation fails instead of publishing a broken navigation edge. The current runtime emits the concrete `execution-input` mappings defined by the collector; the `reference` dependency vocabulary remains available for future reviewed mappings rather than being guessed from payloads.
+
+The final document is serialized without a generation timestamp and with deterministic array ordering. It is first written to a same-directory temporary file and round-tripped as JSON, then atomically replaces the prior catalog. All source validation precedes replacement, so a failed regeneration leaves the previous catalog untouched.
 
 ### Artifact descriptors
 
