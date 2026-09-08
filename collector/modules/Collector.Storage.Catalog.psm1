@@ -64,9 +64,23 @@ function Get-CollectorCatalogKind {
 
 function ConvertTo-CollectorCatalogTimestamp {
     param([Parameter(Mandatory = $true)][object]$Value, [Parameter(Mandatory = $true)][string]$Label)
-    if (-not ($Value -is [string]) -or [string]::IsNullOrWhiteSpace([string]$Value)) {
-        throw ('{0} must be a non-empty persisted string timestamp.' -f $Label)
+
+    if ($Value -is [DateTimeOffset]) {
+        return ([DateTimeOffset]$Value).ToUniversalTime()
     }
+
+    if ($Value -is [datetime]) {
+        $dateTimeValue = [datetime]$Value
+        if ($dateTimeValue.Kind -eq [System.DateTimeKind]::Unspecified) {
+            $dateTimeValue = [DateTime]::SpecifyKind($dateTimeValue, [System.DateTimeKind]::Utc)
+        }
+        return ([DateTimeOffset]$dateTimeValue).ToUniversalTime()
+    }
+
+    if (-not ($Value -is [string]) -or [string]::IsNullOrWhiteSpace([string]$Value)) {
+        throw ('{0} must be a persisted string or parsed date/time timestamp.' -f $Label)
+    }
+
     $parsed = [DateTimeOffset]::MinValue
     if (-not [DateTimeOffset]::TryParse([string]$Value, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) {
         throw ('{0} is not a valid round-trip timestamp: {1}' -f $Label, $Value)
@@ -340,7 +354,7 @@ function Export-CollectorKnowledgeCatalog {
 
     $catalog = [pscustomobject][ordered]@{
         schemaVersion = '1.0'; catalogId = ('catalog-v1:{0}' -f $run.RunId); runId = $run.RunId; runStatus = [string]$run.Manifest.status
-        sourceManifest = [pscustomobject][ordered]@{ relativePath = 'manifest/run-manifest.json'; schemaVersion = [string]$run.Manifest.schemaVersion; completedUtc = [string]$run.Manifest.completedUtc; status = [string]$run.Manifest.status; invocationCount = [int]$run.InvocationCount }
+        sourceManifest = [pscustomobject][ordered]@{ relativePath = 'manifest/run-manifest.json'; schemaVersion = [string]$run.Manifest.schemaVersion; completedUtc = $run.CompletedUtc.ToString('o'); status = [string]$run.Manifest.status; invocationCount = [int]$run.InvocationCount }
         artifacts = @($artifacts); dependencies = @($dependencies); relationships = @($relationships)
     }
     $catalogPath = Save-CollectorKnowledgeCatalog -RunPath $run.RunPath -Catalog $catalog
