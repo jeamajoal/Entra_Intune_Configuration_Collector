@@ -18,6 +18,10 @@ function Test-CollectorSnapshotSchemaVersion {
         return $false
     }
 
+    if ($Snapshot.PSObject.Properties.Match('items').Count -eq 0 -or -not ($Snapshot.items -is [System.Array])) {
+        return $false
+    }
+
     foreach ($identityName in $script:CollectorSnapshotIdentityProperties) {
         if ($Snapshot.PSObject.Properties.Match($identityName).Count -eq 0) {
             continue
