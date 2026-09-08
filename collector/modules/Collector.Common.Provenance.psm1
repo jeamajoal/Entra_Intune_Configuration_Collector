@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 
 $script:CollectorSnapshotSchemaVersion = '1.0'
 $script:CollectorSnapshotIdentityProperties = @('runId', 'stage', 'section', 'family', 'batchId')
+$script:CollectorSnapshotStringProvenanceProperties = @('collectedUtc', 'sourceType', 'sourceName', 'apiVersion')
 
 function Test-CollectorSnapshotSchemaVersion {
     [CmdletBinding()]
@@ -19,6 +20,29 @@ function Test-CollectorSnapshotSchemaVersion {
     }
 
     if ($Snapshot.PSObject.Properties.Match('items').Count -eq 0 -or -not ($Snapshot.items -is [System.Array])) {
+        return $false
+    }
+
+    foreach ($provenancePropertyName in $script:CollectorSnapshotStringProvenanceProperties) {
+        if (
+            $Snapshot.PSObject.Properties.Match($provenancePropertyName).Count -eq 0 -or
+            -not ($Snapshot.$provenancePropertyName -is [string])
+        ) {
+            return $false
+        }
+    }
+
+    if (
+        $Snapshot.PSObject.Properties.Match('isBeta').Count -eq 0 -or
+        -not ($Snapshot.isBeta -is [bool])
+    ) {
+        return $false
+    }
+
+    if (
+        $Snapshot.PSObject.Properties.Match('requestContext').Count -eq 0 -or
+        -not ($Snapshot.requestContext -is [pscustomobject])
+    ) {
         return $false
     }
 
