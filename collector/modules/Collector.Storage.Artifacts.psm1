@@ -135,7 +135,7 @@ function Test-CollectorManifestEnvelopeRecord {
     if (
         $Record.PSObject.Properties.Match('status').Count -eq 0 -or
         -not ($Record.status -is [string]) -or
-        $script:CollectorManifestStatusValues -notcontains [string]$Record.status
+        $script:CollectorManifestStatusValues -cnotcontains [string]$Record.status
     ) {
         return $false
     }
