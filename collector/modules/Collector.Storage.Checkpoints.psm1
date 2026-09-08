@@ -446,6 +446,18 @@ function Get-CollectorCheckpoint {
         $checkpoint | Add-Member -MemberType NoteProperty -Name plan -Value $null
     }
 
+    if ($null -ne $checkpoint.plan) {
+        foreach ($planIdentityName in @('planVersion', 'sourceFingerprint')) {
+            if (
+                $checkpoint.plan.PSObject.Properties.Match($planIdentityName).Count -eq 0 -or
+                -not ($checkpoint.plan.$planIdentityName -is [string]) -or
+                [string]::IsNullOrWhiteSpace([string]($checkpoint.plan.$planIdentityName))
+            ) {
+                throw ('Checkpoint plan at {0} has invalid persisted {1}; expected a non-empty string.' -f $checkpointPath, $planIdentityName)
+            }
+        }
+    }
+
     if ($null -ne $checkpoint.plan -and $checkpoint.plan.PSObject.Properties.Match('batches').Count -gt 0) {
         $plannedBatchOrdinal = 0
         foreach ($plannedBatch in @($checkpoint.plan.batches)) {
