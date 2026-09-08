@@ -49,6 +49,21 @@ Describe 'Offline knowledge catalog v1 schema contract' {
         }
     }
 
+    It 'admits the Conditional Access section without changing the catalog version' {
+        $sections = @($script:catalogDefinitions.section.enum)
+        if ($sections -notcontains 'entra-ca') {
+            throw 'Expected catalog section vocabulary to include entra-ca.'
+        }
+
+        $artifact = $script:catalogDefinitions.artifact
+        if (-not [regex]::IsMatch('stage1/entra-ca/conditionalAccessPolicies/batch-0001.json', [string]$artifact.properties.relativePath.pattern)) {
+            throw 'Expected canonical entra-ca snapshot paths to satisfy the catalog artifact contract.'
+        }
+        if (-not [regex]::IsMatch('checkpoints/stage3/entra-ca/conditionalAccessPolicyReferences.json', [string]$artifact.properties.checkpointRelativePath.pattern)) {
+            throw 'Expected canonical entra-ca checkpoint paths to satisfy the catalog artifact contract.'
+        }
+    }
+
     It 'binds stage and kind consistently for artifact and dependency owners' {
         $expected = @{
             stage1 = 'inventory'
