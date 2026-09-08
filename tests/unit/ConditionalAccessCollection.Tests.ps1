@@ -10,14 +10,7 @@ Describe 'Conditional Access offline collection' {
         New-Item -Path $script:testRoot -ItemType Directory -Force | Out-Null
 
         Mock -ModuleName 'Collector.Stage1.Inventory' -CommandName Invoke-CollectorGraphCollection -MockWith {
-            param(
-                [string]$GraphToken,
-                [string]$Endpoint,
-                [int]$MaxRetries,
-                [double]$BaseBackoffSeconds,
-                [double]$MaxBackoffSeconds,
-                [int]$ThrottleMilliseconds
-            )
+            param([string]$Endpoint)
 
             switch ($Endpoint) {
                 '/v1.0/identity/conditionalAccess/policies' {
@@ -79,14 +72,7 @@ Describe 'Conditional Access offline collection' {
         }
 
         Mock -ModuleName 'Collector.Stage2.Details' -CommandName Invoke-CollectorGraphRequest -MockWith {
-            param(
-                [string]$GraphToken,
-                [string]$Endpoint,
-                [int]$MaxRetries,
-                [double]$BaseBackoffSeconds,
-                [double]$MaxBackoffSeconds,
-                [int]$ThrottleMilliseconds
-            )
+            param([string]$Endpoint)
 
             if ($Endpoint -eq '/v1.0/identity/conditionalAccess/policies/policy-1') {
                 return [pscustomobject]@{ id = 'policy-1'; displayName = 'Require strong access'; state = 'enabled'; conditions = [pscustomobject]@{ locations = [pscustomobject]@{ includeLocations = @('location-1') } }; grantControls = [pscustomobject]@{ authenticationStrength = [pscustomobject]@{ id = 'strength-1' } } }
