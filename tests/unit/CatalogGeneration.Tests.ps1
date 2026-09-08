@@ -75,7 +75,7 @@ BeforeAll {
         Save-CollectorManifest -RunPath $RunPath -Manifest $manifest | Out-Null
     }
 
-    function New-TestCatalogRun {
+    function Get-TestCatalogRunFixture {
         param([string]$Name = ('run-' + [Guid]::NewGuid().ToString('N')))
         $root = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-catalog-' + [Guid]::NewGuid().ToString('N'))
         $runPath = Join-Path -Path $root -ChildPath $Name
@@ -86,7 +86,7 @@ BeforeAll {
 
 Describe 'Offline knowledge catalog generation' {
     BeforeEach {
-        $script:run = New-TestCatalogRun
+        $script:run = Get-TestCatalogRunFixture
     }
 
     AfterEach {
