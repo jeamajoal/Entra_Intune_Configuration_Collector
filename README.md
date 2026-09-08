@@ -11,6 +11,7 @@ The implementation is inventory-first and resumable:
 ## Repository Navigation
 
 - Collector entry point: [collector/Invoke-Collector.ps1](collector/Invoke-Collector.ps1)
+- Offline catalog command: [collector/Export-KnowledgeCatalog.ps1](collector/Export-KnowledgeCatalog.ps1)
 - Collector modules: [collector/modules](collector/modules)
 - Artifact schemas: [collector/schemas](collector/schemas)
 - Unit tests: [tests/unit](tests/unit)
@@ -65,7 +66,18 @@ Resume previous run and reprocess failed or missing batches only:
 	-ReprocessFailedOnly
 ```
 
+Generate the deterministic offline catalog after a run reaches terminal `Completed` or `CompletedWithErrors` state:
+
+```powershell
+./collector/Export-KnowledgeCatalog.ps1 `
+	-RunPath ./output/<runId>
+```
+
+Catalog generation is fully offline. It reads only persisted run artifacts, never requires a Graph token or on-prem provider access, and does not modify raw snapshots, checkpoints, or the run manifest.
+
 ## CLI Parameters
+
+Collector parameters:
 
 - GraphToken: bearer token used for Graph requests. Required only when `entra-apps`, `entra-pim`, or `intune-core` is selected; optional for `onprem-ad-gpo`-only execution.
 - OutputRoot (mandatory): root output folder containing per-run artifacts.
@@ -79,6 +91,11 @@ Resume previous run and reprocess failed or missing batches only:
 - BaseBackoffSeconds: base exponential backoff delay. Default 2.
 - MaxBackoffSeconds: backoff upper bound and Retry-After cap. Default 30.
 - ThrottleMilliseconds: delay before each Graph request attempt. Default 100. Entra application/service-principal credential reads that explicitly select `keyCredentials` enforce at least 400 ms per request attempt to stay at or below Microsoft's documented 150 requests/minute tenant boundary.
+
+Offline catalog parameters:
+
+- RunPath (mandatory): path to one completed collector run directory, for example `./output/<runId>`.
+- ExpectedRunId: optional explicit run identity guard. When supplied, catalog generation fails unless it matches both the run directory and persisted manifest `runId`.
 
 ## Stage and Section Model
 
@@ -148,6 +165,8 @@ output/
 			stage3/<section>/<family>.json
 		manifest/
 			run-manifest.json
+		catalog/
+			knowledge-catalog.json   # created explicitly by Export-KnowledgeCatalog.ps1
 ```
 
 `run-manifest.json` is cumulative for the lifetime of a runId. Its top-level `stageResults` and `failures` retain evidence from prior resumed invocations, while `checkpointSummary` reflects the current persisted checkpoint state. `parameters`, `status`, and `completedUtc` represent the latest invocation for compatibility. The `invocations` array records each invocation's parameters, start/completion timestamps, status, stage results, and failures. The original top-level `startedUtc` is never reset by `-Resume`.
@@ -177,7 +196,11 @@ For on-prem snapshots, sourceName records concrete cmdlet names and requestConte
 
 Raw snapshots, checkpoints, and the run manifest remain the source of truth. Offline knowledge-store v1 is a **derived deterministic catalog/index** over those files; it is not a second tenant datastore and does not transform raw evidence into reconstruction-ready objects.
 
-The v1 contract is owned by `collector/schemas/catalog.schema.json` and reserves one derived file at `catalog/knowledge-catalog.json` beneath a run directory. This contract change defines the file shape only; catalog generation is a separate runtime capability and existing collector runs do not begin emitting the file merely because the schema exists.
+The v1 contract is owned by `collector/schemas/catalog.schema.json`. `collector/Export-KnowledgeCatalog.ps1` materializes the derived file at `catalog/knowledge-catalog.json` beneath a terminal run directory. Catalog generation is deliberately explicit: normal `Invoke-Collector.ps1` collection does not automatically emit or refresh the catalog.
+
+The generator discovers families from canonical persisted checkpoints, validates terminal manifest/checkpoint-summary coherence, and admits successful batches only after canonical snapshot schema, run/stage/section/family/batch identity, item cardinality, and Stage1 plan fingerprint checks. A `Completed` manifest rejects any non-success checkpoint state. `CompletedWithErrors` can index validated successful evidence while retaining its incomplete-coverage status, but terminal evidence containing an `InProgress` batch is rejected.
+
+Regeneration is deterministic and idempotent. The catalog has no generation timestamp; arrays use stable ordering; unchanged source evidence produces byte-identical compact JSON. Persistence uses a same-directory temporary file plus atomic replacement. Validation occurs before replacement, so failed regeneration leaves any previously valid catalog untouched.
 
 The catalog contract requires:
 
