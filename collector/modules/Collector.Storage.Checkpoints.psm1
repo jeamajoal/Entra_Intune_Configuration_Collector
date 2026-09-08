@@ -381,6 +381,16 @@ function Invoke-CollectorAtomicFileReplace {
     [System.IO.File]::Move($SourcePath, $DestinationPath)
 }
 
+function Test-CollectorPersistedCheckpointTimestampValue {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Value
+    )
+
+    return ($Value -is [string]) -or ($Value -is [datetime])
+}
+
 function Get-CollectorCheckpoint {
     [CmdletBinding()]
     param(
@@ -436,6 +446,13 @@ function Get-CollectorCheckpoint {
         if ($actualValue -ne $expectedValue) {
             throw ('Checkpoint identity mismatch at {0}: expected {1}={2}; found {3}.' -f $checkpointPath, $identityName, $expectedValue, $actualValue)
         }
+    }
+
+    if (
+        $checkpoint.PSObject.Properties.Match('updatedUtc').Count -eq 0 -or
+        -not (Test-CollectorPersistedCheckpointTimestampValue -Value $checkpoint.updatedUtc)
+    ) {
+        throw ('Checkpoint at {0} has invalid persisted updatedUtc; expected a persisted string timestamp.' -f $checkpointPath)
     }
 
     $hasBatchesProperty = $checkpoint.PSObject.Properties.Match('batches').Count -gt 0
@@ -512,6 +529,17 @@ function Get-CollectorCheckpoint {
         $attempts = Get-CollectorBatchCountValue -Batch $batch -PropertyName 'attempts'
         if ($null -eq $attempts -or $attempts -ge [int]::MaxValue) {
             throw ('Checkpoint batch {0} at {1} has invalid persisted attempts.' -f $batchOrdinal, $checkpointPath)
+        }
+
+        if (
+            $batch.PSObject.Properties.Match('updatedUtc').Count -eq 0 -or
+            -not (Test-CollectorPersistedCheckpointTimestampValue -Value $batch.updatedUtc)
+        ) {
+            throw ('Checkpoint batch {0} at {1} has invalid persisted updatedUtc; expected a persisted string timestamp.' -f $batchOrdinal, $checkpointPath)
+        }
+
+        if ($batch.PSObject.Properties.Match('error').Count -gt 0 -and $null -ne $batch.error -and -not ($batch.error -is [string])) {
+            throw ('Checkpoint batch {0} at {1} has invalid persisted error; expected string or null.' -f $batchOrdinal, $checkpointPath)
         }
 
         $hasArtifactPath = $batch.PSObject.Properties.Match('artifactPath').Count -gt 0
