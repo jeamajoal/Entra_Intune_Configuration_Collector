@@ -38,6 +38,7 @@ ACLs, memberships, and assignments are classified as metadata.
   - collector/schemas/snapshot.schema.json
   - collector/schemas/checkpoint.schema.json
   - collector/schemas/manifest.schema.json
+  - collector/schemas/catalog.schema.json
 
 ## Architecture Boundaries
 
@@ -181,6 +182,111 @@ Snapshot provenance envelope fields:
 The current supported snapshot `schemaVersion` is string `1.0`. Persisted snapshots with a missing, non-string, or unsupported version fail closed at both successful-resume reuse and shared downstream snapshot loading.
 
 For on-prem families, sourceName is cmdlet-specific and requestContext includes cmdletNames for concrete execution traceability.
+
+## Offline Knowledge Catalog v1
+
+The offline catalog is a justified boundary between provider-specific collection and provider-independent offline consumption. It owns **discovery and navigation metadata only**. Raw snapshots/checkpoints/manifest remain authoritative evidence, and the catalog never becomes a second source of tenant truth.
+
+### Durable owner and path
+
+- Schema owner: `collector/schemas/catalog.schema.json`.
+- Reserved derived artifact: `output/<runId>/catalog/knowledge-catalog.json`.
+- Catalog schema version: string `1.0`.
+- Stable catalog identity: `catalog-v1:<runId>`.
+- Runtime generation is intentionally separate from this contract; defining the schema does not by itself cause collector runs to emit the reserved artifact.
+
+The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence must therefore not require a new identity merely because generation occurred again.
+
+### Artifact descriptors
+
+Every admitted raw snapshot is represented by one metadata-only descriptor containing:
+
+- `runId`, `stage`, `section`, `family`, and `batchId`;
+- `kind`, where v1 requires `stage1 -> inventory`, `stage2 -> detail`, and `stage3 -> relationship`;
+- canonical forward-slash `relativePath` to the raw snapshot and `checkpointRelativePath` to its checkpoint;
+- persisted `snapshotSchemaVersion` and `checkpointSchemaVersion`;
+- validated `itemCount`;
+- bounded provenance: `sourceType`, `sourceName`, `apiVersion`, and `isBeta`.
+
+The descriptor does not copy `items`, `requestContext`, credentials, relationship rows, or other tenant payload. An offline consumer follows the relative path to the canonical raw snapshot when payload data is needed. Artifact descriptors are logically unique by `(runId, stage, section, family, batchId)` and must be emitted in ordinal stage/section/family/batchId order so regeneration from unchanged evidence is deterministic.
+
+### Dependency descriptors
+
+Dependencies are normalized separately from artifact rows. Each descriptor identifies a `consumer` and `provider` using stage/section/family/kind plus one of two v1 dependency types:
+
+- `execution-input` — the consumer collection requires the provider family as collection input. Current examples are Stage2/Stage3 families driven from Stage1 inventory.
+- `reference` — the consumer payload contains stable identity references to the provider domain/family for offline navigation, but provider evidence is not necessarily a runtime collection prerequisite.
+
+Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`.
+
+Current Stage3 execution-input dependencies are:
+
+| Stage3 family | Stage1 provider family |
+| --- | --- |
+| groupMembers | entra-apps / groups |
+| servicePrincipalAppRoleAssignedTo | entra-apps / servicePrincipals |
+| applicationFederatedIdentityCredentials | entra-apps / applications |
+| delegatedGrants | entra-apps / servicePrincipals |
+| pimScheduleEdges | entra-pim / roleAssignmentScheduleInstances and roleEligibilityScheduleInstances |
+| mobileAppAssignments | intune-core / mobileApps |
+| deviceManagementScriptAssignments | intune-core / deviceManagementScripts |
+| domainRootAcl | onprem-ad-gpo / domains |
+| ouAcl | onprem-ad-gpo / organizationalUnits |
+| gpoPermissions | onprem-ad-gpo / gpos |
+| groupMembersOnPrem | onprem-ad-gpo / groups |
+
+This dependency vocabulary is intentionally small. New domain-family work may add descriptors but must not require a second catalog mechanism.
+
+### Relationship semantics and identity domains
+
+Each Stage3 family has one catalog relationship descriptor with a stable `relationshipType` plus one or more source and target identity domains. Identity domains describe **what identifiers mean**, not a reconstructed tenant object schema. A family may list multiple domains where a relationship can legitimately target more than one identity class.
+
+V1 identity-domain semantics for current relationship families are:
+
+| Stage3 family | Relationship type | Source identity domain(s) | Target identity domain(s) |
+| --- | --- | --- | --- |
+| domainRootAcl | acl | `ad.domain` | `ad.security-principal` |
+| ouAcl | acl | `ad.organizational-unit` | `ad.security-principal` |
+| gpoPermissions | acl | `gpo.policy` | `ad.security-principal` |
+| groupMembers | membership | `entra.group` | `entra.directory-object` |
+| groupMembersOnPrem | membership | `ad.group` | `ad.directory-object` |
+| mobileAppAssignments | assignment | `intune.mobile-app` | `intune.assignment-target` |
+| deviceManagementScriptAssignments | assignment | `intune.device-management-script` | `intune.assignment-target` |
+| servicePrincipalAppRoleAssignedTo | assignment | `entra.service-principal` | `entra.directory-object` |
+| applicationFederatedIdentityCredentials | federated-trust | `entra.application` | `entra.federated-identity-credential` |
+| delegatedGrants | grant | `entra.service-principal` | `entra.service-principal`, `entra.directory-object` |
+| pimScheduleEdges | role-governance | `entra.pim-role-assignment-schedule-instance`, `entra.pim-role-eligibility-schedule-instance` | `entra.directory-object`, `entra.directory-role-definition`, `entra.directory-scope` |
+
+The catalog does not assert that every raw row contains a single field named `sourceId` or `targetId`; it declares the identity domains the family contract uses so the offline consumer can interpret family-specific raw rows without guessing cross-family meaning.
+
+### Source compatibility and fail-closed generation
+
+A v1 catalog is bound to the canonical `manifest/run-manifest.json`. Its source-manifest descriptor records the manifest schema version, terminal status, completion timestamp, and invocation count. The catalog admits only manifest schema versions currently supported by the collector (`1.0` and `1.1`), checkpoint schema `1.0`, snapshot schema `1.0`, and catalog schema `1.0`.
+
+Catalog generation/validation must fail closed rather than rewrite, repair, or silently skip evidence when any required contract is violated, including:
+
+- source manifest missing/unreadable, non-terminal, unsupported, or runId-mismatched;
+- referenced checkpoint or raw snapshot missing/unreadable;
+- descriptor identity not matching run/stage/section/family/batch identity and canonical relative paths;
+- checkpoint batch not representing a schema-valid persisted `Succeeded` batch for the descriptor;
+- checkpoint/snapshot/actual item counts disagreeing under the existing stage cardinality rules;
+- referenced snapshot/checkpoint schema version unsupported;
+- duplicate logical artifact, dependency, or relationship descriptors;
+- dependency endpoints naming evidence that the catalog cannot resolve where the dependency is required for package navigation.
+
+`CompletedWithErrors` is terminal source-manifest evidence and may be represented, but it is not proof that all selected families were collected. Consumers and the future package validator must preserve that distinction rather than interpreting catalog existence as full-coverage success.
+
+### Determinism, security, and product boundary
+
+Catalog arrays use deterministic ordinal ordering and stable relative paths. No generation timestamp is required by v1 because a wall-clock value would create churn without improving source-evidence identity.
+
+The catalog inherits existing credential/privacy boundaries and deliberately copies less provenance than a snapshot: no `requestContext`, Graph token, secret text, raw key material, payload row, or provider response body is permitted in artifact descriptors. The existing credential allowlist remains the only persisted credential metadata contract.
+
+For v1, "offline queryable" means a consumer can discover available evidence, follow inventory/detail/relationship dependencies, understand relationship identity domains, and locate raw JSON without Graph/on-prem access. It does not mean database-backed query execution, embeddings/vector search, LLM prompting, UI, or tenant reconstruction/export/import. The intended package flow is:
+
+`collect -> catalog -> validate -> consume`
+
+The catalog contract is the stable seam between collection and later offline consumers; runtime generation and package validation are separate responsibilities so neither provider-specific code nor AI/query machinery leaks into raw collection.
 
 ## Retry and Throttle Model
 
