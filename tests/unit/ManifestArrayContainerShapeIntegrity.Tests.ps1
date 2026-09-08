@@ -2,7 +2,7 @@ BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Orchestrator.psm1') -Force -ErrorAction Stop
 
-    function New-TestManifestRun {
+    function Invoke-TestManifestSeed {
         param(
             [Parameter(Mandatory = $true)]
             [string]$OutputRoot
@@ -23,7 +23,7 @@ BeforeAll {
         $Manifest | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $ManifestPath -Encoding UTF8
     }
 
-    function New-TestInvocationRecord {
+    function Get-TestInvocationRecord {
         return [pscustomobject]@{
             startedUtc = '2026-09-08T00:00:00.0000000Z'
             completedUtc = '2026-09-08T00:00:01.0000000Z'
@@ -60,7 +60,7 @@ Describe 'Persisted manifest array container shape integrity' {
         foreach ($propertyName in @('stageResults', 'checkpointSummary', 'failures', 'invocations')) {
             foreach ($invalidValue in $invalidValues) {
                 $caseRoot = Join-Path -Path $script:testRoot -ChildPath ($propertyName + '-' + $invalidValue.label)
-                $run = New-TestManifestRun -OutputRoot $caseRoot
+                $run = Invoke-TestManifestSeed -OutputRoot $caseRoot
                 $manifestPath = Join-Path -Path $run.runPath -ChildPath 'manifest\run-manifest.json'
                 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
                 $manifest.$propertyName = $invalidValue.value
@@ -90,7 +90,7 @@ Describe 'Persisted manifest array container shape integrity' {
     It 'accepts valid array cardinalities and preserves intentional missing or null top-level legacy migration' {
         foreach ($count in @(0, 1, 2)) {
             $caseRoot = Join-Path -Path $script:testRoot -ChildPath ('valid-' + $count)
-            $run = New-TestManifestRun -OutputRoot $caseRoot
+            $run = Invoke-TestManifestSeed -OutputRoot $caseRoot
             $manifestPath = Join-Path -Path $run.runPath -ChildPath 'manifest\run-manifest.json'
             $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
@@ -100,7 +100,7 @@ Describe 'Persisted manifest array container shape integrity' {
             for ($index = 0; $index -lt $count; $index++) {
                 $genericEntries += [pscustomobject]@{ id = ('entry-{0}' -f $index) }
                 $failureEntries += [pscustomobject]@{ stage = 'Stage1'; section = 'onprem-ad-gpo'; family = 'test'; error = ('error-{0}' -f $index) }
-                $invocationEntries += New-TestInvocationRecord
+                $invocationEntries += Get-TestInvocationRecord
             }
 
             $manifest.stageResults = [object[]]@($genericEntries)
@@ -118,7 +118,7 @@ Describe 'Persisted manifest array container shape integrity' {
         foreach ($propertyName in @('stageResults', 'checkpointSummary', 'failures', 'invocations')) {
             foreach ($legacyState in @('missing', 'null')) {
                 $caseRoot = Join-Path -Path $script:testRoot -ChildPath ('legacy-' + $propertyName + '-' + $legacyState)
-                $run = New-TestManifestRun -OutputRoot $caseRoot
+                $run = Invoke-TestManifestSeed -OutputRoot $caseRoot
                 $manifestPath = Join-Path -Path $run.runPath -ChildPath 'manifest\run-manifest.json'
                 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
@@ -156,7 +156,7 @@ Describe 'Persisted manifest array container shape integrity' {
         foreach ($propertyName in @('stageResults', 'failures')) {
             foreach ($nestedCase in $nestedCases) {
                 $caseRoot = Join-Path -Path $script:testRoot -ChildPath ('nested-' + $propertyName + '-' + $nestedCase.label)
-                $run = New-TestManifestRun -OutputRoot $caseRoot
+                $run = Invoke-TestManifestSeed -OutputRoot $caseRoot
                 $manifestPath = Join-Path -Path $run.runPath -ChildPath 'manifest\run-manifest.json'
                 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
                 $invocation = @($manifest.invocations)[0]
