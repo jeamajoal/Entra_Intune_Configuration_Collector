@@ -4,6 +4,7 @@ BeforeAll {
         (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/snapshot.schema.json')
         (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/checkpoint.schema.json')
         (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/manifest.schema.json')
+        (Join-Path -Path $repoRoot -ChildPath 'collector/schemas/catalog.schema.json')
     )
 }
 
