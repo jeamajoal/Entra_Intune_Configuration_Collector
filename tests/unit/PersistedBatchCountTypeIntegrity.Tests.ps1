@@ -75,6 +75,12 @@ BeforeAll {
             section = 'entra-apps'
             family = 'applications'
             batchId = '0001'
+            collectedUtc = '2026-09-08T00:00:00.0000000Z'
+            sourceType = 'Test'
+            sourceName = 'fixture'
+            apiVersion = 'n/a'
+            isBeta = $false
+            requestContext = [pscustomobject]@{}
             itemCount = $ItemCount
             items = @($items)
         } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding UTF8

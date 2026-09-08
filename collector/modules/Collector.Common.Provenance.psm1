@@ -2,6 +2,8 @@ Set-StrictMode -Version Latest
 
 $script:CollectorSnapshotSchemaVersion = '1.0'
 $script:CollectorSnapshotIdentityProperties = @('runId', 'stage', 'section', 'family', 'batchId')
+$script:CollectorSnapshotStringProvenanceProperties = @('sourceType', 'sourceName', 'apiVersion')
+$script:CollectorPersistedJsonObjectTypeName = 'System.Management.Automation.PSCustomObject'
 
 function Test-CollectorSnapshotSchemaVersion {
     [CmdletBinding()]
@@ -19,6 +21,38 @@ function Test-CollectorSnapshotSchemaVersion {
     }
 
     if ($Snapshot.PSObject.Properties.Match('items').Count -eq 0 -or -not ($Snapshot.items -is [System.Array])) {
+        return $false
+    }
+
+    if ($Snapshot.PSObject.Properties.Match('collectedUtc').Count -eq 0) {
+        return $false
+    }
+
+    if (-not ($Snapshot.collectedUtc -is [string]) -and -not ($Snapshot.collectedUtc -is [datetime])) {
+        return $false
+    }
+
+    foreach ($provenancePropertyName in $script:CollectorSnapshotStringProvenanceProperties) {
+        if (
+            $Snapshot.PSObject.Properties.Match($provenancePropertyName).Count -eq 0 -or
+            -not ($Snapshot.$provenancePropertyName -is [string])
+        ) {
+            return $false
+        }
+    }
+
+    if (
+        $Snapshot.PSObject.Properties.Match('isBeta').Count -eq 0 -or
+        -not ($Snapshot.isBeta -is [bool])
+    ) {
+        return $false
+    }
+
+    if ($Snapshot.PSObject.Properties.Match('requestContext').Count -eq 0 -or $null -eq $Snapshot.requestContext) {
+        return $false
+    }
+
+    if ($Snapshot.requestContext.GetType().FullName -ne $script:CollectorPersistedJsonObjectTypeName) {
         return $false
     }
 
