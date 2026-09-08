@@ -143,6 +143,14 @@ Describe 'Persisted snapshot provenance envelope integrity' {
             throw 'Expected JSON round-trip to produce object requestContext and Boolean isBeta runtime shapes.'
         }
 
+        $invalidStringCases = @(
+            [pscustomobject]@{ Label = 'null'; Value = $null },
+            [pscustomobject]@{ Label = 'numeric'; Value = 1 },
+            [pscustomobject]@{ Label = 'boolean'; Value = $true },
+            [pscustomobject]@{ Label = 'object'; Value = ([pscustomobject]@{ value = 'bad' }) },
+            [pscustomobject]@{ Label = 'array'; Value = [object[]]@('bad', 'worse') }
+        )
+
         foreach ($propertyName in @('collectedUtc', 'sourceType', 'sourceName', 'apiVersion')) {
             $emptyString = (Get-TestProvenanceSnapshot) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
             $emptyString.$propertyName = ''
@@ -150,11 +158,11 @@ Describe 'Persisted snapshot provenance envelope integrity' {
                 throw ('Expected schema-valid empty string provenance property [{0}] to remain accepted.' -f $propertyName)
             }
 
-            foreach ($invalidValue in @($null, 1, $true, ([pscustomobject]@{ value = 'bad' }), @('bad', 'worse'))) {
+            foreach ($invalidCase in $invalidStringCases) {
                 $invalid = (Get-TestProvenanceSnapshot) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
-                $invalid.$propertyName = $invalidValue
+                $invalid.$propertyName = $invalidCase.Value
                 if (Test-CollectorSnapshotSchemaVersion -Snapshot $invalid) {
-                    throw ('Expected non-string provenance property [{0}] value to be rejected.' -f $propertyName)
+                    throw ('Expected provenance property [{0}] invalid case [{1}] to be rejected.' -f $propertyName, $invalidCase.Label)
                 }
             }
 
@@ -165,11 +173,19 @@ Describe 'Persisted snapshot provenance envelope integrity' {
             }
         }
 
-        foreach ($invalidIsBeta in @($null, 'false', 0, 1, ([pscustomobject]@{ value = $false }), @($false, $true))) {
+        $invalidIsBetaCases = @(
+            [pscustomobject]@{ Label = 'null'; Value = $null },
+            [pscustomobject]@{ Label = 'string'; Value = 'false' },
+            [pscustomobject]@{ Label = 'zero'; Value = 0 },
+            [pscustomobject]@{ Label = 'one'; Value = 1 },
+            [pscustomobject]@{ Label = 'object'; Value = ([pscustomobject]@{ value = $false }) },
+            [pscustomobject]@{ Label = 'array'; Value = [object[]]@($false, $true) }
+        )
+        foreach ($invalidCase in $invalidIsBetaCases) {
             $invalid = (Get-TestProvenanceSnapshot) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
-            $invalid.isBeta = $invalidIsBeta
+            $invalid.isBeta = $invalidCase.Value
             if (Test-CollectorSnapshotSchemaVersion -Snapshot $invalid) {
-                throw 'Expected non-Boolean isBeta to be rejected.'
+                throw ('Expected isBeta invalid case [{0}] to be rejected.' -f $invalidCase.Label)
             }
         }
         $missingIsBeta = (Get-TestProvenanceSnapshot) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
@@ -183,11 +199,18 @@ Describe 'Persisted snapshot provenance envelope integrity' {
         if (-not (Test-CollectorSnapshotSchemaVersion -Snapshot $emptyContext)) {
             throw 'Expected empty persisted JSON object requestContext to remain accepted.'
         }
-        foreach ($invalidContext in @($null, 'bad', 1, $true, @('bad', 'worse'))) {
+        $invalidContextCases = @(
+            [pscustomobject]@{ Label = 'null'; Value = $null },
+            [pscustomobject]@{ Label = 'string'; Value = 'bad' },
+            [pscustomobject]@{ Label = 'numeric'; Value = 1 },
+            [pscustomobject]@{ Label = 'boolean'; Value = $true },
+            [pscustomobject]@{ Label = 'array'; Value = [object[]]@('bad', 'worse') }
+        )
+        foreach ($invalidCase in $invalidContextCases) {
             $invalid = (Get-TestProvenanceSnapshot) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
-            $invalid.requestContext = $invalidContext
+            $invalid.requestContext = $invalidCase.Value
             if (Test-CollectorSnapshotSchemaVersion -Snapshot $invalid) {
-                throw 'Expected non-object requestContext to be rejected.'
+                throw ('Expected requestContext invalid case [{0}] to be rejected.' -f $invalidCase.Label)
             }
         }
         $missingContext = (Get-TestProvenanceSnapshot) | ConvertTo-Json -Depth 30 | ConvertFrom-Json
@@ -204,9 +227,9 @@ Describe 'Persisted snapshot provenance envelope integrity' {
             [pscustomobject]@{ Property = 'collectedUtc'; Value = 1 },
             [pscustomobject]@{ Property = 'sourceType'; Value = $true },
             [pscustomobject]@{ Property = 'sourceName'; Value = ([pscustomobject]@{ value = 'bad' }) },
-            [pscustomobject]@{ Property = 'apiVersion'; Value = @('v1.0', 'beta') },
+            [pscustomobject]@{ Property = 'apiVersion'; Value = [object[]]@('v1.0', 'beta') },
             [pscustomobject]@{ Property = 'isBeta'; Value = 'false' },
-            [pscustomobject]@{ Property = 'requestContext'; Value = @('bad', 'worse') }
+            [pscustomobject]@{ Property = 'requestContext'; Value = [object[]]@('bad', 'worse') }
         )
 
         foreach ($invalidCase in $invalidCases) {
@@ -228,7 +251,7 @@ Describe 'Persisted snapshot provenance envelope integrity' {
     It 'rejects malformed provenance from the shared downstream loader before returning items' {
         $artifactPath = Join-Path -Path $script:testRoot -ChildPath 'stage1/entra-apps/applications/batch-0001.json'
         New-Item -Path (Split-Path -Path $artifactPath -Parent) -ItemType Directory -Force | Out-Null
-        Write-TestMalformedProvenanceSnapshot -ArtifactPath $artifactPath -PropertyName 'requestContext' -Value @('bad', 'worse')
+        Write-TestMalformedProvenanceSnapshot -ArtifactPath $artifactPath -PropertyName 'requestContext' -Value ([object[]]@('bad', 'worse'))
         Save-TestLoaderCheckpoint -RunPath $script:testRoot -ArtifactPath $artifactPath
 
         $threw = $false
