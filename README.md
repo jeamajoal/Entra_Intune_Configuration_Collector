@@ -12,6 +12,7 @@ The implementation is inventory-first and resumable:
 
 - Collector entry point: [collector/Invoke-Collector.ps1](collector/Invoke-Collector.ps1)
 - Offline catalog command: [collector/Export-KnowledgeCatalog.ps1](collector/Export-KnowledgeCatalog.ps1)
+- Offline package validation command: [collector/Test-KnowledgePackage.ps1](collector/Test-KnowledgePackage.ps1)
 - Collector modules: [collector/modules](collector/modules)
 - Artifact schemas: [collector/schemas](collector/schemas)
 - Unit tests: [tests/unit](tests/unit)
@@ -75,6 +76,23 @@ Generate the deterministic offline catalog after a run reaches terminal `Complet
 
 Catalog generation is fully offline. It reads only persisted run artifacts, never requires a Graph token or on-prem provider access, and does not modify raw snapshots, checkpoints, or the run manifest.
 
+Validate the completed offline package before handing it to an operator or external consumer:
+
+```powershell
+./collector/Test-KnowledgePackage.ps1 `
+	-RunPath ./output/<runId>
+```
+
+For compact machine-readable output:
+
+```powershell
+./collector/Test-KnowledgePackage.ps1 `
+	-RunPath ./output/<runId> `
+	-AsJson
+```
+
+The intended offline handoff is **collect -> catalog -> validate -> consume/question**. Package validation is provider-independent and read-only: it reuses the catalog generator's strict persisted-evidence checks in memory, verifies that the stored catalog exactly matches the canonical model implied by the manifest/checkpoints/snapshots, and never repairs or rewrites source evidence.
+
 ## CLI Parameters
 
 Collector parameters:
@@ -96,6 +114,12 @@ Offline catalog parameters:
 
 - RunPath (mandatory): path to one completed collector run directory, for example `./output/<runId>`.
 - ExpectedRunId: optional explicit run identity guard. When supplied, catalog generation fails unless it matches both the run directory and persisted manifest `runId`.
+
+Offline package validation parameters:
+
+- RunPath (mandatory): path to the terminal run package whose persisted catalog and source evidence must agree.
+- ExpectedRunId: optional explicit run identity guard applied before package comparison.
+- AsJson: return one compact JSON result for automation instead of the default PowerShell result object. The result exposes only validation status/counts/path/message metadata and never collected payload rows.
 
 ## Stage and Section Model
 
@@ -201,6 +225,8 @@ The v1 contract is owned by `collector/schemas/catalog.schema.json`. `collector/
 The generator discovers families from canonical persisted checkpoints, validates terminal manifest/checkpoint-summary coherence, and admits successful batches only after canonical snapshot schema, run/stage/section/family/batch identity, item cardinality, and Stage1 plan fingerprint checks. A `Completed` manifest rejects any non-success checkpoint state. `CompletedWithErrors` can index validated successful evidence while retaining its incomplete-coverage status, but terminal evidence containing an `InProgress` batch is rejected.
 
 Regeneration is deterministic and idempotent. The catalog has no generation timestamp; arrays use stable ordering; unchanged source evidence produces byte-identical compact JSON. Persistence uses a same-directory temporary file plus atomic replacement. Validation occurs before replacement, so failed regeneration leaves any previously valid catalog untouched.
+
+`collector/Test-KnowledgePackage.ps1` is the provider-independent read-only handoff gate. Its validation module invokes the existing catalog module's strict persisted-evidence pipeline in module scope to recompute the canonical expected catalog in memory, then structurally compares the stored catalog against that model. This detects stale run/manifest identity, missing or malformed checkpoint/snapshot evidence, unsupported schema versions, descriptor/path/count/provenance mismatches, and broken dependency/relationship descriptors without generating a replacement catalog or touching source files. The default result is a concise PowerShell object; `-AsJson` emits the same payload-safe status/count/message data as compact JSON.
 
 The catalog contract requires:
 
