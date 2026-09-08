@@ -33,8 +33,8 @@ Describe 'Checkpoint summary identity integrity' {
             updatedUtc = (Get-Date).ToUniversalTime().ToString('o')
             plan = $null
             batches = @(
-                [pscustomobject]@{ batchId = '0001'; status = 'Succeeded'; attempts = 1; itemCount = 3; successCount = 3; failedCount = 0; artifactPath = $null; error = $null },
-                [pscustomobject]@{ batchId = '0002'; status = 'Failed'; attempts = 1; itemCount = 2; successCount = 1; failedCount = 1; artifactPath = $null; error = 'failure' }
+                [pscustomobject]@{ batchId = '0001'; status = 'Succeeded'; attempts = 1; itemCount = 3; successCount = 3; failedCount = 0; artifactPath = $null; error = $null; updatedUtc = (Get-Date).ToUniversalTime().ToString('o') },
+                [pscustomobject]@{ batchId = '0002'; status = 'Failed'; attempts = 1; itemCount = 2; successCount = 1; failedCount = 1; artifactPath = $null; error = 'failure'; updatedUtc = (Get-Date).ToUniversalTime().ToString('o') }
             )
         }
         $checkpoint | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $checkpointPath -Encoding UTF8
