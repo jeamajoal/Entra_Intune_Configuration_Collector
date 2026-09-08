@@ -73,7 +73,7 @@ BeforeAll {
         Collector.Storage.Artifacts\Save-CollectorManifest -RunPath $RunPath -Manifest $manifest | Out-Null
     }
 
-    function New-TestKnowledgePackage {
+    function Get-TestKnowledgePackageFixture {
         param([switch]$IncludeStage2)
 
         $root = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-package-validation-' + [Guid]::NewGuid().ToString('N'))
@@ -102,7 +102,7 @@ BeforeAll {
         }
     }
 
-    function Get-TestValidationFileBytes {
+    function Get-TestValidationFileContentSignature {
         param([Parameter(Mandatory = $true)] [string]$Path)
         return [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($Path))
     }
@@ -120,7 +120,7 @@ Describe 'Offline knowledge package validation' {
     }
 
     It 'returns success with validated artifact and family counts for a coherent package' {
-        $script:package = New-TestKnowledgePackage
+        $script:package = Get-TestKnowledgePackageFixture
 
         $result = Collector.Validation.Package\Invoke-CollectorKnowledgePackageValidation -RunPath $script:package.runPath -ExpectedRunId $script:package.runId
         if (-not $result.valid -or [string]$result.status -ne 'Valid') {
@@ -132,21 +132,21 @@ Describe 'Offline knowledge package validation' {
     }
 
     It 'fails closed when a catalog-referenced snapshot is missing without rewriting the catalog' {
-        $script:package = New-TestKnowledgePackage
-        $catalogBefore = Get-TestValidationFileBytes -Path $script:package.catalogPath
+        $script:package = Get-TestKnowledgePackageFixture
+        $catalogBefore = Get-TestValidationFileContentSignature -Path $script:package.catalogPath
         Remove-Item -LiteralPath $script:package.stage1ArtifactPath -Force
 
         $result = Collector.Validation.Package\Invoke-CollectorKnowledgePackageValidation -RunPath $script:package.runPath
         if ($result.valid -or $result.message -notmatch 'canonical snapshot') {
             throw ('Expected missing-snapshot failure; actual: {0}' -f $result.message)
         }
-        if ((Get-TestValidationFileBytes -Path $script:package.catalogPath) -cne $catalogBefore) {
+        if ((Get-TestValidationFileContentSignature -Path $script:package.catalogPath) -cne $catalogBefore) {
             throw 'Validation must not rewrite the persisted catalog when source evidence is missing.'
         }
     }
 
     It 'rejects stale run identity in the persisted catalog' {
-        $script:package = New-TestKnowledgePackage
+        $script:package = Get-TestKnowledgePackageFixture
         $catalog = Get-Content -LiteralPath $script:package.catalogPath -Raw | ConvertFrom-Json
         $catalog.runId = 'different-run'
         Write-TestValidationJson -Path $script:package.catalogPath -Value $catalog
@@ -158,7 +158,7 @@ Describe 'Offline knowledge package validation' {
     }
 
     It 'rejects unsupported catalog schema version' {
-        $script:package = New-TestKnowledgePackage
+        $script:package = Get-TestKnowledgePackageFixture
         $catalog = Get-Content -LiteralPath $script:package.catalogPath -Raw | ConvertFrom-Json
         $catalog.schemaVersion = '2.0'
         Write-TestValidationJson -Path $script:package.catalogPath -Value $catalog
@@ -170,7 +170,7 @@ Describe 'Offline knowledge package validation' {
     }
 
     It 'rejects malformed checkpoint state through the existing strict checkpoint boundary' {
-        $script:package = New-TestKnowledgePackage
+        $script:package = Get-TestKnowledgePackageFixture
         $checkpoint = Get-Content -LiteralPath $script:package.checkpointPath -Raw | ConvertFrom-Json
         $checkpoint.schemaVersion = '9.9'
         Write-TestValidationJson -Path $script:package.checkpointPath -Value $checkpoint
@@ -185,7 +185,7 @@ Describe 'Offline knowledge package validation' {
     }
 
     It 'rejects a broken dependency descriptor without exposing payload data' {
-        $script:package = New-TestKnowledgePackage -IncludeStage2
+        $script:package = Get-TestKnowledgePackageFixture -IncludeStage2
         $catalog = Get-Content -LiteralPath $script:package.catalogPath -Raw | ConvertFrom-Json
         $catalog.dependencies[0].provider.family = 'groups'
         Write-TestValidationJson -Path $script:package.catalogPath -Value $catalog
@@ -200,12 +200,12 @@ Describe 'Offline knowledge package validation' {
     }
 
     It 'does not rewrite manifest checkpoint snapshot or catalog evidence during successful validation' {
-        $script:package = New-TestKnowledgePackage
+        $script:package = Get-TestKnowledgePackageFixture
         $before = @{
-            manifest = Get-TestValidationFileBytes -Path $script:package.manifestPath
-            checkpoint = Get-TestValidationFileBytes -Path $script:package.checkpointPath
-            snapshot = Get-TestValidationFileBytes -Path $script:package.stage1ArtifactPath
-            catalog = Get-TestValidationFileBytes -Path $script:package.catalogPath
+            manifest = Get-TestValidationFileContentSignature -Path $script:package.manifestPath
+            checkpoint = Get-TestValidationFileContentSignature -Path $script:package.checkpointPath
+            snapshot = Get-TestValidationFileContentSignature -Path $script:package.stage1ArtifactPath
+            catalog = Get-TestValidationFileContentSignature -Path $script:package.catalogPath
         }
 
         $result = Collector.Validation.Package\Invoke-CollectorKnowledgePackageValidation -RunPath $script:package.runPath
@@ -220,14 +220,14 @@ Describe 'Offline knowledge package validation' {
                 'snapshot' { $script:package.stage1ArtifactPath }
                 'catalog' { $script:package.catalogPath }
             }
-            if ((Get-TestValidationFileBytes -Path $path) -cne $before[$name]) {
+            if ((Get-TestValidationFileContentSignature -Path $path) -cne $before[$name]) {
                 throw ('Validation rewrote source evidence: {0}.' -f $name)
             }
         }
     }
 
     It 'supports compact machine-readable JSON output from the operator command' {
-        $script:package = New-TestKnowledgePackage
+        $script:package = Get-TestKnowledgePackageFixture
         $commandPath = Join-Path -Path $repoRoot -ChildPath 'collector/Test-KnowledgePackage.ps1'
         $json = & $commandPath -RunPath $script:package.runPath -ExpectedRunId $script:package.runId -AsJson
         $result = $json | ConvertFrom-Json
