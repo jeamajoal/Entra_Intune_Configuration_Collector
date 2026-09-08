@@ -46,6 +46,48 @@ function Write-CollectorRunMarker {
     $marker | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $markerPath -Encoding UTF8
 }
 
+function Test-CollectorManifestArrayContainerShape {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Manifest
+    )
+
+    if ($null -eq $Manifest) {
+        return $false
+    }
+
+    foreach ($propertyName in @('stageResults', 'checkpointSummary', 'failures', 'invocations')) {
+        if ($Manifest.PSObject.Properties.Match($propertyName).Count -eq 0 -or $null -eq $Manifest.$propertyName) {
+            continue
+        }
+
+        if (-not ($Manifest.$propertyName -is [System.Array])) {
+            return $false
+        }
+    }
+
+    if ($Manifest.PSObject.Properties.Match('invocations').Count -gt 0 -and $null -ne $Manifest.invocations) {
+        foreach ($invocation in $Manifest.invocations) {
+            if ($null -eq $invocation) {
+                return $false
+            }
+
+            foreach ($propertyName in @('stageResults', 'failures')) {
+                if (
+                    $invocation.PSObject.Properties.Match($propertyName).Count -eq 0 -or
+                    $null -eq $invocation.$propertyName -or
+                    -not ($invocation.$propertyName -is [System.Array])
+                ) {
+                    return $false
+                }
+            }
+        }
+    }
+
+    return $true
+}
+
 function Test-CollectorResumeRun {
     [CmdletBinding()]
     param(
@@ -96,6 +138,10 @@ function Test-CollectorResumeRun {
         @('1.0', '1.1') -contains [string]$manifest.schemaVersion
     )
     if (-not $hasSupportedSchemaVersion) {
+        return $false
+    }
+
+    if (-not (Test-CollectorManifestArrayContainerShape -Manifest $manifest)) {
         return $false
     }
 
