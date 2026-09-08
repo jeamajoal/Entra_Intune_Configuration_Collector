@@ -184,6 +184,21 @@ Describe 'Offline knowledge package validation' {
         }
     }
 
+    It 'rejects malformed snapshot state through the existing strict snapshot boundary' {
+        $script:package = Get-TestKnowledgePackageFixture
+        $snapshot = Get-Content -LiteralPath $script:package.stage1ArtifactPath -Raw | ConvertFrom-Json
+        $snapshot.schemaVersion = '9.9'
+        Write-TestValidationJson -Path $script:package.stage1ArtifactPath -Value $snapshot
+
+        $result = Collector.Validation.Package\Invoke-CollectorKnowledgePackageValidation -RunPath $script:package.runPath
+        if ($result.valid -or $result.message -notmatch 'Malformed snapshot contract') {
+            throw ('Expected malformed snapshot failure; actual: {0}' -f $result.message)
+        }
+        if ($result.message -match 'TENANT-PAYLOAD-MARKER') {
+            throw 'Snapshot failure output must not dump collected tenant payload data.'
+        }
+    }
+
     It 'rejects a broken dependency descriptor without exposing payload data' {
         $script:package = Get-TestKnowledgePackageFixture -IncludeStage2
         $catalog = Get-Content -LiteralPath $script:package.catalogPath -Raw | ConvertFrom-Json
