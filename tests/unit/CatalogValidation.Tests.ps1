@@ -2,10 +2,10 @@ BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     $moduleRoot = Join-Path -Path $repoRoot -ChildPath 'collector/modules'
 
-    Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
-    Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
-    Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Storage.Catalog.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Validation.Package.psm1') -Force -ErrorAction Stop
 
     function Write-TestValidationJson {
