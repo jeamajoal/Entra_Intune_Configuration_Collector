@@ -29,8 +29,13 @@ BeforeAll {
             $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status Succeeded -Attempts 1 -ItemCount $Items.Count -SuccessCount $Items.Count -FailedCount 0 -ArtifactPath $artifactPath
         }
         else {
-            $failedCount = if ($Status -eq 'Failed') { $Items.Count } else { 0 }
-            $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status $Status -Attempts 1 -ItemCount $Items.Count -SuccessCount 0 -FailedCount $failedCount -ArtifactPath $null -ErrorMessage (if ($Status -eq 'Failed') { 'fixture failure' } else { $null })
+            $failedCount = 0
+            $errorMessage = $null
+            if ($Status -eq 'Failed') {
+                $failedCount = $Items.Count
+                $errorMessage = 'fixture failure'
+            }
+            $checkpoint = Set-CollectorCheckpointBatch -Checkpoint $checkpoint -BatchId '0001' -Status $Status -Attempts 1 -ItemCount $Items.Count -SuccessCount 0 -FailedCount $failedCount -ArtifactPath $null -ErrorMessage $errorMessage
         }
 
         $checkpoint = Complete-CollectorCheckpointPlan -Checkpoint $checkpoint
