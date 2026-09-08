@@ -57,7 +57,7 @@ Describe 'Artifact path stability' {
         $artifactDirectory = Join-Path -Path $script:runPath -ChildPath 'stage1/entra-apps/applications'
         New-Item -Path $artifactDirectory -ItemType Directory -Force | Out-Null
         $canonicalArtifactPath = [System.IO.Path]::GetFullPath((Join-Path -Path $artifactDirectory -ChildPath 'batch-0001.json'))
-        '{"schemaVersion":"1.0","itemCount":0,"items":[]}' | Set-Content -LiteralPath $canonicalArtifactPath -Encoding UTF8
+        '{"schemaVersion":"1.0","runId":"run-one","stage":"stage1","section":"entra-apps","family":"applications","batchId":"0001","collectedUtc":"2026-09-08T00:00:00.0000000Z","sourceType":"Test","sourceName":"fixture","apiVersion":"n/a","isBeta":false,"requestContext":{},"itemCount":0,"items":[]}' | Set-Content -LiteralPath $canonicalArtifactPath -Encoding UTF8
 
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:runPath -RunId 'run-one' -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
         $legacyRelativePath = './output/run-one/stage1/entra-apps/applications/batch-0001.json'
