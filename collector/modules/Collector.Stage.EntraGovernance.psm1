@@ -180,6 +180,7 @@ function Invoke-CollectorEntraGovernanceStage3 {
 
     $edgeRunner = {
         param($InnerContext, $InnerAssignments, $InnerConverter)
+        $converter = $InnerConverter
         $batches = Split-CollectorItems -Items @($InnerAssignments) -BatchSize $InnerContext.BatchSize
         $result = Invoke-CollectorStage3BatchLoop -Context $InnerContext -Section 'entra-governance' -Family 'activeRoleAssignmentEdges' -Batches $batches -SourceType 'Derived' -SourceName 'Derived active role assignment edges from Stage1 role assignment inventory' -ApiVersion 'v1.0' -IsBeta:$false -RequestContext @{ dependencyFamily = 'roleAssignments'; transform = 'role-assignment-to-edge' } -BatchCollector {
             param([object[]]$batchItems)
@@ -192,7 +193,7 @@ function Invoke-CollectorEntraGovernanceStage3 {
                     if ($null -eq $assignment) {
                         throw 'Active role assignment edge derivation cannot process a null assignment.'
                     }
-                    $items += & $InnerConverter $assignment
+                    $items += & $converter $assignment
                 }
                 catch {
                     $failedCount++
