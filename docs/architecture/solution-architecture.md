@@ -14,9 +14,9 @@ Execution is inventory-first and resumable:
 
 1. Stage1 collects inventory lists by section and family.
 2. Stage2 collects object details by id or object identity from Stage1 artifacts.
-3. Stage3 collects relationship metadata (ACLs, memberships, assignments, delegated grants, and PIM edges) from Stage1 artifacts.
+3. Stage3 collects relationship metadata (ACLs, memberships, assignments, delegated grants, PIM edges, and policy references) from Stage1 artifacts.
 
-ACLs, memberships, and assignments are classified as metadata.
+ACLs, memberships, assignments, grants, and policy references are classified as metadata.
 
 ## Concretized Implementation Layout
 
@@ -28,6 +28,7 @@ ACLs, memberships, and assignments are classified as metadata.
   - collector/modules/Collector.Stage1.Inventory.psm1
   - collector/modules/Collector.Stage2.Details.psm1
   - collector/modules/Collector.Stage3.Relationships.psm1
+  - collector/modules/Collector.Stage.EntraConditionalAccess.psm1 — bounded Conditional Access routing/derivation that reuses the existing Stage1/2/3 execution seams rather than duplicating checkpoint/provenance machinery.
 - Providers:
   - collector/modules/Collector.Provider.Graph.psm1
   - collector/modules/Collector.Provider.OnPrem.psm1
@@ -48,10 +49,10 @@ ACLs, memberships, and assignments are classified as metadata.
 
 ### In Scope
 
-- Entra application, service principal, group, and PIM schedule metadata.
+- Entra application, service principal, group, PIM schedule, and Conditional Access configuration metadata.
 - Intune core application and script metadata.
 - On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets.
-- Relationship metadata for ACLs, memberships, assignments, delegated grants, and PIM schedule edges.
+- Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, and Conditional Access policy references.
 
 Bearer-authenticated absolute Graph request and pagination URIs are restricted to the collector's public Microsoft Graph HTTPS origin (`https://graph.microsoft.com:443`); insecure, cross-origin, alternate-port, and user-info-bearing absolute URIs fail before HTTP execution.
 
@@ -60,16 +61,20 @@ Bearer-authenticated absolute Graph request and pagination URIs are restricted t
 - Mailbox or collaboration workloads.
 - Defender telemetry domains.
 - Audit and sign-in stream ingestion.
+- Conditional Access policy simulation/evaluation, sign-in/risk history, or remediation.
 - Configuration mutation through the collector; the normal Graph provider request boundary is GET-only and exposes no mutation/body request surface.
 
 ## Stage and Section Model
 
-Sections are fixed to:
+Supported sections are:
 
 - entra-apps
 - entra-pim
+- entra-ca
 - intune-core
 - onprem-ad-gpo
+
+`entra-ca` is deliberately **opt-in**. The historical default section set remains `entra-apps`, `entra-pim`, `intune-core`, and `onprem-ad-gpo` so upgrading the collector does not silently introduce a new Conditional Access permission dependency. Explicitly selecting `entra-ca` makes it a normal Graph-backed section and therefore requires a Graph token.
 
 Representative Stage1 families and sources:
 
@@ -80,6 +85,11 @@ Representative Stage1 families and sources:
 - entra-pim:
   - /v1.0/roleManagement/directory/roleAssignmentScheduleInstances
   - /v1.0/roleManagement/directory/roleEligibilityScheduleInstances
+- entra-ca:
+  - `conditionalAccessPolicies` from /v1.0/identity/conditionalAccess/policies
+  - `namedLocations` from /v1.0/identity/conditionalAccess/namedLocations
+  - `authenticationStrengthPolicies` from /v1.0/policies/authenticationStrengthPolicies
+  - `authenticationContextClassReferences` from /v1.0/identity/conditionalAccess/authenticationContextClassReferences
 - intune-core:
   - /v1.0/deviceAppManagement/mobileApps
   - /beta/deviceManagement/deviceManagementScripts
@@ -117,6 +127,19 @@ Credential metadata is collected in separate families so its security and thrott
 - Stage3 `applicationFederatedIdentityCredentials` depends on Stage1 `applications` and requests `/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description` through the existing per-object relationship seam.
 - Federated identity snapshots preserve the application parent id/count plus only the six explicitly selected trust fields.
 - These paths preserve the normal GET-only Graph provider boundary; secret retrieval, credential export, rotation, and mutation remain out of scope.
+
+### Conditional Access configuration boundary
+
+`entra-ca` is a configuration-only section designed to answer offline questions such as which Conditional Access policies exist, how they are configured, and which identities/configuration objects they reference. It intentionally does not collect sign-in evaluation results, audit history, risky-user/sign-in data, or Defender telemetry.
+
+- Stage1 inventories four stable configuration families: policies, named locations, authentication-strength policies, and authentication-context class references.
+- Stage2 reads the same four resources by stable id through Microsoft Graph v1.0. The normal Graph response is retained as raw evidence; no policy-evaluation model or tenant-reconstruction transform is introduced.
+- `Collector.Stage.EntraConditionalAccess.psm1` is a thin extension owner. It invokes the existing Stage1/Stage2/Stage3 private execution helpers in their owner-module session state, preserving the shared provenance, checkpoint, zero-item, retry, and resume contracts rather than creating parallel implementations.
+- Stage3 `conditionalAccessPolicyReferences` is derived locally from Stage1 policy inventory and performs no live Stage3 Graph request. Each row records `policyId`, `referenceType`, `direction`, `sourcePath`, `targetId`, and `targetIdentityDomain`.
+- Policy references distinguish stable object identifiers from Conditional Access selector constants such as `All`, `AllTrusted`, `Office365`, `MicrosoftAdminPortals`, `ServicePrincipalsInMyTenant`, and guest/external selectors. Selectors use the `entra.conditional-access-selector` identity domain instead of being misrepresented as tenant objects.
+- Stable reference domains include users, groups, directory-role templates, application client IDs, service principals, named locations, authentication contexts, authentication-strength policies, external tenants, policy templates, user actions, Terms-of-Use IDs, and custom authentication-factor IDs.
+- Terms-of-Use agreement payloads are not collected in this slice because the Microsoft Graph v1 agreement read surface does not support application permissions. Policies still expose Terms-of-Use IDs as explicit references so offline consumers can see the dependency without forcing the collector into delegated authentication.
+- `entra-ca` remains opt-in because its Graph permission requirements are distinct from the historical default sections. The caller's Graph token must authorize every selected CA resource surface; the collector does not attempt privilege escalation or alternate delegated authentication.
 
 ## Inventory-First Gating and Resume Semantics
 
@@ -207,6 +230,8 @@ The offline catalog is a justified boundary between provider-specific collection
 
 The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence therefore produces the same identity and deterministic content rather than churn caused by generation time.
 
+`entra-ca` is an additive v1 section-vocabulary extension; it does not change the stage/kind, artifact-descriptor, dependency, or relationship schema shape and therefore does not require a catalog schema-version bump.
+
 ### Runtime generation boundary
 
 Catalog generation consumes only persisted local evidence. The catalog module imports storage/checkpoint/provenance modules and no Graph or on-prem provider module. Checkpoints are the discovery index; the generator does not infer collection families by heuristically walking raw snapshot directories.
@@ -253,7 +278,7 @@ Dependencies are normalized separately from artifact rows. Each descriptor ident
 - `execution-input` — the consumer collection requires the provider family as collection input. Current examples are Stage2/Stage3 families driven from Stage1 inventory.
 - `reference` — the consumer payload contains stable identity references to the provider domain/family for offline navigation, but provider evidence is not necessarily a runtime collection prerequisite.
 
-Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`.
+Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families each depend on the same-named Stage1 Conditional Access inventory family.
 
 Current Stage3 execution-input dependencies are:
 
@@ -264,6 +289,7 @@ Current Stage3 execution-input dependencies are:
 | applicationFederatedIdentityCredentials | entra-apps / applications |
 | delegatedGrants | entra-apps / servicePrincipals |
 | pimScheduleEdges | entra-pim / roleAssignmentScheduleInstances and roleEligibilityScheduleInstances |
+| conditionalAccessPolicyReferences | entra-ca / conditionalAccessPolicies |
 | mobileAppAssignments | intune-core / mobileApps |
 | deviceManagementScriptAssignments | intune-core / deviceManagementScripts |
 | domainRootAcl | onprem-ad-gpo / domains |
@@ -292,6 +318,7 @@ V1 identity-domain semantics for current relationship families are:
 | applicationFederatedIdentityCredentials | federated-trust | `entra.application` | `entra.federated-identity-credential` |
 | delegatedGrants | grant | `entra.service-principal` | `entra.service-principal`, `entra.directory-object` |
 | pimScheduleEdges | role-governance | `entra.pim-role-assignment-schedule-instance`, `entra.pim-role-eligibility-schedule-instance` | `entra.directory-object`, `entra.directory-role-definition`, `entra.directory-scope`, `entra.app-scope` |
+| conditionalAccessPolicyReferences | policy-reference | `entra.conditional-access-policy` | `entra.user`, `entra.group`, `entra.directory-role-template`, `entra.application-app-id`, `entra.service-principal`, `entra.named-location`, `entra.authentication-context`, `entra.authentication-strength-policy`, `entra.terms-of-use`, `entra.custom-authentication-factor`, `entra.tenant`, `entra.conditional-access-template`, `entra.conditional-access-user-action`, `entra.conditional-access-selector` |
 
 The catalog does not assert that every raw row contains a single field named `sourceId` or `targetId`; it declares the identity domains the family contract uses so the offline consumer can interpret family-specific raw rows without guessing cross-family meaning.
 
@@ -338,6 +365,7 @@ The catalog contract is the stable seam between collection and later offline con
 ## Failure Behavior
 
 - On-prem command absence or runtime failures are recorded as failed batches in checkpoints and manifest entries.
+- Graph collection failures, including missing permissions for explicitly selected `entra-ca`, are localized to section/family batches where possible and remain visible in checkpoints/manifest evidence.
 - Failures are localized to section/family batches where possible and do not force a full process crash unless inventory-first gating or orchestration integrity fails.
 - Historical failures remain visible in cumulative manifest state after a later successful resume invocation.
 

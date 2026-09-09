@@ -5,10 +5,12 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.EntraConditionalAccess.psm1') -Force -ErrorAction Stop
 
 $script:SupportedStages = @('Stage1', 'Stage2', 'Stage3')
-$script:SupportedSections = @('entra-apps', 'entra-pim', 'intune-core', 'onprem-ad-gpo')
-$script:GraphBackedSections = @('entra-apps', 'entra-pim', 'intune-core')
+$script:DefaultSections = @('entra-apps', 'entra-pim', 'intune-core', 'onprem-ad-gpo')
+$script:SupportedSections = @('entra-apps', 'entra-pim', 'entra-ca', 'intune-core', 'onprem-ad-gpo')
+$script:GraphBackedSections = @('entra-apps', 'entra-pim', 'entra-ca', 'intune-core')
 
 function Resolve-CollectorStages {
     [CmdletBinding()]
@@ -53,12 +55,12 @@ function Resolve-CollectorSections {
     )
 
     if (-not $Sections -or $Sections.Count -eq 0) {
-        return @($script:SupportedSections)
+        return @($script:DefaultSections)
     }
 
     $invalidSections = @($Sections | Where-Object { $script:SupportedSections -notcontains $_ })
     if ($invalidSections.Count -gt 0) {
-        throw ('Unsupported section selection(s): {0}. Supported values are entra-apps, entra-pim, intune-core, onprem-ad-gpo.' -f ($invalidSections -join ', '))
+        throw ('Unsupported section selection(s): {0}. Supported values are entra-apps, entra-pim, entra-ca, intune-core, onprem-ad-gpo.' -f ($invalidSections -join ', '))
     }
 
     $resolved = @()
@@ -69,7 +71,7 @@ function Resolve-CollectorSections {
     }
 
     if ($resolved.Count -eq 0) {
-        throw 'No valid section selection resolved. Supported values are entra-apps, entra-pim, intune-core, onprem-ad-gpo.'
+        throw 'No valid section selection resolved. Supported values are entra-apps, entra-pim, entra-ca, intune-core, onprem-ad-gpo.'
     }
 
     return $resolved
@@ -362,6 +364,9 @@ function Start-CollectorRun {
     $manifest.invocations += $invocation
     $manifestPath = Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest
 
+    $standardSections = @($resolvedSections | Where-Object { $_ -ne 'entra-ca' })
+    $includeConditionalAccess = $resolvedSections -contains 'entra-ca'
+
     try {
         foreach ($stage in $resolvedStages) {
             $stageResults = @()
@@ -369,15 +374,30 @@ function Start-CollectorRun {
 
             switch ($stage) {
                 'Stage1' {
-                    $stageResults = @(Invoke-CollectorStage1 -Context $context -Sections $resolvedSections)
+                    if ($standardSections.Count -gt 0) {
+                        $stageResults += @(Invoke-CollectorStage1 -Context $context -Sections $standardSections)
+                    }
+                    if ($includeConditionalAccess) {
+                        $stageResults += @(Invoke-CollectorConditionalAccessStage1 -Context $context)
+                    }
                 }
 
                 'Stage2' {
-                    $stageResults = @(Invoke-CollectorStage2 -Context $context -Sections $resolvedSections)
+                    if ($standardSections.Count -gt 0) {
+                        $stageResults += @(Invoke-CollectorStage2 -Context $context -Sections $standardSections)
+                    }
+                    if ($includeConditionalAccess) {
+                        $stageResults += @(Invoke-CollectorConditionalAccessStage2 -Context $context)
+                    }
                 }
 
                 'Stage3' {
-                    $stageResults = @(Invoke-CollectorStage3 -Context $context -Sections $resolvedSections)
+                    if ($standardSections.Count -gt 0) {
+                        $stageResults += @(Invoke-CollectorStage3 -Context $context -Sections $standardSections)
+                    }
+                    if ($includeConditionalAccess) {
+                        $stageResults += @(Invoke-CollectorConditionalAccessStage3 -Context $context)
+                    }
                 }
             }
 
