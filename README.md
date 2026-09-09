@@ -27,7 +27,7 @@ Prerequisites:
 - PowerShell 7+ or Windows PowerShell 5.1.
 - A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`). No Graph token is required for an `onprem-ad-gpo`-only run.
 - `entra-ca` is deliberately opt-in so existing default runs do not silently acquire a new Conditional Access permission dependency. Microsoft Graph permissions must cover the selected Conditional Access resources; policy and named-location reads use the Conditional Access policy read surface, authentication-strength reads use the authentication-method policy read surface, and authentication-context reads require an applicable authentication-context/Conditional Access read permission.
-- `entra-governance` is also opt-in. Its administrative-unit reads require the Microsoft Graph application permission `AdministrativeUnit.Read.All`; directory role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`.
+- `entra-governance` is also opt-in. Its administrative-unit reads require the Microsoft Graph application permission `AdministrativeUnit.Read.All`; activated directory roles, directory role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`.
 - Optional on-prem cmdlets for onprem-ad-gpo section:
 	- ActiveDirectory module cmdlets (Get-ADForest, Get-ADOrganizationalUnit, Get-ADGroup, Get-ADDomain, Get-ADGroupMember)
 	- GroupPolicy cmdlets (Get-GPO, Get-GPPermission)
@@ -159,6 +159,7 @@ Stage1 inventory families:
 	- authenticationContextClassReferences from /v1.0/identity/conditionalAccess/authenticationContextClassReferences
 - entra-governance (opt-in):
 	- administrativeUnits from /v1.0/directory/administrativeUnits
+	- directoryRoles from /v1.0/directoryRoles
 	- roleDefinitions from /v1.0/roleManagement/directory/roleDefinitions
 	- roleAssignments from /v1.0/roleManagement/directory/roleAssignments
 - intune-core:
@@ -175,7 +176,7 @@ Stage2 detail collection:
 - Graph families are collected by id from Stage1 inventory.
 - `entra-apps` also writes separate `applicationCredentials` and `servicePrincipalCredentials` families. These request `id,keyCredentials,passwordCredentials`, enforce the credential-specific throttle floor, and persist an allowlisted metadata shape that excludes raw key material and password secret text.
 - `entra-ca` collects the same four Conditional Access configuration families by stable id using Microsoft Graph v1.0. Policy details preserve policy conditions, grant controls, session controls, state, template identity, and other Graph-returned configuration needed for offline explanation; named-location, authentication-strength, and authentication-context details remain separate canonical families.
-- `entra-governance` collects administrative units, role definitions, and active role assignments by stable id using Microsoft Graph v1.0. Role definitions remain reviewable configuration objects that can be joined offline by `roleDefinitionId` from both active-role and existing PIM evidence; PIM schedule families are not duplicated or renamed.
+- `entra-governance` collects administrative units, activated directory roles, role definitions, and active role assignments by stable id using Microsoft Graph v1.0. Active/PIM `roleDefinitionId` values resolve directly against role-definition IDs. Administrative-unit scoped-role `roleId` values resolve first against `directoryRoles`, whose `roleTemplateId` can then match the role definition `templateId`; the existing PIM schedule families are not duplicated or renamed.
 - Terms-of-Use agreement payloads are not collected in v1 because the Microsoft Graph agreement read surface does not support application permissions. Conditional Access policies still expose their Terms-of-Use IDs through the Stage3 reference family rather than hiding those dependencies or requiring delegated authentication.
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
 - Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
@@ -249,7 +250,7 @@ Each snapshot file includes provenance envelope fields:
 
 The current supported snapshot `schemaVersion` is string `1.0`. Resume reuse and downstream snapshot loading fail closed when a persisted snapshot omits that field, stores it with a non-string type, or declares an unsupported version.
 
-For on-prem snapshots, sourceName records concrete cmdlet names and requestContext includes cmdletNames for the executed family.
+For on-prem snapshots, sourceName records concrete cmdlet names and requestContext includes cmdletNames for concrete execution traceability.
 
 ## Offline Knowledge Catalog v1 Contract
 
@@ -274,7 +275,7 @@ The catalog contract requires:
 
 The catalog includes `entra-ca` as a first-class section. Its four Stage2 families depend on their same-named Stage1 inventories, and `conditionalAccessPolicyReferences` depends on Stage1 `conditionalAccessPolicies`. The Stage3 catalog relationship type is `policy-reference`, with source domain `entra.conditional-access-policy` and target domains matching the explicit Conditional Access reference vocabulary documented above.
 
-The catalog also includes `entra-governance` without a schema-version bump. Its three Stage2 families depend on the same-named Stage1 inventories; administrative-unit membership/scoped-role relationships depend on Stage1 `administrativeUnits`; active role edges depend on Stage1 `roleAssignments`. Governance and existing PIM relationship descriptors both use `entra.directory-role-definition` for role-definition references, so an offline consumer can resolve PIM or active-assignment `roleDefinitionId` values against collected governance role-definition metadata when the optional governance section is present, without making PIM execution depend on that section.
+The catalog also includes `entra-governance` without a schema-version bump. Its four Stage2 families depend on the same-named Stage1 inventories; administrative-unit membership/scoped-role relationships depend on Stage1 `administrativeUnits`; active role edges depend on Stage1 `roleAssignments`. Governance and existing PIM relationship descriptors use stable role identity domains, while `directoryRoles` supplies the activated-role ID/`roleTemplateId` bridge needed to interpret scoped-role membership. This allows offline role resolution without making PIM execution depend on the optional governance section.
 
 Catalog descriptors deliberately do **not** copy snapshot `items`, `requestContext`, credential payloads, or other raw tenant content. Consumers follow `relativePath` back to canonical snapshots when payload data is needed. Existing credential boundaries therefore remain unchanged: raw key material and password secret text are still excluded by the collector, and the catalog adds no new secret-bearing surface.
 
@@ -313,7 +314,7 @@ In scope:
 
 - Entra, Intune, and on-prem AD or GPO configuration metadata.
 - Conditional Access policy/configuration metadata and explicit offline policy references.
-- Administrative-unit, directory-role-definition, and active-role-assignment configuration metadata plus scoped governance relationships.
+- Administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata plus scoped governance relationships.
 - ACLs, memberships, assignments, grants, role-governance edges, and policy references treated as metadata.
 
 Out of scope:
