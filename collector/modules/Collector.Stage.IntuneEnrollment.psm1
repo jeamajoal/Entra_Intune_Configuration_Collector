@@ -104,8 +104,8 @@ function Invoke-CollectorIntuneEnrollmentStage1 {
     $runner = {
         param($InnerContext)
         @(
-            Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'intune-core' -Family 'deviceEnrollmentConfigurations' -Endpoint '/v1.0/deviceManagement/deviceEnrollmentConfigurations'
-            Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'intune-core' -Family 'windowsAutopilotDeploymentProfiles' -Endpoint '/beta/deviceManagement/windowsAutopilotDeploymentProfiles'
+            Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'deviceEnrollmentConfigurations' -Endpoint '/v1.0/deviceManagement/deviceEnrollmentConfigurations'
+            Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfiles' -Endpoint '/beta/deviceManagement/windowsAutopilotDeploymentProfiles'
         )
     }
     return @($script:CollectorIntuneEnrollmentStage1Module.Invoke($runner, [object[]]@($Context)))
@@ -118,8 +118,8 @@ function Invoke-CollectorIntuneEnrollmentStage2 {
     $runner = {
         param($InnerContext)
         @(
-            Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'intune-core' -Family 'deviceEnrollmentConfigurations' -EndpointTemplate '/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}')
-            Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'intune-core' -Family 'windowsAutopilotDeploymentProfiles' -EndpointTemplate '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}')
+            Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'deviceEnrollmentConfigurations' -EndpointTemplate '/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}')
+            Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfiles' -EndpointTemplate '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}')
         )
     }
     return @($script:CollectorIntuneEnrollmentStage2Module.Invoke($runner, [object[]]@($Context)))
@@ -136,8 +136,8 @@ function Invoke-CollectorIntuneEnrollmentStage3 {
     $runner = {
         param($InnerContext, $InnerTransform)
         @(
-            Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-core' -Family 'deviceEnrollmentConfigurationAssignments' -DependencyFamily 'deviceEnrollmentConfigurations' -EndpointTemplate '/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}/assignments' -RelationshipTransform $InnerTransform)
-            Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-core' -Family 'windowsAutopilotDeploymentProfileAssignments' -DependencyFamily 'windowsAutopilotDeploymentProfiles' -EndpointTemplate '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}/assignments' -RelationshipTransform $InnerTransform)
+            Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'deviceEnrollmentConfigurationAssignments' -DependencyFamily 'deviceEnrollmentConfigurations' -EndpointTemplate '/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}/assignments' -RelationshipTransform $InnerTransform)
+            Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfileAssignments' -DependencyFamily 'windowsAutopilotDeploymentProfiles' -EndpointTemplate '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}/assignments' -RelationshipTransform $InnerTransform)
         )
     }
     return @($script:CollectorIntuneEnrollmentStage3Module.Invoke($runner, [object[]]@($Context, $transform)))
