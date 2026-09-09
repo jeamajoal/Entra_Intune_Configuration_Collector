@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 $stage1ModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage1.Inventory.psm1'
 $stage2ModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage2.Details.psm1'
 $stage3ModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.Relationships.psm1'
+$configurationModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.IntuneConfiguration.psm1'
 
 function Get-CollectorIntuneComplianceModule {
     param(
@@ -29,6 +30,7 @@ function Get-CollectorIntuneComplianceModule {
 $script:CollectorIntuneComplianceStage1Module = Get-CollectorIntuneComplianceModule -Name 'Collector.Stage1.Inventory' -Path $stage1ModulePath
 $script:CollectorIntuneComplianceStage2Module = Get-CollectorIntuneComplianceModule -Name 'Collector.Stage2.Details' -Path $stage2ModulePath
 $script:CollectorIntuneComplianceStage3Module = Get-CollectorIntuneComplianceModule -Name 'Collector.Stage3.Relationships' -Path $stage3ModulePath
+Import-Module -Name $configurationModulePath -Force -ErrorAction Stop
 
 function Get-CollectorIntuneComplianceProperty {
     param(
@@ -107,7 +109,9 @@ function Invoke-CollectorIntuneComplianceStage1 {
             Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'intune-core' -Family 'assignmentFilters' -Endpoint '/beta/deviceManagement/assignmentFilters'
         )
     }
-    return @($script:CollectorIntuneComplianceStage1Module.Invoke($runner, [object[]]@($Context)))
+    $results = @($script:CollectorIntuneComplianceStage1Module.Invoke($runner, [object[]]@($Context)))
+    $results += @(Invoke-CollectorIntuneConfigurationStage1 -Context $Context)
+    return @($results)
 }
 
 function Invoke-CollectorIntuneComplianceStage2 {
@@ -121,7 +125,9 @@ function Invoke-CollectorIntuneComplianceStage2 {
             Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'intune-core' -Family 'assignmentFilters' -EndpointTemplate '/beta/deviceManagement/assignmentFilters/{id}')
         )
     }
-    return @($script:CollectorIntuneComplianceStage2Module.Invoke($runner, [object[]]@($Context)))
+    $results = @($script:CollectorIntuneComplianceStage2Module.Invoke($runner, [object[]]@($Context)))
+    $results += @(Invoke-CollectorIntuneConfigurationStage2 -Context $Context)
+    return @($results)
 }
 
 function Invoke-CollectorIntuneComplianceStage3 {
@@ -137,7 +143,9 @@ function Invoke-CollectorIntuneComplianceStage3 {
         param($InnerContext, $InnerTransform)
         return Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-core' -Family 'deviceCompliancePolicyAssignments' -DependencyFamily 'deviceCompliancePolicies' -EndpointTemplate '/beta/deviceManagement/deviceCompliancePolicies/{id}/assignments' -RelationshipTransform $InnerTransform)
     }
-    return @($script:CollectorIntuneComplianceStage3Module.Invoke($runner, [object[]]@($Context, $assignmentTransform)))
+    $results = @($script:CollectorIntuneComplianceStage3Module.Invoke($runner, [object[]]@($Context, $assignmentTransform)))
+    $results += @(Invoke-CollectorIntuneConfigurationStage3 -Context $Context)
+    return @($results)
 }
 
 Export-ModuleMember -Function @(
