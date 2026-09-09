@@ -125,6 +125,7 @@ function Invoke-CollectorEntraGovernanceStage1 {
         param($InnerContext)
         @(
             Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'entra-governance' -Family 'administrativeUnits' -Endpoint '/v1.0/directory/administrativeUnits'
+            Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'entra-governance' -Family 'directoryRoles' -Endpoint '/v1.0/directoryRoles'
             Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'entra-governance' -Family 'roleDefinitions' -Endpoint '/v1.0/roleManagement/directory/roleDefinitions'
             Invoke-CollectorGraphInventoryFamily -Context $InnerContext -Section 'entra-governance' -Family 'roleAssignments' -Endpoint '/v1.0/roleManagement/directory/roleAssignments'
         )
@@ -140,6 +141,7 @@ function Invoke-CollectorEntraGovernanceStage2 {
         param($InnerContext)
         @(
             Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'entra-governance' -Family 'administrativeUnits' -EndpointTemplate '/v1.0/directory/administrativeUnits/{id}')
+            Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'entra-governance' -Family 'directoryRoles' -EndpointTemplate '/v1.0/directoryRoles/{id}')
             Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'entra-governance' -Family 'roleDefinitions' -EndpointTemplate '/v1.0/roleManagement/directory/roleDefinitions/{id}')
             Publish-CollectorStage2Result -Context $InnerContext -Result (Invoke-CollectorStage2GraphFamily -Context $InnerContext -Section 'entra-governance' -Family 'roleAssignments' -EndpointTemplate '/v1.0/roleManagement/directory/roleAssignments/{id}')
         )
