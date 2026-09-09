@@ -173,52 +173,49 @@ function Invoke-CollectorEntraGovernanceStage3 {
         return @(Get-CollectorSnapshotItems -RunPath $InnerRunPath -Stage 'stage1' -Section 'entra-governance' -Family 'roleAssignments' -ExpectedRunId $InnerRunId)
     }
     $assignments = @($script:CollectorEntraGovernanceArtifactModule.Invoke($inventoryReader, [object[]]@($Context.RunPath, $Context.RunId)))
-    $edgeConverter = {
-        param($InnerAssignment)
-        ConvertTo-CollectorActiveRoleAssignmentEdge -Assignment $InnerAssignment
-    }.GetNewClosure()
 
-    $edgeRunner = {
-        param($InnerContext, $InnerAssignments, $InnerConverter)
-        $converter = $InnerConverter
-        $batches = Split-CollectorItems -Items @($InnerAssignments) -BatchSize $InnerContext.BatchSize
-        $result = Invoke-CollectorStage3BatchLoop -Context $InnerContext -Section 'entra-governance' -Family 'activeRoleAssignmentEdges' -Batches $batches -SourceType 'Derived' -SourceName 'Derived active role assignment edges from Stage1 role assignment inventory' -ApiVersion 'v1.0' -IsBeta:$false -RequestContext @{ dependencyFamily = 'roleAssignments'; transform = 'role-assignment-to-edge' } -BatchCollector {
-            param([object[]]$batchItems)
+    $batchCollector = {
+        param([object[]]$batchItems)
 
-            $items = @()
-            $failedCount = 0
-            $errors = @()
-            foreach ($assignment in $batchItems) {
-                try {
-                    if ($null -eq $assignment) {
-                        throw 'Active role assignment edge derivation cannot process a null assignment.'
-                    }
-                    $items += & $converter $assignment
+        $items = @()
+        $failedCount = 0
+        $errors = @()
+        foreach ($assignment in $batchItems) {
+            try {
+                if ($null -eq $assignment) {
+                    throw 'Active role assignment edge derivation cannot process a null assignment.'
                 }
-                catch {
-                    $failedCount++
-                    $message = $_.Exception.Message
-                    $errors += $message
-                    $assignmentId = $null
-                    if ($null -ne $assignment -and $assignment.PSObject.Properties.Match('id').Count -gt 0) {
-                        $assignmentId = [string]$assignment.id
-                    }
-                    $items += [pscustomobject]@{
-                        assignmentId = $assignmentId
-                        _collectorError = $message
-                    }
-                }
+                $items += ConvertTo-CollectorActiveRoleAssignmentEdge -Assignment $assignment
             }
-
-            [pscustomobject]@{
-                Items = @($items)
-                FailedCount = $failedCount
-                Errors = @($errors)
+            catch {
+                $failedCount++
+                $message = $_.Exception.Message
+                $errors += $message
+                $assignmentId = $null
+                if ($null -ne $assignment -and $assignment.PSObject.Properties.Match('id').Count -gt 0) {
+                    $assignmentId = [string]$assignment.id
+                }
+                $items += [pscustomobject]@{
+                    assignmentId = $assignmentId
+                    _collectorError = $message
+                }
             }
         }
+
+        [pscustomobject]@{
+            Items = @($items)
+            FailedCount = $failedCount
+            Errors = @($errors)
+        }
+    }
+
+    $edgeRunner = {
+        param($InnerContext, $InnerAssignments, $InnerBatchCollector)
+        $batches = Split-CollectorItems -Items @($InnerAssignments) -BatchSize $InnerContext.BatchSize
+        $result = Invoke-CollectorStage3BatchLoop -Context $InnerContext -Section 'entra-governance' -Family 'activeRoleAssignmentEdges' -Batches $batches -SourceType 'Derived' -SourceName 'Derived active role assignment edges from Stage1 role assignment inventory' -ApiVersion 'v1.0' -IsBeta:$false -RequestContext @{ dependencyFamily = 'roleAssignments'; transform = 'role-assignment-to-edge' } -BatchCollector $InnerBatchCollector
         return Publish-CollectorStage3Result -Context $InnerContext -Result $result
     }
-    $results += @($script:CollectorEntraGovernanceStage3Module.Invoke($edgeRunner, [object[]]@($Context, $assignments, $edgeConverter)))
+    $results += @($script:CollectorEntraGovernanceStage3Module.Invoke($edgeRunner, [object[]]@($Context, $assignments, $batchCollector)))
 
     return @($results)
 }
