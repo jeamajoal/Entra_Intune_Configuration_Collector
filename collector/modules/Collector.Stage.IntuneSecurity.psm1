@@ -162,30 +162,33 @@ function Invoke-CollectorIntuneSecurityStage1 {
 
     $modernPolicyRunner = {
         param($InnerContext, $InnerAdmission, $InnerFamilies)
+        $admission = $InnerAdmission
         $endpoint = '/beta/deviceManagement/configurationPolicies'
         Invoke-CollectorStage1Family -Context $InnerContext -Section 'intune-core' -Family 'securityConfigurationPolicies' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint) -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpoint = $endpoint; method = 'GET'; admittedTemplateFamilies = @($InnerFamilies); telemetryExcluded = $true } -CollectScript {
             $items = @(Invoke-CollectorGraphCollection -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds)
-            @($items | Where-Object { & $InnerAdmission $_ })
+            @($items | Where-Object { & $admission $_ })
         }
     }
     $results = @($script:CollectorIntuneSecurityStage1Module.Invoke($modernPolicyRunner, [object[]]@($Context, $policyAdmission, $securityFamilies)))
 
     $modernTemplateRunner = {
         param($InnerContext, $InnerAdmission, $InnerFamilies)
+        $admission = $InnerAdmission
         $endpoint = '/beta/deviceManagement/configurationPolicyTemplates'
         Invoke-CollectorStage1Family -Context $InnerContext -Section 'intune-core' -Family 'securityConfigurationPolicyTemplates' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint) -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpoint = $endpoint; method = 'GET'; admittedTemplateFamilies = @($InnerFamilies); telemetryExcluded = $true } -CollectScript {
             $items = @(Invoke-CollectorGraphCollection -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds)
-            @($items | Where-Object { & $InnerAdmission $_ })
+            @($items | Where-Object { & $admission $_ })
         }
     }
     $results += @($script:CollectorIntuneSecurityStage1Module.Invoke($modernTemplateRunner, [object[]]@($Context, $configurationTemplateAdmission, $securityFamilies)))
 
     $legacyTemplateRunner = {
         param($InnerContext, $InnerAdmission, $InnerTypes)
+        $admission = $InnerAdmission
         $endpoint = '/beta/deviceManagement/templates'
         Invoke-CollectorStage1Family -Context $InnerContext -Section 'intune-core' -Family 'securityBaselineTemplates' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint) -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpoint = $endpoint; method = 'GET'; admittedOdataType = '#microsoft.graph.securityBaselineTemplate'; admittedTemplateTypes = @($InnerTypes); telemetryExcluded = $true } -CollectScript {
             $items = @(Invoke-CollectorGraphCollection -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds)
-            @($items | Where-Object { & $InnerAdmission $_ })
+            @($items | Where-Object { & $admission $_ })
         }
     }
     $results += @($script:CollectorIntuneSecurityStage1Module.Invoke($legacyTemplateRunner, [object[]]@($Context, $legacyTemplateAdmission, $legacyTypes)))
