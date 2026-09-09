@@ -5,6 +5,7 @@ $stage2ModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage2.D
 $stage3ModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.Relationships.psm1'
 $configurationModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.IntuneConfiguration.psm1'
 $securityModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.IntuneSecurity.psm1'
+$enrollmentModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.IntuneEnrollment.psm1'
 
 function Get-CollectorIntuneComplianceModule {
     param(
@@ -33,6 +34,7 @@ $script:CollectorIntuneComplianceStage2Module = Get-CollectorIntuneComplianceMod
 $script:CollectorIntuneComplianceStage3Module = Get-CollectorIntuneComplianceModule -Name 'Collector.Stage3.Relationships' -Path $stage3ModulePath
 Import-Module -Name $configurationModulePath -Force -ErrorAction Stop
 Import-Module -Name $securityModulePath -Force -ErrorAction Stop
+Import-Module -Name $enrollmentModulePath -Force -ErrorAction Stop
 
 function Get-CollectorIntuneComplianceProperty {
     param(
@@ -114,6 +116,7 @@ function Invoke-CollectorIntuneComplianceStage1 {
     $results = @($script:CollectorIntuneComplianceStage1Module.Invoke($runner, [object[]]@($Context)))
     $results += @(Invoke-CollectorIntuneConfigurationStage1 -Context $Context)
     $results += @(Invoke-CollectorIntuneSecurityStage1 -Context $Context)
+    $results += @(Invoke-CollectorIntuneEnrollmentStage1 -Context $Context)
     return @($results)
 }
 
@@ -131,6 +134,7 @@ function Invoke-CollectorIntuneComplianceStage2 {
     $results = @($script:CollectorIntuneComplianceStage2Module.Invoke($runner, [object[]]@($Context)))
     $results += @(Invoke-CollectorIntuneConfigurationStage2 -Context $Context)
     $results += @(Invoke-CollectorIntuneSecurityStage2 -Context $Context)
+    $results += @(Invoke-CollectorIntuneEnrollmentStage2 -Context $Context)
     return @($results)
 }
 
@@ -150,6 +154,7 @@ function Invoke-CollectorIntuneComplianceStage3 {
     $results = @($script:CollectorIntuneComplianceStage3Module.Invoke($runner, [object[]]@($Context, $assignmentTransform)))
     $results += @(Invoke-CollectorIntuneConfigurationStage3 -Context $Context)
     $results += @(Invoke-CollectorIntuneSecurityStage3 -Context $Context)
+    $results += @(Invoke-CollectorIntuneEnrollmentStage3 -Context $Context)
     return @($results)
 }
 
