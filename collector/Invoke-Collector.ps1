@@ -10,7 +10,7 @@ param(
     [ValidateSet('All', 'Stage1', 'Stage2', 'Stage3')]
     [string[]]$Stages = @('All'),
 
-    [ValidateSet('entra-apps', 'entra-pim', 'entra-ca', 'intune-core', 'onprem-ad-gpo')]
+    [ValidateSet('entra-apps', 'entra-pim', 'entra-ca', 'entra-governance', 'intune-core', 'onprem-ad-gpo')]
     [string[]]$Sections = @('entra-apps', 'entra-pim', 'intune-core', 'onprem-ad-gpo'),
 
     [switch]$Resume,

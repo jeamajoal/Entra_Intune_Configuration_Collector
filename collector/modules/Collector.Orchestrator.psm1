@@ -6,11 +6,12 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage1.
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.EntraConditionalAccess.psm1') -Force -ErrorAction Stop
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.EntraGovernance.psm1') -Force -ErrorAction Stop
 
 $script:SupportedStages = @('Stage1', 'Stage2', 'Stage3')
 $script:DefaultSections = @('entra-apps', 'entra-pim', 'intune-core', 'onprem-ad-gpo')
-$script:SupportedSections = @('entra-apps', 'entra-pim', 'entra-ca', 'intune-core', 'onprem-ad-gpo')
-$script:GraphBackedSections = @('entra-apps', 'entra-pim', 'entra-ca', 'intune-core')
+$script:SupportedSections = @('entra-apps', 'entra-pim', 'entra-ca', 'entra-governance', 'intune-core', 'onprem-ad-gpo')
+$script:GraphBackedSections = @('entra-apps', 'entra-pim', 'entra-ca', 'entra-governance', 'intune-core')
 
 function Resolve-CollectorStages {
     [CmdletBinding()]
@@ -60,7 +61,7 @@ function Resolve-CollectorSections {
 
     $invalidSections = @($Sections | Where-Object { $script:SupportedSections -notcontains $_ })
     if ($invalidSections.Count -gt 0) {
-        throw ('Unsupported section selection(s): {0}. Supported values are entra-apps, entra-pim, entra-ca, intune-core, onprem-ad-gpo.' -f ($invalidSections -join ', '))
+        throw ('Unsupported section selection(s): {0}. Supported values are entra-apps, entra-pim, entra-ca, entra-governance, intune-core, onprem-ad-gpo.' -f ($invalidSections -join ', '))
     }
 
     $resolved = @()
@@ -71,7 +72,7 @@ function Resolve-CollectorSections {
     }
 
     if ($resolved.Count -eq 0) {
-        throw 'No valid section selection resolved. Supported values are entra-apps, entra-pim, entra-ca, intune-core, onprem-ad-gpo.'
+        throw 'No valid section selection resolved. Supported values are entra-apps, entra-pim, entra-ca, entra-governance, intune-core, onprem-ad-gpo.'
     }
 
     return $resolved
@@ -364,8 +365,9 @@ function Start-CollectorRun {
     $manifest.invocations += $invocation
     $manifestPath = Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest
 
-    $standardSections = @($resolvedSections | Where-Object { $_ -ne 'entra-ca' })
+    $standardSections = @($resolvedSections | Where-Object { $_ -ne 'entra-ca' -and $_ -ne 'entra-governance' })
     $includeConditionalAccess = $resolvedSections -contains 'entra-ca'
+    $includeEntraGovernance = $resolvedSections -contains 'entra-governance'
 
     try {
         foreach ($stage in $resolvedStages) {
@@ -380,6 +382,9 @@ function Start-CollectorRun {
                     if ($includeConditionalAccess) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage1 -Context $context)
                     }
+                    if ($includeEntraGovernance) {
+                        $stageResults += @(Invoke-CollectorEntraGovernanceStage1 -Context $context)
+                    }
                 }
 
                 'Stage2' {
@@ -389,6 +394,9 @@ function Start-CollectorRun {
                     if ($includeConditionalAccess) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage2 -Context $context)
                     }
+                    if ($includeEntraGovernance) {
+                        $stageResults += @(Invoke-CollectorEntraGovernanceStage2 -Context $context)
+                    }
                 }
 
                 'Stage3' {
@@ -397,6 +405,9 @@ function Start-CollectorRun {
                     }
                     if ($includeConditionalAccess) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage3 -Context $context)
+                    }
+                    if ($includeEntraGovernance) {
+                        $stageResults += @(Invoke-CollectorEntraGovernanceStage3 -Context $context)
                     }
                 }
             }

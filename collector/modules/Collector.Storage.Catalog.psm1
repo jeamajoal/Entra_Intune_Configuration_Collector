@@ -5,7 +5,7 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
 $script:CollectorCatalogStages = @('stage1', 'stage2', 'stage3')
-$script:CollectorCatalogSections = @('entra-apps', 'entra-pim', 'entra-ca', 'intune-core', 'onprem-ad-gpo')
+$script:CollectorCatalogSections = @('entra-apps', 'entra-pim', 'entra-ca', 'entra-governance', 'intune-core', 'onprem-ad-gpo')
 $script:CollectorCatalogStageKinds = @{ stage1 = 'inventory'; stage2 = 'detail'; stage3 = 'relationship' }
 
 $script:CollectorCatalogDependencies = @{
@@ -20,6 +20,10 @@ $script:CollectorCatalogDependencies = @{
     'stage2|entra-ca|namedLocations' = @('namedLocations')
     'stage2|entra-ca|authenticationStrengthPolicies' = @('authenticationStrengthPolicies')
     'stage2|entra-ca|authenticationContextClassReferences' = @('authenticationContextClassReferences')
+    'stage2|entra-governance|administrativeUnits' = @('administrativeUnits')
+    'stage2|entra-governance|directoryRoles' = @('directoryRoles')
+    'stage2|entra-governance|roleDefinitions' = @('roleDefinitions')
+    'stage2|entra-governance|roleAssignments' = @('roleAssignments')
     'stage2|intune-core|mobileApps' = @('mobileApps')
     'stage2|intune-core|deviceManagementScripts' = @('deviceManagementScripts')
     'stage2|onprem-ad-gpo|domains' = @('domains')
@@ -32,6 +36,9 @@ $script:CollectorCatalogDependencies = @{
     'stage3|entra-apps|delegatedGrants' = @('servicePrincipals')
     'stage3|entra-pim|pimScheduleEdges' = @('roleAssignmentScheduleInstances', 'roleEligibilityScheduleInstances')
     'stage3|entra-ca|conditionalAccessPolicyReferences' = @('conditionalAccessPolicies')
+    'stage3|entra-governance|administrativeUnitMembers' = @('administrativeUnits')
+    'stage3|entra-governance|administrativeUnitScopedRoleMembers' = @('administrativeUnits')
+    'stage3|entra-governance|activeRoleAssignmentEdges' = @('roleAssignments')
     'stage3|intune-core|mobileAppAssignments' = @('mobileApps')
     'stage3|intune-core|deviceManagementScriptAssignments' = @('deviceManagementScripts')
     'stage3|onprem-ad-gpo|domainRootAcl' = @('domains')
@@ -53,6 +60,9 @@ $script:CollectorCatalogRelationships = @{
     'entra-apps|delegatedGrants' = [pscustomobject]@{ Type = 'grant'; Source = @('entra.service-principal'); Target = @('entra.service-principal', 'entra.directory-object') }
     'entra-pim|pimScheduleEdges' = [pscustomobject]@{ Type = 'role-governance'; Source = @('entra.pim-role-assignment-schedule-instance', 'entra.pim-role-eligibility-schedule-instance'); Target = @('entra.directory-object', 'entra.directory-role-definition', 'entra.directory-scope', 'entra.app-scope') }
     'entra-ca|conditionalAccessPolicyReferences' = [pscustomobject]@{ Type = 'policy-reference'; Source = @('entra.conditional-access-policy'); Target = @('entra.user', 'entra.group', 'entra.directory-role-template', 'entra.application-app-id', 'entra.service-principal', 'entra.named-location', 'entra.authentication-context', 'entra.authentication-strength-policy', 'entra.terms-of-use', 'entra.custom-authentication-factor', 'entra.tenant', 'entra.conditional-access-template', 'entra.conditional-access-user-action', 'entra.conditional-access-selector') }
+    'entra-governance|administrativeUnitMembers' = [pscustomobject]@{ Type = 'membership'; Source = @('entra.administrative-unit'); Target = @('entra.directory-object') }
+    'entra-governance|administrativeUnitScopedRoleMembers' = [pscustomobject]@{ Type = 'role-governance'; Source = @('entra.administrative-unit'); Target = @('entra.directory-role', 'entra.user') }
+    'entra-governance|activeRoleAssignmentEdges' = [pscustomobject]@{ Type = 'role-governance'; Source = @('entra.role-assignment'); Target = @('entra.directory-object', 'entra.directory-role-definition', 'entra.tenant', 'entra.administrative-unit', 'entra.app-scope', 'entra.directory-scope') }
 }
 
 function Get-CollectorCatalogKey {
@@ -210,7 +220,7 @@ function Get-CollectorCatalogArtifactSet {
     param([string]$RunPath, [string]$RunId, [string]$RunStatus, [DateTimeOffset]$ManifestCompletedUtc, [object[]]$CheckpointSummary)
 
     $stageRank = @{ stage1 = 1; stage2 = 2; stage3 = 3 }
-    $sectionRank = @{ 'entra-apps' = 1; 'entra-pim' = 2; 'entra-ca' = 3; 'intune-core' = 4; 'onprem-ad-gpo' = 5 }
+    $sectionRank = @{ 'entra-apps' = 1; 'entra-pim' = 2; 'entra-ca' = 3; 'entra-governance' = 4; 'intune-core' = 5; 'onprem-ad-gpo' = 6 }
     $summaryRows = @($CheckpointSummary | Sort-Object @{ Expression = { $stageRank[[string]$_.stage] } }, @{ Expression = { $sectionRank[[string]$_.section] } }, @{ Expression = { [string]$_.family } })
     $artifacts = @()
 

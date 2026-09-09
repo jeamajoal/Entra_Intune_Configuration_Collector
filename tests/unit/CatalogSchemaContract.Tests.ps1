@@ -64,6 +64,21 @@ Describe 'Offline knowledge catalog v1 schema contract' {
         }
     }
 
+    It 'admits the Entra governance section without changing the catalog version' {
+        $sections = @($script:catalogDefinitions.section.enum)
+        if ($sections -notcontains 'entra-governance') {
+            throw 'Expected catalog section vocabulary to include entra-governance.'
+        }
+
+        $artifact = $script:catalogDefinitions.artifact
+        if (-not [regex]::IsMatch('stage1/entra-governance/roleDefinitions/batch-0001.json', [string]$artifact.properties.relativePath.pattern)) {
+            throw 'Expected canonical entra-governance snapshot paths to satisfy the catalog artifact contract.'
+        }
+        if (-not [regex]::IsMatch('checkpoints/stage3/entra-governance/activeRoleAssignmentEdges.json', [string]$artifact.properties.checkpointRelativePath.pattern)) {
+            throw 'Expected canonical entra-governance checkpoint paths to satisfy the catalog artifact contract.'
+        }
+    }
+
     It 'binds stage and kind consistently for artifact and dependency owners' {
         $expected = @{
             stage1 = 'inventory'

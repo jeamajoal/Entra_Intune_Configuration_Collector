@@ -25,8 +25,9 @@ The implementation is inventory-first and resumable:
 Prerequisites:
 
 - PowerShell 7+ or Windows PowerShell 5.1.
-- A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `intune-core`). No Graph token is required for an `onprem-ad-gpo`-only run.
+- A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`). No Graph token is required for an `onprem-ad-gpo`-only run.
 - `entra-ca` is deliberately opt-in so existing default runs do not silently acquire a new Conditional Access permission dependency. Microsoft Graph permissions must cover the selected Conditional Access resources; policy and named-location reads use the Conditional Access policy read surface, authentication-strength reads use the authentication-method policy read surface, and authentication-context reads require an applicable authentication-context/Conditional Access read permission.
+- `entra-governance` is also opt-in. Its administrative-unit reads require the Microsoft Graph application permission `AdministrativeUnit.Read.All`; activated directory roles, directory role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`.
 - Optional on-prem cmdlets for onprem-ad-gpo section:
 	- ActiveDirectory module cmdlets (Get-ADForest, Get-ADOrganizationalUnit, Get-ADGroup, Get-ADDomain, Get-ADGroupMember)
 	- GroupPolicy cmdlets (Get-GPO, Get-GPPermission)
@@ -56,6 +57,15 @@ Collect Conditional Access configuration explicitly:
 	-GraphToken $GraphToken `
 	-OutputRoot ./output `
 	-Sections entra-ca
+```
+
+Collect Entra administrative governance explicitly:
+
+```powershell
+./collector/Invoke-Collector.ps1 `
+	-GraphToken $GraphToken `
+	-OutputRoot ./output `
+	-Sections entra-governance
 ```
 
 Run only the on-prem section without a Graph token:
@@ -107,10 +117,10 @@ The intended offline handoff is **collect -> catalog -> validate -> consume/ques
 
 Collector parameters:
 
-- GraphToken: bearer token used for Graph requests. Required when any Graph-backed section (`entra-apps`, `entra-pim`, `entra-ca`, `intune-core`) is selected; optional for `onprem-ad-gpo`-only execution.
+- GraphToken: bearer token used for Graph requests. Required when any Graph-backed section (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`) is selected; optional for `onprem-ad-gpo`-only execution.
 - OutputRoot (mandatory): root output folder containing per-run artifacts.
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
-- Sections: entra-apps, entra-pim, entra-ca, intune-core, onprem-ad-gpo. The legacy default remains `entra-apps,entra-pim,intune-core,onprem-ad-gpo`; `entra-ca` must be selected explicitly.
+- Sections: entra-apps, entra-pim, entra-ca, entra-governance, intune-core, onprem-ad-gpo. The legacy default remains `entra-apps,entra-pim,intune-core,onprem-ad-gpo`; `entra-ca` and `entra-governance` must be selected explicitly.
 - Resume: resume the valid run named by `current-run.json`; if that marker is unusable, fall back to the latest valid collector run under OutputRoot. If no valid prior run exists, fail without creating or initializing run state.
 - ReprocessFailedOnly: during resume, rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches. Stage1 and Stage2 reuse a succeeded batch only after compatible-plan and canonical snapshot schema-version/identity/cardinality validation against current planned work. Stage3 also revalidates the canonical snapshot schema version, identity, and checkpoint/snapshot/actual output cardinality after compatible-plan validation, but does not require relationship output count to equal source batch count because one source object may legitimately produce multiple relationship rows.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
@@ -147,6 +157,11 @@ Stage1 inventory families:
 	- namedLocations from /v1.0/identity/conditionalAccess/namedLocations
 	- authenticationStrengthPolicies from /v1.0/policies/authenticationStrengthPolicies
 	- authenticationContextClassReferences from /v1.0/identity/conditionalAccess/authenticationContextClassReferences
+- entra-governance (opt-in):
+	- administrativeUnits from /v1.0/directory/administrativeUnits
+	- directoryRoles from /v1.0/directoryRoles
+	- roleDefinitions from /v1.0/roleManagement/directory/roleDefinitions
+	- roleAssignments from /v1.0/roleManagement/directory/roleAssignments
 - intune-core:
 	- mobileApps from /v1.0/deviceAppManagement/mobileApps
 	- deviceManagementScripts from /beta/deviceManagement/deviceManagementScripts
@@ -161,6 +176,7 @@ Stage2 detail collection:
 - Graph families are collected by id from Stage1 inventory.
 - `entra-apps` also writes separate `applicationCredentials` and `servicePrincipalCredentials` families. These request `id,keyCredentials,passwordCredentials`, enforce the credential-specific throttle floor, and persist an allowlisted metadata shape that excludes raw key material and password secret text.
 - `entra-ca` collects the same four Conditional Access configuration families by stable id using Microsoft Graph v1.0. Policy details preserve policy conditions, grant controls, session controls, state, template identity, and other Graph-returned configuration needed for offline explanation; named-location, authentication-strength, and authentication-context details remain separate canonical families.
+- `entra-governance` collects administrative units, activated directory roles, role definitions, and active role assignments by stable id using Microsoft Graph v1.0. Active/PIM `roleDefinitionId` values resolve directly against role-definition IDs. Administrative-unit scoped-role `roleId` values resolve first against `directoryRoles`, whose `roleTemplateId` can then match the role definition `templateId`; the existing PIM schedule families are not duplicated or renamed.
 - Terms-of-Use agreement payloads are not collected in v1 because the Microsoft Graph agreement read surface does not support application permissions. Conditional Access policies still expose their Terms-of-Use IDs through the Stage3 reference family rather than hiding those dependencies or requiring delegated authentication.
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
 - Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
@@ -176,6 +192,8 @@ Stage3 relationship families:
 - Delegated grants: delegatedGrants from /v1.0/oauth2PermissionGrants
 - PIM relationship edges: pimScheduleEdges derived from Stage1 PIM schedule instances
 - Conditional Access policy references: conditionalAccessPolicyReferences derived from Stage1 policies. Rows identify policy references to users, groups, role templates, application client IDs, service principals, named locations, authentication contexts, authentication-strength policies, Terms-of-Use IDs, custom authentication factors, external tenants, policy templates, user actions, and special Conditional Access selectors without performing live Stage3 provider calls.
+- Entra governance membership: `administrativeUnitMembers` collects supported members for each persisted administrative unit; `administrativeUnitScopedRoleMembers` records scoped-role membership under the administrative-unit parent.
+- Active Entra role governance: `activeRoleAssignmentEdges` is derived locally from persisted Stage1 role assignments and records principal ID/domain, role-definition ID/domain, and normalized scope. Tenant scope `/`, administrative-unit scope `/administrativeUnits/{id}`, app scope, and other directory-object/directory-scope values remain distinguishable offline.
 - On-prem relationship families use persisted Stage1 domain context where cmdlets support domain targeting.
 - Stage3 applies the same completed Stage1 plan readiness rule to every required dependency and persists its own compatible resume plan before processing relationship batches.
 - During Stage3 resume, a prior successful batch is reused only when its canonical snapshot is readable/non-null, declares supported schema version `1.0`, matches current run/stage/section/family/batch identity, and checkpoint `itemCount`/`successCount`, snapshot `itemCount`, and actual `items.Count` agree with zero recorded failures. The current Stage3 plan binds the source batch; relationship output count is intentionally not required to equal source batch cardinality.
@@ -232,7 +250,7 @@ Each snapshot file includes provenance envelope fields:
 
 The current supported snapshot `schemaVersion` is string `1.0`. Resume reuse and downstream snapshot loading fail closed when a persisted snapshot omits that field, stores it with a non-string type, or declares an unsupported version.
 
-For on-prem snapshots, sourceName records concrete cmdlet names and requestContext includes cmdletNames for the executed family.
+For on-prem snapshots, sourceName records concrete cmdlet names and requestContext includes cmdletNames for concrete execution traceability.
 
 ## Offline Knowledge Catalog v1 Contract
 
@@ -256,6 +274,8 @@ The catalog contract requires:
 - Stage3 relationship descriptors that publish a relationship type plus one or more source and target identity domains so an offline consumer can interpret edge direction without inventing object semantics.
 
 The catalog includes `entra-ca` as a first-class section. Its four Stage2 families depend on their same-named Stage1 inventories, and `conditionalAccessPolicyReferences` depends on Stage1 `conditionalAccessPolicies`. The Stage3 catalog relationship type is `policy-reference`, with source domain `entra.conditional-access-policy` and target domains matching the explicit Conditional Access reference vocabulary documented above.
+
+The catalog also includes `entra-governance` without a schema-version bump. Its four Stage2 families depend on the same-named Stage1 inventories; administrative-unit membership/scoped-role relationships depend on Stage1 `administrativeUnits`; active role edges depend on Stage1 `roleAssignments`. Governance and existing PIM relationship descriptors use stable role identity domains, while `directoryRoles` supplies the activated-role ID/`roleTemplateId` bridge needed to interpret scoped-role membership. This allows offline role resolution without making PIM execution depend on the optional governance section.
 
 Catalog descriptors deliberately do **not** copy snapshot `items`, `requestContext`, credential payloads, or other raw tenant content. Consumers follow `relativePath` back to canonical snapshots when payload data is needed. Existing credential boundaries therefore remain unchanged: raw key material and password secret text are still excluded by the collector, and the catalog adds no new secret-bearing surface.
 
@@ -294,7 +314,8 @@ In scope:
 
 - Entra, Intune, and on-prem AD or GPO configuration metadata.
 - Conditional Access policy/configuration metadata and explicit offline policy references.
-- ACLs, memberships, assignments, grants, and policy references treated as metadata.
+- Administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata plus scoped governance relationships.
+- ACLs, memberships, assignments, grants, role-governance edges, and policy references treated as metadata.
 
 Out of scope:
 
@@ -302,3 +323,4 @@ Out of scope:
 - Defender telemetry domains.
 - Audit and sign-in stream ingestion.
 - Conditional Access simulation/evaluation, mutation, remediation, or operational sign-in/risk history.
+- Role activation event history, access-review execution/history, entitlement workflow execution, or governance mutation.
