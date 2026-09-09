@@ -15,6 +15,9 @@ Describe 'Entra governance offline collection' {
                 '/v1.0/directory/administrativeUnits' {
                     return @([pscustomobject]@{ id = 'au-1'; displayName = 'Tier 1 Admin Boundary'; description = 'Scoped administration' })
                 }
+                '/v1.0/directoryRoles' {
+                    return @([pscustomobject]@{ id = 'directory-role-1'; displayName = 'Helpdesk Administrator'; roleTemplateId = 'template-role-1' })
+                }
                 '/v1.0/roleManagement/directory/roleDefinitions' {
                     return @([pscustomobject]@{ id = 'role-def-1'; displayName = 'Helpdesk Administrator'; isBuiltIn = $true; templateId = 'template-role-1' })
                 }
@@ -34,6 +37,9 @@ Describe 'Entra governance offline collection' {
             switch ($Endpoint) {
                 '/v1.0/directory/administrativeUnits/au-1' {
                     return [pscustomobject]@{ id = 'au-1'; displayName = 'Tier 1 Admin Boundary'; description = 'Scoped administration'; membershipType = $null }
+                }
+                '/v1.0/directoryRoles/directory-role-1' {
+                    return [pscustomobject]@{ id = 'directory-role-1'; displayName = 'Helpdesk Administrator'; description = 'Activated directory role'; roleTemplateId = 'template-role-1' }
                 }
                 '/v1.0/roleManagement/directory/roleDefinitions/role-def-1' {
                     return [pscustomobject]@{ id = 'role-def-1'; displayName = 'Helpdesk Administrator'; description = 'Helpdesk role'; isBuiltIn = $true; templateId = 'template-role-1'; rolePermissions = @() }
@@ -94,7 +100,7 @@ Describe 'Entra governance offline collection' {
         $result = Start-CollectorRun -GraphToken 'test-token' -OutputRoot $script:testRoot -Stages @('Stage1', 'Stage2', 'Stage3') -Sections @('entra-governance') -BatchSize 25 -MaxRetries 0 -BaseBackoffSeconds 0 -MaxBackoffSeconds 0 -ThrottleMilliseconds 0
         $result.status | Should -Be 'Completed'
 
-        foreach ($family in @('administrativeUnits', 'roleDefinitions', 'roleAssignments')) {
+        foreach ($family in @('administrativeUnits', 'directoryRoles', 'roleDefinitions', 'roleAssignments')) {
             Test-Path -LiteralPath (Join-Path $result.runPath ('stage1/entra-governance/{0}/batch-0001.json' -f $family)) -PathType Leaf | Should -BeTrue
             Test-Path -LiteralPath (Join-Path $result.runPath ('stage2/entra-governance/{0}/batch-0001.json' -f $family)) -PathType Leaf | Should -BeTrue
         }
@@ -106,6 +112,11 @@ Describe 'Entra governance offline collection' {
         $roleDetail.apiVersion | Should -Be 'v1.0'
         [bool]$roleDetail.isBeta | Should -BeFalse
         [string]$roleDetail.items[0].id | Should -Be 'role-def-1'
+
+        $directoryRoleDetail = Get-Content -LiteralPath (Join-Path $result.runPath 'stage2/entra-governance/directoryRoles/batch-0001.json') -Raw | ConvertFrom-Json
+        [string]$directoryRoleDetail.items[0].id | Should -Be 'directory-role-1'
+        [string]$directoryRoleDetail.items[0].roleTemplateId | Should -Be 'template-role-1'
+        [string]$roleDetail.items[0].templateId | Should -Be 'template-role-1'
 
         $memberSnapshot = Get-Content -LiteralPath (Join-Path $result.runPath 'stage3/entra-governance/administrativeUnitMembers/batch-0001.json') -Raw | ConvertFrom-Json
         [string]$memberSnapshot.items[0].parentId | Should -Be 'au-1'
@@ -134,7 +145,7 @@ Describe 'Entra governance offline collection' {
         $objectEdge.scopeIdentityDomain | Should -Be 'entra.directory-object'
 
         $manifest = Get-Content -LiteralPath $result.manifestPath -Raw | ConvertFrom-Json
-        @($manifest.checkpointSummary | Where-Object { $_.section -eq 'entra-governance' }).Count | Should -Be 9
+        @($manifest.checkpointSummary | Where-Object { $_.section -eq 'entra-governance' }).Count | Should -Be 11
     }
 
     It 'emits governance catalog dependencies and relationship identity domains' {
@@ -144,8 +155,8 @@ Describe 'Entra governance offline collection' {
         $catalogResult = Collector.Storage.Catalog\Export-CollectorKnowledgeCatalog -RunPath $result.runPath -ExpectedRunId $result.runId
         $catalog = Get-Content -LiteralPath $catalogResult.catalogPath -Raw | ConvertFrom-Json
 
-        @($catalog.artifacts | Where-Object { $_.section -eq 'entra-governance' }).Count | Should -Be 9
-        @($catalog.dependencies | Where-Object { $_.consumer.section -eq 'entra-governance' }).Count | Should -Be 6
+        @($catalog.artifacts | Where-Object { $_.section -eq 'entra-governance' }).Count | Should -Be 11
+        @($catalog.dependencies | Where-Object { $_.consumer.section -eq 'entra-governance' }).Count | Should -Be 7
         @($catalog.relationships | Where-Object { $_.section -eq 'entra-governance' }).Count | Should -Be 3
 
         $activeRelationship = @($catalog.relationships | Where-Object { $_.section -eq 'entra-governance' -and $_.family -eq 'activeRoleAssignmentEdges' })[0]
@@ -163,7 +174,7 @@ Describe 'Entra governance offline collection' {
         $initial = Start-CollectorRun -GraphToken 'test-token' -OutputRoot $script:testRoot -Stages @('Stage1', 'Stage2', 'Stage3') -Sections @('entra-governance') -BatchSize 25 -MaxRetries 0 -BaseBackoffSeconds 0 -MaxBackoffSeconds 0 -ThrottleMilliseconds 0
         $initial.status | Should -Be 'Completed'
 
-        foreach ($family in @('administrativeUnits', 'roleDefinitions', 'roleAssignments')) {
+        foreach ($family in @('administrativeUnits', 'directoryRoles', 'roleDefinitions', 'roleAssignments')) {
             $snapshot = Get-Content -LiteralPath (Join-Path $initial.runPath ('stage1/entra-governance/{0}/batch-0001.json' -f $family)) -Raw | ConvertFrom-Json
             [int]$snapshot.itemCount | Should -Be 0
             @($snapshot.items).Count | Should -Be 0
