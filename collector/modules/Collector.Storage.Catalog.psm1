@@ -21,6 +21,7 @@ $script:CollectorCatalogDependencies = @{
     'stage2|entra-ca|authenticationStrengthPolicies' = @('authenticationStrengthPolicies')
     'stage2|entra-ca|authenticationContextClassReferences' = @('authenticationContextClassReferences')
     'stage2|entra-governance|administrativeUnits' = @('administrativeUnits')
+    'stage2|entra-governance|directoryRoles' = @('directoryRoles')
     'stage2|entra-governance|roleDefinitions' = @('roleDefinitions')
     'stage2|entra-governance|roleAssignments' = @('roleAssignments')
     'stage2|intune-core|mobileApps' = @('mobileApps')
