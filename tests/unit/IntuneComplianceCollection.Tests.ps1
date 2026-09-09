@@ -34,6 +34,9 @@ Describe 'Intune compliance offline collection' {
                 }
                 '/beta/deviceManagement/configurationPolicies' { return @() }
                 '/v1.0/deviceManagement/deviceConfigurations' { return @() }
+                '/beta/deviceManagement/configurationPolicyTemplates' { return @() }
+                '/beta/deviceManagement/templates' { return @() }
+                '/beta/deviceManagement/intents' { return @() }
                 default { throw ('Unexpected Intune Stage1 endpoint: {0}' -f $Endpoint) }
             }
         }
