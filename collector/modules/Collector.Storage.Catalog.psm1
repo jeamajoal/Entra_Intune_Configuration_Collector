@@ -31,6 +31,12 @@ $script:CollectorCatalogDependencies = @{
     'stage2|intune-core|configurationPolicies' = @('configurationPolicies')
     'stage2|intune-core|configurationPolicySettings' = @('configurationPolicies')
     'stage2|intune-core|deviceConfigurations' = @('deviceConfigurations')
+    'stage2|intune-core|securityConfigurationPolicies' = @('securityConfigurationPolicies')
+    'stage2|intune-core|securityConfigurationPolicySettings' = @('securityConfigurationPolicies')
+    'stage2|intune-core|securityConfigurationPolicyTemplates' = @('securityConfigurationPolicyTemplates')
+    'stage2|intune-core|securityBaselineTemplates' = @('securityBaselineTemplates')
+    'stage2|intune-core|securityBaselineIntents' = @('securityBaselineIntents')
+    'stage2|intune-core|securityBaselineIntentSettings' = @('securityBaselineIntents')
     'stage2|onprem-ad-gpo|domains' = @('domains')
     'stage2|onprem-ad-gpo|organizationalUnits' = @('organizationalUnits')
     'stage2|onprem-ad-gpo|groups' = @('groups')
@@ -49,10 +55,17 @@ $script:CollectorCatalogDependencies = @{
     'stage3|intune-core|deviceCompliancePolicyAssignments' = @('deviceCompliancePolicies')
     'stage3|intune-core|configurationPolicyAssignments' = @('configurationPolicies')
     'stage3|intune-core|deviceConfigurationAssignments' = @('deviceConfigurations')
+    'stage3|intune-core|securityConfigurationPolicyAssignments' = @('securityConfigurationPolicies')
+    'stage3|intune-core|securityBaselineIntentAssignments' = @('securityBaselineIntents')
     'stage3|onprem-ad-gpo|domainRootAcl' = @('domains')
     'stage3|onprem-ad-gpo|ouAcl' = @('organizationalUnits')
     'stage3|onprem-ad-gpo|gpoPermissions' = @('gpos')
     'stage3|onprem-ad-gpo|groupMembersOnPrem' = @('groups')
+}
+
+$script:CollectorCatalogReferenceDependencies = @{
+    'stage2|intune-core|securityConfigurationPolicies' = @('securityConfigurationPolicyTemplates')
+    'stage2|intune-core|securityBaselineIntents' = @('securityBaselineTemplates')
 }
 
 $script:CollectorCatalogRelationships = @{
@@ -66,6 +79,8 @@ $script:CollectorCatalogRelationships = @{
     'intune-core|deviceCompliancePolicyAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.device-compliance-policy'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
     'intune-core|configurationPolicyAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.configuration-policy'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
     'intune-core|deviceConfigurationAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.device-configuration'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
+    'intune-core|securityConfigurationPolicyAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.security-configuration-policy'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
+    'intune-core|securityBaselineIntentAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.security-baseline-intent'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
     'entra-apps|servicePrincipalAppRoleAssignedTo' = [pscustomobject]@{ Type = 'assignment'; Source = @('entra.service-principal'); Target = @('entra.directory-object') }
     'entra-apps|applicationFederatedIdentityCredentials' = [pscustomobject]@{ Type = 'federated-trust'; Source = @('entra.application'); Target = @('entra.federated-identity-credential') }
     'entra-apps|delegatedGrants' = [pscustomobject]@{ Type = 'grant'; Source = @('entra.service-principal'); Target = @('entra.service-principal', 'entra.directory-object') }
@@ -334,8 +349,19 @@ function Get-CollectorCatalogDependencySet {
                 provider = [pscustomobject][ordered]@{ stage = 'stage1'; section = [string]$artifact.section; family = [string]$providerFamily; kind = 'inventory' }
             }
         }
+        if ($script:CollectorCatalogReferenceDependencies.ContainsKey($consumerKey)) {
+            foreach ($providerFamily in @($script:CollectorCatalogReferenceDependencies[$consumerKey])) {
+                $providerKey = Get-CollectorCatalogKey 'stage1' $artifact.section $providerFamily
+                if (-not $families.Contains($providerKey)) { throw ('Catalog generation cannot resolve required reference provider {0} for consumer {1}.' -f $providerKey, $consumerKey) }
+                $dependencies += [pscustomobject][ordered]@{
+                    dependencyType = 'reference'
+                    consumer = [pscustomobject][ordered]@{ stage = [string]$artifact.stage; section = [string]$artifact.section; family = [string]$artifact.family; kind = Get-CollectorCatalogKind ([string]$artifact.stage) }
+                    provider = [pscustomobject][ordered]@{ stage = 'stage1'; section = [string]$artifact.section; family = [string]$providerFamily; kind = 'inventory' }
+                }
+            }
+        }
     }
-    return @($dependencies | Sort-Object @{ Expression = { [string]$_.consumer.stage } }, @{ Expression = { [string]$_.consumer.section } }, @{ Expression = { [string]$_.consumer.family } }, @{ Expression = { [string]$_.provider.family } })
+    return @($dependencies | Sort-Object @{ Expression = { [string]$_.consumer.stage } }, @{ Expression = { [string]$_.consumer.section } }, @{ Expression = { [string]$_.consumer.family } }, @{ Expression = { [string]$_.dependencyType } }, @{ Expression = { [string]$_.provider.family } })
 }
 
 function Get-CollectorCatalogRelationshipSet {
