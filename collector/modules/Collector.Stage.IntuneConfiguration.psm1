@@ -67,6 +67,7 @@ function ConvertTo-CollectorIntuneConfigurationAssignment {
     $groupId = [string](Get-CollectorIntuneConfigurationProperty -InputObject $target -Name 'groupId')
     $entraObjectId = [string](Get-CollectorIntuneConfigurationProperty -InputObject $target -Name 'entraObjectId')
     $organizationalUnitId = [string](Get-CollectorIntuneConfigurationProperty -InputObject $target -Name 'organizationalUnitId')
+    $collectionId = [string](Get-CollectorIntuneConfigurationProperty -InputObject $target -Name 'collectionId')
     $targetType = [string](Get-CollectorIntuneConfigurationProperty -InputObject $target -Name 'targetType')
     $filterId = [string](Get-CollectorIntuneConfigurationProperty -InputObject $target -Name 'deviceAndAppManagementAssignmentFilterId')
     $filterType = [string](Get-CollectorIntuneConfigurationProperty -InputObject $target -Name 'deviceAndAppManagementAssignmentFilterType')
@@ -84,6 +85,9 @@ function ConvertTo-CollectorIntuneConfigurationAssignment {
     elseif (-not [string]::IsNullOrWhiteSpace($organizationalUnitId)) {
         $targetId = $organizationalUnitId
     }
+    elseif (-not [string]::IsNullOrWhiteSpace($collectionId)) {
+        $targetId = $collectionId
+    }
     elseif (-not [string]::IsNullOrWhiteSpace($odataType)) {
         $targetId = $odataType.TrimStart('#')
     }
@@ -97,6 +101,7 @@ function ConvertTo-CollectorIntuneConfigurationAssignment {
         targetType = if ([string]::IsNullOrWhiteSpace($targetType)) { $null } else { $targetType }
         targetId = $targetId
         targetIdentityDomain = $targetIdentityDomain
+        collectionId = if ([string]::IsNullOrWhiteSpace($collectionId)) { $null } else { $collectionId }
         assignmentFilterId = if ([string]::IsNullOrWhiteSpace($filterId)) { $null } else { $filterId }
         assignmentFilterType = if ([string]::IsNullOrWhiteSpace($filterType)) { $null } else { $filterType }
         assignmentFilterIdentityDomain = if ([string]::IsNullOrWhiteSpace($filterId)) { $null } else { 'intune.assignment-filter' }
