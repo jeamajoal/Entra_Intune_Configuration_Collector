@@ -59,6 +59,9 @@ Describe 'Intune configuration policy and profile collection' {
                         version = 3
                     })
                 }
+                '/beta/deviceManagement/configurationPolicyTemplates' { return @() }
+                '/beta/deviceManagement/templates' { return @() }
+                '/beta/deviceManagement/intents' { return @() }
                 default { throw ('Unexpected Intune Stage1 endpoint: {0}' -f $Endpoint) }
             }
         }
@@ -71,6 +74,12 @@ Describe 'Intune configuration policy and profile collection' {
                 }
                 '/beta/deviceManagement/configurationPolicies/template-policy-1' {
                     return [pscustomobject]@{ id = 'template-policy-1'; name = 'Device configuration policy template'; platforms = 'windows10'; technologies = 'mdm'; templateReference = [pscustomobject]@{ templateFamily = 'deviceConfigurationPolicies'; templateId = 'template-1' } }
+                }
+                '/beta/deviceManagement/configurationPolicies/endpoint-security-policy' {
+                    return [pscustomobject]@{ id = 'endpoint-security-policy'; name = 'Firewall policy owned by issue 178'; templateReference = [pscustomobject]@{ templateFamily = 'endpointSecurityFirewall'; templateId = 'endpoint-template' } }
+                }
+                '/beta/deviceManagement/configurationPolicies/baseline-policy' {
+                    return [pscustomobject]@{ id = 'baseline-policy'; name = 'Security baseline owned by issue 178'; templateReference = [pscustomobject]@{ templateFamily = 'baseline'; templateId = 'baseline-template' } }
                 }
                 '/v1.0/deviceManagement/deviceConfigurations/classic-profile-1' {
                     return [pscustomobject]@{ '@odata.type' = '#microsoft.graph.windows10CustomConfiguration'; id = 'classic-profile-1'; displayName = 'Classic custom profile'; omaSettings = @([pscustomobject]@{ displayName = 'Example'; omaUri = './Device/Vendor/MSFT/Policy/Config/Example'; value = 'enabled' }) }
@@ -91,6 +100,8 @@ Describe 'Intune configuration policy and profile collection' {
                 '/beta/deviceManagement/configurationPolicies/template-policy-1/settings' {
                     return @([pscustomobject]@{ id = 'setting-3'; settingInstance = [pscustomobject]@{ settingDefinitionId = 'def-3'; simpleSettingValue = [pscustomobject]@{ value = 1 } } })
                 }
+                '/beta/deviceManagement/configurationPolicies/endpoint-security-policy/settings' { return @() }
+                '/beta/deviceManagement/configurationPolicies/baseline-policy/settings' { return @() }
                 default { throw ('Unexpected Intune Stage2 collection endpoint: {0}' -f $Endpoint) }
             }
         }
@@ -124,6 +135,8 @@ Describe 'Intune configuration policy and profile collection' {
                         }
                     })
                 }
+                '/beta/deviceManagement/configurationPolicies/endpoint-security-policy/assignments' { return @() }
+                '/beta/deviceManagement/configurationPolicies/baseline-policy/assignments' { return @() }
                 '/beta/deviceManagement/deviceConfigurations/classic-profile-1/assignments' {
                     return @([pscustomobject]@{
                         id = 'classic-assignment-1'
