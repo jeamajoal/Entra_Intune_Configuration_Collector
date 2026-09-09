@@ -26,6 +26,8 @@ $script:CollectorCatalogDependencies = @{
     'stage2|entra-governance|roleAssignments' = @('roleAssignments')
     'stage2|intune-core|mobileApps' = @('mobileApps')
     'stage2|intune-core|deviceManagementScripts' = @('deviceManagementScripts')
+    'stage2|intune-core|deviceCompliancePolicies' = @('deviceCompliancePolicies')
+    'stage2|intune-core|assignmentFilters' = @('assignmentFilters')
     'stage2|onprem-ad-gpo|domains' = @('domains')
     'stage2|onprem-ad-gpo|organizationalUnits' = @('organizationalUnits')
     'stage2|onprem-ad-gpo|groups' = @('groups')
@@ -41,6 +43,7 @@ $script:CollectorCatalogDependencies = @{
     'stage3|entra-governance|activeRoleAssignmentEdges' = @('roleAssignments')
     'stage3|intune-core|mobileAppAssignments' = @('mobileApps')
     'stage3|intune-core|deviceManagementScriptAssignments' = @('deviceManagementScripts')
+    'stage3|intune-core|deviceCompliancePolicyAssignments' = @('deviceCompliancePolicies')
     'stage3|onprem-ad-gpo|domainRootAcl' = @('domains')
     'stage3|onprem-ad-gpo|ouAcl' = @('organizationalUnits')
     'stage3|onprem-ad-gpo|gpoPermissions' = @('gpos')
@@ -55,6 +58,7 @@ $script:CollectorCatalogRelationships = @{
     'onprem-ad-gpo|groupMembersOnPrem' = [pscustomobject]@{ Type = 'membership'; Source = @('ad.group'); Target = @('ad.directory-object') }
     'intune-core|mobileAppAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.mobile-app'); Target = @('intune.assignment-target') }
     'intune-core|deviceManagementScriptAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.device-management-script'); Target = @('intune.assignment-target') }
+    'intune-core|deviceCompliancePolicyAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.device-compliance-policy'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
     'entra-apps|servicePrincipalAppRoleAssignedTo' = [pscustomobject]@{ Type = 'assignment'; Source = @('entra.service-principal'); Target = @('entra.directory-object') }
     'entra-apps|applicationFederatedIdentityCredentials' = [pscustomobject]@{ Type = 'federated-trust'; Source = @('entra.application'); Target = @('entra.federated-identity-credential') }
     'entra-apps|delegatedGrants' = [pscustomobject]@{ Type = 'grant'; Source = @('entra.service-principal'); Target = @('entra.service-principal', 'entra.directory-object') }
