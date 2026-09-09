@@ -111,7 +111,19 @@ Describe 'Intune configuration policy and profile collection' {
                         }
                     })
                 }
-                '/beta/deviceManagement/configurationPolicies/template-policy-1/assignments' { return @() }
+                '/beta/deviceManagement/configurationPolicies/template-policy-1/assignments' {
+                    return @([pscustomobject]@{
+                        id = 'modern-configmgr-assignment'
+                        source = 'direct'
+                        sourceId = $null
+                        target = [pscustomobject]@{
+                            '@odata.type' = '#microsoft.graph.configurationManagerCollectionAssignmentTarget'
+                            collectionId = 'collection-42'
+                            deviceAndAppManagementAssignmentFilterId = $null
+                            deviceAndAppManagementAssignmentFilterType = 'none'
+                        }
+                    })
+                }
                 '/beta/deviceManagement/deviceConfigurations/classic-profile-1/assignments' {
                     return @([pscustomobject]@{
                         id = 'classic-assignment-1'
@@ -185,6 +197,12 @@ Describe 'Intune configuration policy and profile collection' {
         $modern.assignmentFilterType | Should -Be 'include'
         $modern.assignmentFilterIdentityDomain | Should -Be 'intune.assignment-filter'
         $modern.source | Should -Be 'direct'
+
+        $configManager = @($modernSnapshot.items | Where-Object { $_.parentId -eq 'template-policy-1' })[0].relationships[0]
+        $configManager.targetOdataType | Should -Be '#microsoft.graph.configurationManagerCollectionAssignmentTarget'
+        $configManager.targetId | Should -Be 'collection-42'
+        $configManager.collectionId | Should -Be 'collection-42'
+        $configManager.targetIdentityDomain | Should -Be 'intune.assignment-target'
 
         $classicSnapshot = Get-Content -LiteralPath (Join-Path $result.runPath 'stage3/intune-core/deviceConfigurationAssignments/batch-0001.json') -Raw | ConvertFrom-Json
         $classicSnapshot.apiVersion | Should -Be 'beta'
