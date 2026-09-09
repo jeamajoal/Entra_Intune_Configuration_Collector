@@ -108,7 +108,8 @@ function Invoke-CollectorIntuneConfigurationStage1 {
     param([Parameter(Mandatory = $true)][hashtable]$Context)
 
     $policyRunner = {
-        param($InnerContext, $AdmissionTest)
+        param($InnerContext)
+        $admissionTest = $args[0]
         $endpoint = '/beta/deviceManagement/configurationPolicies'
         $requestContext = @{
             endpoint = $endpoint
@@ -118,7 +119,7 @@ function Invoke-CollectorIntuneConfigurationStage1 {
         }
         Invoke-CollectorStage1Family -Context $InnerContext -Section 'intune-core' -Family 'configurationPolicies' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint) -ApiVersion 'beta' -IsBeta:$true -RequestContext $requestContext -CollectScript {
             $policies = @(Invoke-CollectorGraphCollection -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds)
-            @($policies | Where-Object { & $AdmissionTest $_ })
+            @($policies | Where-Object { & $admissionTest $_ })
         }
     }
 
