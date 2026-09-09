@@ -7,6 +7,7 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage2.
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.EntraConditionalAccess.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.EntraGovernance.psm1') -Force -ErrorAction Stop
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage.IntuneCompliance.psm1') -Force -ErrorAction Stop
 
 $script:SupportedStages = @('Stage1', 'Stage2', 'Stage3')
 $script:DefaultSections = @('entra-apps', 'entra-pim', 'intune-core', 'onprem-ad-gpo')
@@ -368,6 +369,7 @@ function Start-CollectorRun {
     $standardSections = @($resolvedSections | Where-Object { $_ -ne 'entra-ca' -and $_ -ne 'entra-governance' })
     $includeConditionalAccess = $resolvedSections -contains 'entra-ca'
     $includeEntraGovernance = $resolvedSections -contains 'entra-governance'
+    $includeIntuneCompliance = $resolvedSections -contains 'intune-core'
 
     try {
         foreach ($stage in $resolvedStages) {
@@ -385,6 +387,9 @@ function Start-CollectorRun {
                     if ($includeEntraGovernance) {
                         $stageResults += @(Invoke-CollectorEntraGovernanceStage1 -Context $context)
                     }
+                    if ($includeIntuneCompliance) {
+                        $stageResults += @(Invoke-CollectorIntuneComplianceStage1 -Context $context)
+                    }
                 }
 
                 'Stage2' {
@@ -397,6 +402,9 @@ function Start-CollectorRun {
                     if ($includeEntraGovernance) {
                         $stageResults += @(Invoke-CollectorEntraGovernanceStage2 -Context $context)
                     }
+                    if ($includeIntuneCompliance) {
+                        $stageResults += @(Invoke-CollectorIntuneComplianceStage2 -Context $context)
+                    }
                 }
 
                 'Stage3' {
@@ -408,6 +416,9 @@ function Start-CollectorRun {
                     }
                     if ($includeEntraGovernance) {
                         $stageResults += @(Invoke-CollectorEntraGovernanceStage3 -Context $context)
+                    }
+                    if ($includeIntuneCompliance) {
+                        $stageResults += @(Invoke-CollectorIntuneComplianceStage3 -Context $context)
                     }
                 }
             }
