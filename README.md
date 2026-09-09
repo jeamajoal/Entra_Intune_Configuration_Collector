@@ -28,7 +28,7 @@ Prerequisites:
 - A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`). No Graph token is required for an `onprem-ad-gpo`-only run.
 - `entra-ca` is deliberately opt-in so existing default runs do not silently acquire a new Conditional Access permission dependency. Microsoft Graph permissions must cover the selected Conditional Access resources; policy and named-location reads use the Conditional Access policy read surface, authentication-strength reads use the authentication-method policy read surface, and authentication-context reads require an applicable authentication-context/Conditional Access read permission.
 - `entra-governance` is also opt-in. Its administrative-unit reads require the Microsoft Graph application permission `AdministrativeUnit.Read.All`; activated directory roles, directory role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`.
-- Intune configuration reads used by `intune-core`, including compliance policies, assignment filters, and compliance-policy assignments, require Microsoft Graph application permission `DeviceManagementConfiguration.Read.All` and an active Intune tenant license. Compliance-policy inventory/detail uses v1.0; assignment-filter configuration and compliance assignment reads use beta so filter include/exclude IDs and types are not silently lost.
+- Intune configuration reads used by `intune-core`, including compliance policies, assignment filters, Settings Catalog/configuration policies, classic device configurations, and their assignments, require Microsoft Graph application permission `DeviceManagementConfiguration.Read.All` and an active Intune tenant license. Compliance-policy and classic device-configuration inventory/detail use v1.0. Assignment-filter configuration, Settings Catalog/configuration-policy surfaces, and assignment reads that preserve filter include/exclude IDs/types use beta with truthful beta provenance.
 - Optional on-prem cmdlets for onprem-ad-gpo section:
 	- ActiveDirectory module cmdlets (Get-ADForest, Get-ADOrganizationalUnit, Get-ADGroup, Get-ADDomain, Get-ADGroupMember)
 	- GroupPolicy cmdlets (Get-GPO, Get-GPPermission)
@@ -168,6 +168,8 @@ Stage1 inventory families:
 	- deviceManagementScripts from /beta/deviceManagement/deviceManagementScripts
 	- deviceCompliancePolicies from /v1.0/deviceManagement/deviceCompliancePolicies
 	- assignmentFilters from /beta/deviceManagement/assignmentFilters
+	- configurationPolicies from /beta/deviceManagement/configurationPolicies, admitting only `templateReference.templateFamily` `none` or `deviceConfigurationPolicies`; endpoint-security, baseline, enrollment, script-template, recovery, Company Portal, app quiet-time, unknown/future families are deliberately excluded from this family
+	- deviceConfigurations from /v1.0/deviceManagement/deviceConfigurations
 - onprem-ad-gpo:
 	- domains from Get-ADForest
 	- organizationalUnits from Get-ADOrganizationalUnit per domain in Get-ADForest.Domains
@@ -181,18 +183,20 @@ Stage2 detail collection:
 - `entra-ca` collects the same four Conditional Access configuration families by stable id using Microsoft Graph v1.0. Policy details preserve policy conditions, grant controls, session controls, state, template identity, and other Graph-returned configuration needed for offline explanation; named-location, authentication-strength, and authentication-context details remain separate canonical families.
 - `entra-governance` collects administrative units, activated directory roles, role definitions, and active role assignments by stable id using Microsoft Graph v1.0. Active/PIM `roleDefinitionId` values resolve directly against role-definition IDs. Administrative-unit scoped-role `roleId` values resolve first against `directoryRoles`, whose `roleTemplateId` can then match the role definition `templateId`; the existing PIM schedule families are not duplicated or renamed.
 - `intune-core` collects compliance-policy details from `/v1.0/deviceManagement/deviceCompliancePolicies/{id}` and assignment-filter details from `/beta/deviceManagement/assignmentFilters/{id}`. Raw Graph policy/filter configuration remains authoritative so platform-specific compliance requirements and filter rules are reviewable offline; no device/user compliance-result endpoint is part of this family.
+- `intune-core` also collects admitted modern configuration-policy details from `/beta/deviceManagement/configurationPolicies/{id}` and classic typed profile details from `/v1.0/deviceManagement/deviceConfigurations/{id}`. `configurationPolicySettings` follows the paged beta `/configurationPolicies/{id}/settings` relationship and stores one wrapper per policy (`policyId`, `settingCount`, `settings`) so complete configured-setting evidence remains tied to the Stage1 policy identity without changing Stage2 source cardinality.
 - Terms-of-Use agreement payloads are not collected in v1 because the Microsoft Graph agreement read surface does not support application permissions. Conditional Access policies still expose their Terms-of-Use IDs through the Stage3 reference family rather than hiding those dependencies or requiring delegated authentication.
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
 - Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
 - Stage2 persists its own plan before processing so resume cannot silently reuse numeric batch IDs after Stage1 input, order, membership, or BatchSize changes.
-- During Stage2 resume, a prior successful Graph or on-prem batch is reused only when its existing canonical snapshot declares supported schema version `1.0`, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality; an invalid prior success is reprocessed through the normal Stage2 write/checkpoint path.
+- During Stage2 resume, a prior successful Graph or on-prem batch is reused only when its existing canonical snapshot declares supported schema version `1.0`, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality; an invalid prior success is reprocessed through the normal Stage2 write/checkpoint path. The paged `configurationPolicySettings` family follows the same rule because each source policy emits one wrapper regardless of how many settings pages are traversed.
 
 Stage3 relationship families:
 
 - ACL metadata: domainRootAcl, ouAcl, gpoPermissions
 - Membership metadata: groupMembers, groupMembersOnPrem
-- Assignment metadata: mobileAppAssignments, deviceManagementScriptAssignments, deviceCompliancePolicyAssignments, servicePrincipalAppRoleAssignedTo
+- Assignment metadata: mobileAppAssignments, deviceManagementScriptAssignments, deviceCompliancePolicyAssignments, configurationPolicyAssignments, deviceConfigurationAssignments, servicePrincipalAppRoleAssignedTo
 - Intune compliance assignments: `deviceCompliancePolicyAssignments` reads `/beta/deviceManagement/deviceCompliancePolicies/{id}/assignments` from persisted compliance-policy inventory. Rows normalize assignment/source identity plus target/filter references; explicit group IDs use `entra.group`, explicit Entra object IDs use `entra.directory-object`, assignment-filter IDs use `intune.assignment-filter`, and selector/other target shapes remain `intune.assignment-target` rather than being guessed into stronger types. Beta is used here specifically to retain assignment filter ID/type include/exclude context.
+- Intune configuration assignments: `configurationPolicyAssignments` reads `/beta/deviceManagement/configurationPolicies/{id}/assignments`; `deviceConfigurationAssignments` reads `/beta/deviceManagement/deviceConfigurations/{id}/assignments`. Both preserve assignment ID, source/sourceId, intent when Graph supplies it, target type/identity, and assignment-filter ID/type. Group IDs use `entra.group`, explicit Entra object IDs use `entra.directory-object`, filter IDs use `intune.assignment-filter`, and other selectors/targets remain `intune.assignment-target`. The existing `assignmentFilters` family remains the canonical filter-definition evidence and is not duplicated.
 - Entra federated trust metadata: applicationFederatedIdentityCredentials from each Stage1 application, limited to id/name/issuer/subject/audiences/description
 - Delegated grants: delegatedGrants from /v1.0/oauth2PermissionGrants
 - PIM relationship edges: pimScheduleEdges derived from Stage1 PIM schedule instances
@@ -282,7 +286,7 @@ The catalog includes `entra-ca` as a first-class section. Its four Stage2 famili
 
 The catalog also includes `entra-governance` without a schema-version bump. Its four Stage2 families depend on the same-named Stage1 inventories; administrative-unit membership/scoped-role relationships depend on Stage1 `administrativeUnits`; active role edges depend on Stage1 `roleAssignments`. Governance and existing PIM relationship descriptors use stable role identity domains, while `directoryRoles` supplies the activated-role ID/`roleTemplateId` bridge needed to interpret scoped-role membership. This allows offline role resolution without making PIM execution depend on the optional governance section.
 
-The `intune-core` catalog contract is also additive without a schema-version bump. Stage2 `deviceCompliancePolicies` and `assignmentFilters` depend on their same-named Stage1 inventories; Stage3 `deviceCompliancePolicyAssignments` depends on Stage1 `deviceCompliancePolicies`. Its relationship type is `assignment`, with source identity domain `intune.device-compliance-policy` and target domains `entra.group`, `entra.directory-object`, `intune.assignment-filter`, and conservative fallback `intune.assignment-target`.
+The `intune-core` catalog contract is also additive without a schema-version bump. Stage2 `deviceCompliancePolicies` and `assignmentFilters` depend on their same-named Stage1 inventories; Stage3 `deviceCompliancePolicyAssignments` depends on Stage1 `deviceCompliancePolicies`. Modern Stage2 `configurationPolicies` and `configurationPolicySettings` depend on Stage1 `configurationPolicies`; classic Stage2 `deviceConfigurations` depends on the same-named Stage1 inventory. Stage3 `configurationPolicyAssignments` depends on Stage1 `configurationPolicies`, and `deviceConfigurationAssignments` depends on Stage1 `deviceConfigurations`. Assignment relationship sources remain distinct (`intune.device-compliance-policy`, `intune.configuration-policy`, `intune.device-configuration`) while targets use `entra.group`, `entra.directory-object`, `intune.assignment-filter`, and conservative fallback `intune.assignment-target` as applicable. The catalog does not invent an execution-input dependency on `assignmentFilters`; filter IDs are stable relationship references and the canonical filter family is collected independently by #176.
 
 Catalog descriptors deliberately do **not** copy snapshot `items`, `requestContext`, credential payloads, or other raw tenant content. Consumers follow `relativePath` back to canonical snapshots when payload data is needed. Existing credential boundaries therefore remain unchanged: raw key material and password secret text are still excluded by the collector, and the catalog adds no new secret-bearing surface.
 
@@ -320,7 +324,7 @@ The validation script runs parser checks, PSScriptAnalyzer, and Pester tests whe
 In scope:
 
 - Entra, Intune, and on-prem AD or GPO configuration metadata.
-- Intune compliance-policy configuration, assignment filters, and assignment targeting/filter context.
+- Intune compliance-policy configuration, assignment filters, Settings Catalog/non-endpoint-security configuration policies, classic device configurations, and assignment targeting/filter context.
 - Conditional Access policy/configuration metadata and explicit offline policy references.
 - Administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata plus scoped governance relationships.
 - ACLs, memberships, assignments, grants, role-governance edges, and policy references treated as metadata.
@@ -330,6 +334,7 @@ Out of scope:
 - Mailbox or collaboration workloads.
 - Defender telemetry domains.
 - Audit and sign-in stream ingestion.
-- Intune per-device/per-user compliance status, compliance setting results, status-overview telemetry, or remediation.
+- Intune per-device/per-user compliance or configuration status, per-setting status/results, status-overview/report telemetry, or remediation.
+- Intune endpoint-security/security-baseline policy ownership and enrollment/onboarding configuration in this slice; those remain separately groomed under #178/#181.
 - Conditional Access simulation/evaluation, mutation, remediation, or operational sign-in/risk history.
 - Role activation event history, access-review execution/history, entitlement workflow execution, or governance mutation.
