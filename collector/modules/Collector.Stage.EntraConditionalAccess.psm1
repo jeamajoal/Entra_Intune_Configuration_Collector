@@ -51,6 +51,7 @@ function Get-CollectorConditionalAccessReferenceRecordSet {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [object[]]$Policies
     )
 
@@ -216,6 +217,12 @@ function Invoke-CollectorConditionalAccessStage3 {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][hashtable]$Context)
 
+    $readinessCheck = {
+        param($InnerRunPath, $InnerRunId)
+        Assert-CollectorInventoryFirstForStage3 -RunPath $InnerRunPath -Section 'entra-ca' -Families @('conditionalAccessPolicies') -RunId $InnerRunId
+    }
+    $script:CollectorConditionalAccessStage3Module.Invoke($readinessCheck, [object[]]@($Context.RunPath, $Context.RunId)) | Out-Null
+
     $inventoryReader = {
         param($InnerRunPath, $InnerRunId)
         return @(Get-CollectorSnapshotItems -RunPath $InnerRunPath -Stage 'stage1' -Section 'entra-ca' -Family 'conditionalAccessPolicies' -ExpectedRunId $InnerRunId)
@@ -225,7 +232,6 @@ function Invoke-CollectorConditionalAccessStage3 {
 
     $runner = {
         param($InnerContext, $InnerEdges)
-        Assert-CollectorInventoryFirstForStage3 -RunPath $InnerContext.RunPath -Section 'entra-ca' -Families @('conditionalAccessPolicies') -RunId $InnerContext.RunId
         $batches = Split-CollectorItems -Items @($InnerEdges) -BatchSize $InnerContext.BatchSize
         $result = Invoke-CollectorStage3BatchLoop -Context $InnerContext -Section 'entra-ca' -Family 'conditionalAccessPolicyReferences' -Batches $batches -SourceType 'Derived' -SourceName 'Derived Conditional Access policy references from Stage1 policy inventory' -ApiVersion 'v1.0' -IsBeta:$false -RequestContext @{ dependencyFamily = 'conditionalAccessPolicies'; transform = 'conditional-access-policy-to-reference' } -BatchCollector {
             param([object[]]$batchItems)
