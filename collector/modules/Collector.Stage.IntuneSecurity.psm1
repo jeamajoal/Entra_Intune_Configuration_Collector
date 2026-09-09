@@ -191,13 +191,12 @@ function Invoke-CollectorIntuneSecurityStage1 {
     $results += @($script:CollectorIntuneSecurityStage1Module.Invoke($legacyTemplateRunner, [object[]]@($Context, $legacyTemplateAdmission, $legacyTypes)))
 
     $legacyIntentRunner = {
-        param($InnerContext, $InnerTemplateAdmission, $InnerTypes)
-        $templateEndpoint = '/beta/deviceManagement/templates'
+        param($InnerContext)
         $intentEndpoint = '/beta/deviceManagement/intents'
-        Invoke-CollectorStage1Family -Context $InnerContext -Section 'intune-core' -Family 'securityBaselineIntents' -SourceType 'Graph' -SourceName ('Graph {0}' -f $intentEndpoint) -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpoint = $intentEndpoint; method = 'GET'; admittedByTemplateEndpoint = $templateEndpoint; admittedOdataType = '#microsoft.graph.securityBaselineTemplate'; admittedTemplateTypes = @($InnerTypes); preservesMigrationState = $true; telemetryExcluded = $true } -CollectScript {
-            $templates = @(Invoke-CollectorGraphCollection -GraphToken $InnerContext.GraphToken -Endpoint $templateEndpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds)
+        Invoke-CollectorStage1Family -Context $InnerContext -Section 'intune-core' -Family 'securityBaselineIntents' -SourceType 'Graph' -SourceName ('Graph {0}' -f $intentEndpoint) -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpoint = $intentEndpoint; method = 'GET'; admittedByStage1Family = 'securityBaselineTemplates'; preservesMigrationState = $true; telemetryExcluded = $true } -CollectScript {
+            $templates = @(Get-CollectorSnapshotItems -RunPath $InnerContext.RunPath -Stage 'stage1' -Section 'intune-core' -Family 'securityBaselineTemplates' -ExpectedRunId $InnerContext.RunId)
             $templateIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-            foreach ($template in @($templates | Where-Object { & $InnerTemplateAdmission $_ })) {
+            foreach ($template in $templates) {
                 if ($template.PSObject.Properties.Match('id').Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$template.id)) {
                     $templateIds.Add([string]$template.id) | Out-Null
                 }
@@ -206,7 +205,7 @@ function Invoke-CollectorIntuneSecurityStage1 {
             @($intents | Where-Object { $_.PSObject.Properties.Match('templateId').Count -gt 0 -and $templateIds.Contains([string]$_.templateId) })
         }
     }
-    $results += @($script:CollectorIntuneSecurityStage1Module.Invoke($legacyIntentRunner, [object[]]@($Context, $legacyTemplateAdmission, $legacyTypes)))
+    $results += @($script:CollectorIntuneSecurityStage1Module.Invoke($legacyIntentRunner, [object[]]@($Context)))
     return @($results)
 }
 
