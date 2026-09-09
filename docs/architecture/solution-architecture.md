@@ -30,6 +30,7 @@ ACLs, memberships, assignments, grants, policy references, and role-governance e
   - collector/modules/Collector.Stage3.Relationships.psm1
   - collector/modules/Collector.Stage.EntraConditionalAccess.psm1 — bounded Conditional Access routing/derivation that reuses the existing Stage1/2/3 execution seams rather than duplicating checkpoint/provenance machinery.
   - collector/modules/Collector.Stage.EntraGovernance.psm1 — bounded administrative-boundary/role-governance routing and derived active-role edges that reuse the same Stage1/2/3 execution seams.
+  - collector/modules/Collector.Stage.IntuneCompliance.psm1 — bounded Intune compliance-policy/filter routing and assignment normalization that reuses the same Stage1/2/3 execution seams.
 - Providers:
   - collector/modules/Collector.Provider.Graph.psm1
   - collector/modules/Collector.Provider.OnPrem.psm1
@@ -51,9 +52,9 @@ ACLs, memberships, assignments, grants, policy references, and role-governance e
 ### In Scope
 
 - Entra application, service principal, group, PIM schedule, Conditional Access, administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata.
-- Intune core application and script metadata.
+- Intune application, script, compliance-policy, assignment-filter, and configuration assignment-target/filter metadata.
 - On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets.
-- Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, and active role assignments.
+- Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, active role assignments, and Intune compliance-policy targeting.
 
 Bearer-authenticated absolute Graph request and pagination URIs are restricted to the collector's public Microsoft Graph HTTPS origin (`https://graph.microsoft.com:443`); insecure, cross-origin, alternate-port, and user-info-bearing absolute URIs fail before HTTP execution.
 
@@ -62,6 +63,7 @@ Bearer-authenticated absolute Graph request and pagination URIs are restricted t
 - Mailbox or collaboration workloads.
 - Defender telemetry domains.
 - Audit and sign-in stream ingestion.
+- Intune per-device/per-user compliance state, policy-result/status overview, setting-result telemetry, or remediation.
 - Conditional Access policy simulation/evaluation, sign-in/risk history, or remediation.
 - Role activation event history, access reviews, entitlement workflow execution/history, or governance mutation.
 - Configuration mutation through the collector; the normal Graph provider request boundary is GET-only and exposes no mutation/body request surface.
@@ -101,8 +103,10 @@ Representative Stage1 families and sources:
   - `roleDefinitions` from /v1.0/roleManagement/directory/roleDefinitions
   - `roleAssignments` from /v1.0/roleManagement/directory/roleAssignments
 - intune-core:
-  - /v1.0/deviceAppManagement/mobileApps
-  - /beta/deviceManagement/deviceManagementScripts
+  - `mobileApps` from /v1.0/deviceAppManagement/mobileApps
+  - `deviceManagementScripts` from /beta/deviceManagement/deviceManagementScripts
+  - `deviceCompliancePolicies` from /v1.0/deviceManagement/deviceCompliancePolicies
+  - `assignmentFilters` from /beta/deviceManagement/assignmentFilters
 - onprem-ad-gpo:
   - Get-ADForest
   - Get-ADOrganizationalUnit per domain in Get-ADForest.Domains
@@ -167,6 +171,19 @@ Credential metadata is collected in separate families so its security and thrott
 - Principal IDs are represented as `entra.directory-object` because active assignments can target users, role-assignable groups, or service principals. Full principal payloads are not duplicated into governance evidence.
 - Both existing PIM schedule edges and governance active-role edges use the `entra.directory-role-definition` identity domain. When `entra-governance` is selected, an offline consumer can therefore resolve either PIM or active-assignment `roleDefinitionId` values against the collected role-definition metadata by stable ID without making PIM execution depend on governance collection.
 - Existing `entra-pim` Stage1/Stage2 schedule-instance families and Stage3 `pimScheduleEdges` remain canonical. `entra-governance` does not create competing PIM schedule families or activation-history evidence.
+
+### Intune compliance configuration boundary
+
+Intune compliance is an additive configuration slice inside the existing default `intune-core` section. It deliberately reuses the canonical app/script section rather than introducing a second Intune execution model.
+
+- `Collector.Stage.IntuneCompliance.psm1` is a thin extension owner. The orchestrator invokes it whenever `intune-core` is selected, after the existing Stage1/2/3 Intune app/script collectors for the same stage.
+- Stage1 `deviceCompliancePolicies` reads `/v1.0/deviceManagement/deviceCompliancePolicies`; Stage2 reads `/v1.0/deviceManagement/deviceCompliancePolicies/{id}`. The platform-specific policy `@odata.type` and normal Graph-returned configuration remain raw evidence for offline review.
+- Stage1 `assignmentFilters` reads `/beta/deviceManagement/assignmentFilters`; Stage2 reads `/beta/deviceManagement/assignmentFilters/{id}`. Assignment-filter definitions are canonical configuration evidence because assignment rows can refer to filter IDs that otherwise cannot be interpreted offline.
+- Stage3 `deviceCompliancePolicyAssignments` is driven from persisted Stage1 `deviceCompliancePolicies` and reads `/beta/deviceManagement/deviceCompliancePolicies/{id}/assignments`. Beta is intentionally bounded to the filter/assignment contract so `deviceAndAppManagementAssignmentFilterId` and `deviceAndAppManagementAssignmentFilterType` include/exclude semantics are preserved.
+- All accepted reads use application permission `DeviceManagementConfiguration.Read.All`; Microsoft Graph Intune APIs also require an active Intune license for the tenant. The collector does not acquire permissions, switch to delegated auth, or invoke mutation APIs.
+- Assignment rows normalize only relationship metadata: assignment/source identity, target OData/target type, stable target ID when available, conservative target identity domain, assignment-filter ID/type, and filter identity domain. Explicit `groupId` is `entra.group`; explicit `entraObjectId` is `entra.directory-object`; filter IDs are `intune.assignment-filter`; all other selector/target forms remain `intune.assignment-target` rather than being guessed into stronger tenant-object semantics.
+- The transform is intentionally non-throwing for unfamiliar target shapes. Unknown-but-readable assignment targets remain reviewable through raw target type/fallback identity instead of causing one unusual target to discard otherwise valid assignment evidence.
+- Device/user compliance state, device status/user status collections, status overviews, setting-state summaries, Defender signals, and remediation are not collected by this slice.
 
 ## Inventory-First Gating and Resume Semantics
 
@@ -257,7 +274,7 @@ The offline catalog is a justified boundary between provider-specific collection
 
 The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence therefore produces the same identity and deterministic content rather than churn caused by generation time.
 
-`entra-ca` and `entra-governance` are additive v1 section-vocabulary extensions; neither changes the stage/kind, artifact-descriptor, dependency, or relationship schema shape and therefore neither requires a catalog schema-version bump.
+`entra-ca` and `entra-governance` section extensions plus the additive Intune compliance families use the existing v1 stage/kind, artifact-descriptor, dependency, and relationship schema shapes and therefore do not require a catalog schema-version bump.
 
 ### Runtime generation boundary
 
@@ -305,7 +322,7 @@ Dependencies are normalized separately from artifact rows. Each descriptor ident
 - `execution-input` — the consumer collection requires the provider family as collection input. Current examples are Stage2/Stage3 families driven from Stage1 inventory.
 - `reference` — the consumer payload contains stable identity references to the provider domain/family for offline navigation, but provider evidence is not necessarily a runtime collection prerequisite.
 
-Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families and the four `entra-governance` Stage2 detail families each depend on the same-named Stage1 inventory family.
+Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families, the four `entra-governance` Stage2 detail families, and Intune `deviceCompliancePolicies`/`assignmentFilters` each depend on the same-named Stage1 inventory family.
 
 Current Stage3 execution-input dependencies are:
 
@@ -322,6 +339,7 @@ Current Stage3 execution-input dependencies are:
 | activeRoleAssignmentEdges | entra-governance / roleAssignments |
 | mobileAppAssignments | intune-core / mobileApps |
 | deviceManagementScriptAssignments | intune-core / deviceManagementScripts |
+| deviceCompliancePolicyAssignments | intune-core / deviceCompliancePolicies |
 | domainRootAcl | onprem-ad-gpo / domains |
 | ouAcl | onprem-ad-gpo / organizationalUnits |
 | gpoPermissions | onprem-ad-gpo / gpos |
@@ -346,6 +364,7 @@ V1 identity-domain semantics for current relationship families are:
 | groupMembersOnPrem | membership | `ad.group` | `ad.directory-object` |
 | mobileAppAssignments | assignment | `intune.mobile-app` | `intune.assignment-target` |
 | deviceManagementScriptAssignments | assignment | `intune.device-management-script` | `intune.assignment-target` |
+| deviceCompliancePolicyAssignments | assignment | `intune.device-compliance-policy` | `entra.group`, `entra.directory-object`, `intune.assignment-filter`, `intune.assignment-target` |
 | servicePrincipalAppRoleAssignedTo | assignment | `entra.service-principal` | `entra.directory-object` |
 | applicationFederatedIdentityCredentials | federated-trust | `entra.application` | `entra.federated-identity-credential` |
 | delegatedGrants | grant | `entra.service-principal` | `entra.service-principal`, `entra.directory-object` |
@@ -400,7 +419,7 @@ The catalog contract is the stable seam between collection and later offline con
 ## Failure Behavior
 
 - On-prem command absence or runtime failures are recorded as failed batches in checkpoints and manifest entries.
-- Graph collection failures, including missing permissions for explicitly selected `entra-ca` or `entra-governance`, are localized to section/family batches where possible and remain visible in checkpoints/manifest evidence.
+- Graph collection failures, including missing permissions for explicitly selected `entra-ca` or `entra-governance` and Intune configuration reads under `intune-core`, are localized to section/family batches where possible and remain visible in checkpoints/manifest evidence.
 - Failures are localized to section/family batches where possible and do not force a full process crash unless inventory-first gating or orchestration integrity fails.
 - Historical failures remain visible in cumulative manifest state after a later successful resume invocation.
 
