@@ -50,7 +50,7 @@ ACLs, memberships, assignments, grants, policy references, and role-governance e
 
 ### In Scope
 
-- Entra application, service principal, group, PIM schedule, Conditional Access, administrative-unit, directory-role-definition, and active-role-assignment configuration metadata.
+- Entra application, service principal, group, PIM schedule, Conditional Access, administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata.
 - Intune core application and script metadata.
 - On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets.
 - Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, and active role assignments.
@@ -79,7 +79,7 @@ Supported sections are:
 
 `entra-ca` and `entra-governance` are deliberately **opt-in**. The historical default section set remains `entra-apps`, `entra-pim`, `intune-core`, and `onprem-ad-gpo` so upgrading the collector does not silently introduce new permission dependencies. Explicitly selecting either optional section makes it a normal Graph-backed section and therefore requires a Graph token.
 
-`entra-governance` is separate from `entra-pim` because administrative-unit reads require application permission `AdministrativeUnit.Read.All`, while role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`. Existing PIM schedule collection remains canonical and is not duplicated under the governance section.
+`entra-governance` is separate from `entra-pim` because administrative-unit reads require application permission `AdministrativeUnit.Read.All`, while activated directory roles, role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`. Existing PIM schedule collection remains canonical and is not duplicated under the governance section.
 
 Representative Stage1 families and sources:
 
@@ -97,6 +97,7 @@ Representative Stage1 families and sources:
   - `authenticationContextClassReferences` from /v1.0/identity/conditionalAccess/authenticationContextClassReferences
 - entra-governance:
   - `administrativeUnits` from /v1.0/directory/administrativeUnits
+  - `directoryRoles` from /v1.0/directoryRoles
   - `roleDefinitions` from /v1.0/roleManagement/directory/roleDefinitions
   - `roleAssignments` from /v1.0/roleManagement/directory/roleAssignments
 - intune-core:
@@ -154,12 +155,14 @@ Credential metadata is collected in separate families so its security and thrott
 
 `entra-governance` captures static administrative boundaries and active role-governance configuration without changing the existing PIM model.
 
-- Stage1 inventories `administrativeUnits`, `roleDefinitions`, and `roleAssignments` from Microsoft Graph v1.0.
-- Stage2 reads the same three resources by stable id so role definitions and active assignments remain reviewable offline configuration evidence.
+- Stage1 inventories `administrativeUnits`, `directoryRoles`, `roleDefinitions`, and `roleAssignments` from Microsoft Graph v1.0.
+- Stage2 reads the same four resources by stable id so administrative boundaries, activated role instances, role definitions, and active assignments remain reviewable offline configuration evidence.
+- `directoryRoles` supplies the activated-role bridge required by administrative-unit scoped-role membership: a scoped-role row's `roleId` resolves to a `directoryRole.id`, and that role's `roleTemplateId` can then be matched to `roleDefinition.templateId` for reviewable role metadata.
 - `Collector.Stage.EntraGovernance.psm1` is a thin extension owner that invokes the existing Stage1/Stage2/Stage3 private execution helpers in their owner-module session state, preserving checkpoint, provenance, retry, zero-item, and resume behavior.
 - Stage3 `administrativeUnitMembers` reads `/v1.0/directory/administrativeUnits/{id}/members` from persisted administrative-unit inventory.
 - Stage3 `administrativeUnitScopedRoleMembers` reads `/v1.0/directory/administrativeUnits/{id}/scopedRoleMembers` from persisted administrative-unit inventory.
 - Stage3 `activeRoleAssignmentEdges` is derived locally from persisted Stage1 `roleAssignments`; it performs no live Stage3 provider request for role assignments.
+- Active-role edge conversion runs inside the checkpointed Stage3 batch collector. A malformed assignment therefore records failed-batch evidence while preserving valid rows from the same source batch, and `-Resume -ReprocessFailedOnly` can retry that failed batch rather than aborting the whole invocation before checkpoint creation.
 - Active-role edges retain assignment ID, principal ID/domain, role-definition ID/domain, and normalized scope. Directory scope `/` is tenant scope (`entra.tenant`); `/administrativeUnits/{id}` is an administrative-unit scope; other slash-prefixed values remain directory-object scope; `appScopeId` is `entra.app-scope`; other non-empty directory scope values remain `entra.directory-scope` rather than being guessed into a stronger type.
 - Principal IDs are represented as `entra.directory-object` because active assignments can target users, role-assignable groups, or service principals. Full principal payloads are not duplicated into governance evidence.
 - Both existing PIM schedule edges and governance active-role edges use the `entra.directory-role-definition` identity domain. When `entra-governance` is selected, an offline consumer can therefore resolve either PIM or active-assignment `roleDefinitionId` values against the collected role-definition metadata by stable ID without making PIM execution depend on governance collection.
@@ -302,7 +305,7 @@ Dependencies are normalized separately from artifact rows. Each descriptor ident
 - `execution-input` — the consumer collection requires the provider family as collection input. Current examples are Stage2/Stage3 families driven from Stage1 inventory.
 - `reference` — the consumer payload contains stable identity references to the provider domain/family for offline navigation, but provider evidence is not necessarily a runtime collection prerequisite.
 
-Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families and the three `entra-governance` Stage2 detail families each depend on the same-named Stage1 inventory family.
+Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families and the four `entra-governance` Stage2 detail families each depend on the same-named Stage1 inventory family.
 
 Current Stage3 execution-input dependencies are:
 
@@ -324,7 +327,7 @@ Current Stage3 execution-input dependencies are:
 | gpoPermissions | onprem-ad-gpo / gpos |
 | groupMembersOnPrem | onprem-ad-gpo / groups |
 
-No execution-input edge is added from `entra-pim` to `entra-governance`: PIM collection remains valid independently. Offline role-definition resolution is instead provided by stable `roleDefinitionId` plus the shared `entra.directory-role-definition` identity domain when governance evidence is present.
+No execution-input edge is added from `entra-pim` to `entra-governance`: PIM collection remains valid independently. Offline role-definition resolution is instead provided by stable `roleDefinitionId` plus the shared `entra.directory-role-definition` identity domain when governance evidence is present. Administrative-unit scoped-role resolution uses governance `directoryRoles` as the activated-role ID/role-template bridge and likewise does not change PIM execution requirements.
 
 This dependency vocabulary is intentionally small. New domain-family work may add descriptors but must not require a second catalog mechanism.
 
