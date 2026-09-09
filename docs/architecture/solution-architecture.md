@@ -30,8 +30,9 @@ ACLs, memberships, assignments, grants, policy references, and role-governance e
   - collector/modules/Collector.Stage3.Relationships.psm1
   - collector/modules/Collector.Stage.EntraConditionalAccess.psm1 — bounded Conditional Access routing/derivation that reuses the existing Stage1/2/3 execution seams rather than duplicating checkpoint/provenance machinery.
   - collector/modules/Collector.Stage.EntraGovernance.psm1 — bounded administrative-boundary/role-governance routing and derived active-role edges that reuse the same Stage1/2/3 execution seams.
-  - collector/modules/Collector.Stage.IntuneCompliance.psm1 — Intune augmentation entry currently invoked by the orchestrator for `intune-core`; it owns compliance collection and routes the bounded configuration-policy/profile extension without changing the public section model.
+  - collector/modules/Collector.Stage.IntuneCompliance.psm1 — Intune augmentation entry invoked by the orchestrator for `intune-core`; it owns compliance collection and delegates bounded general-configuration and security/baseline extensions while preserving one public Intune section/hook.
   - collector/modules/Collector.Stage.IntuneConfiguration.psm1 — bounded Settings Catalog/device-configuration profile collection, settings paging, admission filtering, and assignment normalization that reuses the Stage1/2/3 owner-module seams.
+  - collector/modules/Collector.Stage.IntuneSecurity.psm1 — bounded modern endpoint-security/security-baseline and legacy baseline intent collection, settings paging, template admission, migration context, and assignment normalization using the same Stage1/2/3 execution seams.
 - Providers:
   - collector/modules/Collector.Provider.Graph.psm1
   - collector/modules/Collector.Provider.OnPrem.psm1
@@ -53,19 +54,19 @@ ACLs, memberships, assignments, grants, policy references, and role-governance e
 ### In Scope
 
 - Entra application, service principal, group, PIM schedule, Conditional Access, administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata.
-- Intune application, script, compliance-policy, assignment-filter, admitted Settings Catalog/device-configuration policy, classic device-configuration profile, and assignment target/filter metadata.
+- Intune application, script, compliance-policy, assignment-filter, admitted general Settings Catalog/device-configuration policy, classic device-configuration profile, modern endpoint-security/security-baseline policy/template, legacy security-baseline template/intent, configured-setting, migration-state, and assignment target/filter metadata.
 - On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets.
-- Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, active role assignments, and Intune compliance/configuration targeting.
+- Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, active role assignments, and Intune compliance/configuration/security targeting.
 
 Bearer-authenticated absolute Graph request and pagination URIs are restricted to the collector's public Microsoft Graph HTTPS origin (`https://graph.microsoft.com:443`); insecure, cross-origin, alternate-port, and user-info-bearing absolute URIs fail before HTTP execution.
 
 ### Out of Scope
 
 - Mailbox or collaboration workloads.
-- Defender telemetry domains.
+- Defender telemetry domains, detections, signals, endpoint-health streams, or operational security events.
 - Audit and sign-in stream ingestion.
-- Intune per-device/per-user compliance/configuration state, policy-result/status overview, per-setting status/result/report telemetry, or remediation.
-- Endpoint-security/security-baseline policy ownership and enrollment/onboarding configuration in the current #177 slice; those remain separately owned by #178/#181.
+- Intune per-device/per-user compliance/configuration/endpoint-security/baseline state, policy-result/status overview, device/user state summaries, per-setting status/result/report telemetry, or remediation.
+- Enrollment/onboarding configuration remains separately owned by #181.
 - Conditional Access policy simulation/evaluation, sign-in/risk history, or remediation.
 - Role activation event history, access reviews, entitlement workflow execution/history, or governance mutation.
 - Configuration mutation through the collector; the normal Graph provider request boundary is GET-only and exposes no mutation/body request surface.
@@ -109,8 +110,12 @@ Representative Stage1 families and sources:
   - `deviceManagementScripts` from /beta/deviceManagement/deviceManagementScripts
   - `deviceCompliancePolicies` from /v1.0/deviceManagement/deviceCompliancePolicies
   - `assignmentFilters` from /beta/deviceManagement/assignmentFilters
-  - `configurationPolicies` from /beta/deviceManagement/configurationPolicies after explicit template-family admission (`none`, `deviceConfigurationPolicies` only)
+  - `configurationPolicies` from /beta/deviceManagement/configurationPolicies after explicit general-configuration template-family admission (`none`, `deviceConfigurationPolicies` only)
   - `deviceConfigurations` from /v1.0/deviceManagement/deviceConfigurations
+  - `securityConfigurationPolicies` from /beta/deviceManagement/configurationPolicies after explicit security/baseline template-family admission
+  - `securityConfigurationPolicyTemplates` from /beta/deviceManagement/configurationPolicyTemplates after the same security/baseline family admission
+  - `securityBaselineTemplates` from /beta/deviceManagement/templates after reviewed legacy security-template admission
+  - `securityBaselineIntents` from /beta/deviceManagement/intents when `templateId` resolves to an admitted securityBaselineTemplates row
 - onprem-ad-gpo:
   - Get-ADForest
   - Get-ADOrganizationalUnit per domain in Get-ADForest.Domains
@@ -180,7 +185,7 @@ Credential metadata is collected in separate families so its security and thrott
 
 Intune compliance is an additive configuration slice inside the existing default `intune-core` section. It deliberately reuses the canonical app/script section rather than introducing a second Intune execution model.
 
-- `Collector.Stage.IntuneCompliance.psm1` is the current Intune augmentation entry invoked whenever `intune-core` is selected. It collects compliance evidence and delegates the configuration-policy/profile slice to `Collector.Stage.IntuneConfiguration.psm1`; the top-level orchestrator therefore retains one stable Intune hook.
+- `Collector.Stage.IntuneCompliance.psm1` is the current Intune augmentation entry invoked whenever `intune-core` is selected. It collects compliance evidence and delegates the general configuration-policy/profile slice to `Collector.Stage.IntuneConfiguration.psm1` and the security/baseline slice to `Collector.Stage.IntuneSecurity.psm1`; the top-level orchestrator therefore retains one stable Intune hook.
 - Stage1 `deviceCompliancePolicies` reads `/v1.0/deviceManagement/deviceCompliancePolicies`; Stage2 reads `/v1.0/deviceManagement/deviceCompliancePolicies/{id}`. The platform-specific policy `@odata.type` and normal Graph-returned configuration remain raw evidence for offline review.
 - Stage1 `assignmentFilters` reads `/beta/deviceManagement/assignmentFilters`; Stage2 reads `/beta/deviceManagement/assignmentFilters/{id}`. Assignment-filter definitions are canonical configuration evidence because assignment rows can refer to filter IDs that otherwise cannot be interpreted offline.
 - Stage3 `deviceCompliancePolicyAssignments` is driven from persisted Stage1 `deviceCompliancePolicies` and reads `/beta/deviceManagement/deviceCompliancePolicies/{id}/assignments`. Beta is intentionally bounded to the filter/assignment contract so `deviceAndAppManagementAssignmentFilterId` and `deviceAndAppManagementAssignmentFilterType` include/exclude semantics are preserved.
@@ -199,10 +204,38 @@ Intune compliance is an additive configuration slice inside the existing default
 - Stage2 `configurationPolicySettings` is driven by Stage1 `configurationPolicies` and requests the paged `/beta/deviceManagement/configurationPolicies/{id}/settings` collection. It emits exactly one wrapper per source policy: `policyId`, `settingCount`, and the complete paged `settings` array. This preserves Stage2 plan/output cardinality and normal resume validation while retaining all configured setting-instance payloads needed offline.
 - The specialized settings path still uses the shared Stage2 checkpoint, batch-decision, artifact, provenance, resume-validation, retry, paging, and zero-item primitives in the Stage2 owner module session. It does not introduce another persistence format or numeric-batch interpretation.
 - Stage3 `configurationPolicyAssignments` uses `/beta/deviceManagement/configurationPolicies/{id}/assignments`; `deviceConfigurationAssignments` uses `/beta/deviceManagement/deviceConfigurations/{id}/assignments`. Beta is bounded to assignments so assignment-filter ID/type survives for both modern and classic policy surfaces; classic inventory/detail remains v1.0.
-- Assignment normalization preserves assignment ID, source/sourceId and intent when present, target OData/type, stable target ID when available, and filter ID/type. Group IDs are `entra.group`, explicit Entra object IDs are `entra.directory-object`, filter IDs are `intune.assignment-filter`, and all other selectors/targets remain conservative `intune.assignment-target`.
+- Assignment normalization preserves assignment ID, source/sourceId and intent when present, target OData/type, stable target ID when available, and filter ID/type. Group IDs are `entra.group`, explicit Entra object IDs are `entra.directory-object`, filter IDs are `intune.assignment-filter`, Configuration Manager collections preserve `collectionId`, and all other selectors/targets remain conservative `intune.assignment-target`.
 - The #176 `assignmentFilters` family remains the only filter-definition owner. Assignment collection does not require a live filter expansion and the catalog does not falsely model filter evidence as an execution prerequisite.
 - Application permission remains `DeviceManagementConfiguration.Read.All` with an active Intune tenant license. Every call is GET-only.
-- Explicitly excluded operational relationships include classic `deviceStatuses`, `userStatuses`, status-overview/setting-summary/report surfaces and modern per-device/per-user/per-setting status. Endpoint-security templates/baselines and enrollment/onboarding policy families are also excluded from this slice even where the generic configuration-policy resource could expose them.
+- Explicitly excluded operational relationships include classic `deviceStatuses`, `userStatuses`, status-overview/setting-summary/report surfaces and modern per-device/per-user/per-setting status. Endpoint-security templates/baselines and enrollment/onboarding policy families are excluded from #177 even where the generic configuration-policy resource can expose them.
+
+### Intune endpoint-security and security-baseline boundary
+
+#178 owns security configuration that #177 deliberately excluded. It covers both the modern configuration-policy model and the still-documented legacy baseline intent model because legacy intents expose `isMigratingToConfigurationPolicy`; assuming universal migration would make offline evidence incomplete for tenants still carrying legacy baselines.
+
+Modern beta families:
+
+- Stage1 `securityConfigurationPolicies` reads `/beta/deviceManagement/configurationPolicies` and admits only template families `endpointSecurityAntivirus`, `endpointSecurityDiskEncryption`, `endpointSecurityFirewall`, `endpointSecurityEndpointDetectionAndResponse`, `endpointSecurityAttackSurfaceReduction`, `endpointSecurityAccountProtection`, `endpointSecurityApplicationControl`, `endpointSecurityEndpointPrivilegeManagement`, and `baseline`.
+- Stage1 `securityConfigurationPolicyTemplates` reads `/beta/deviceManagement/configurationPolicyTemplates` and applies the same admitted template-family set, retaining stable template/base/version/displayVersion/lifecycle/platform/technology/family metadata in raw evidence.
+- Stage2 `securityConfigurationPolicies` and `securityConfigurationPolicyTemplates` read the corresponding beta resources by stable id.
+- Stage2 `securityConfigurationPolicySettings` reads paged `/beta/deviceManagement/configurationPolicies/{id}/settings`, emitting one wrapper per security policy (`policyId`, `settingCount`, `settings`) so page count does not alter source cardinality or resume semantics.
+- Stage3 `securityConfigurationPolicyAssignments` reads `/beta/deviceManagement/configurationPolicies/{id}/assignments` only from persisted securityConfigurationPolicies inventory.
+
+Legacy beta families:
+
+- Stage1 `securityBaselineTemplates` reads `/beta/deviceManagement/templates` and admits `#microsoft.graph.securityBaselineTemplate` plus reviewed security/baseline `templateType` values (`securityBaseline`, `advancedThreatProtectionSecurityBaseline`, `securityTemplate`, `microsoftEdgeSecurityBaseline`, `microsoftOffice365ProPlusSecurityBaseline`, `cloudPC`).
+- Stage1 `securityBaselineIntents` reads `/beta/deviceManagement/intents` and admits only intents whose `templateId` resolves to an admitted securityBaselineTemplates ID. `isMigratingToConfigurationPolicy` remains raw reviewable evidence.
+- Stage2 `securityBaselineTemplates` and `securityBaselineIntents` read their beta resources by id.
+- Stage2 `securityBaselineIntentSettings` reads paged `/beta/deviceManagement/intents/{id}/settings`, emitting one wrapper per legacy intent (`intentId`, `settingCount`, `settings`).
+- Stage3 `securityBaselineIntentAssignments` reads `/beta/deviceManagement/intents/{id}/assignments` only from persisted securityBaselineIntents inventory.
+
+Cross-cutting security policy rules:
+
+- Every accepted #178 call is GET-only beta Microsoft Graph configuration metadata under the existing `DeviceManagementConfiguration.Read.All` application-permission boundary and active Intune-license requirement.
+- Modern and legacy assignment rows reuse the conservative target/filter identity contract from #176/#177, including stable Configuration Manager `collectionId` preservation. Modern source identity is `intune.security-configuration-policy`; legacy source identity is `intune.security-baseline-intent`.
+- The catalog models Stage2/Stage3 source families as `execution-input` dependencies. It also emits reviewed `reference` dependencies from Stage2 securityConfigurationPolicies to Stage1 securityConfigurationPolicyTemplates and from Stage2 securityBaselineIntents to Stage1 securityBaselineTemplates so template IDs are navigable offline without pretending template evidence controls runtime collection order.
+- Modern/legacy per-device or per-user policy state is excluded. Legacy `deviceStates`, `userStates`, `deviceStateSummary`, `userStateSummary`, `deviceSettingStateSummaries`, template device-state summaries, Defender detections/signals, endpoint-health streams, reports, remediation, and mutation are not requested or persisted.
+- Reusable setting definitions/template-setting catalogs remain out of scope unless a later demonstrated offline-questioning gap is separately groomed.
 
 ## Inventory-First Gating and Resume Semantics
 
@@ -293,7 +326,7 @@ The offline catalog is a justified boundary between provider-specific collection
 
 The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence therefore produces the same identity and deterministic content rather than churn caused by generation time.
 
-`entra-ca`, `entra-governance`, and the additive Intune compliance/configuration-policy/profile families use the existing v1 stage/kind, artifact-descriptor, dependency, and relationship schema shapes and therefore do not require a catalog schema-version bump.
+`entra-ca`, `entra-governance`, and the additive Intune compliance/general-configuration/security-baseline families use the existing v1 stage/kind, artifact-descriptor, dependency, and relationship schema shapes and therefore do not require a catalog schema-version bump.
 
 ### Runtime generation boundary
 
@@ -303,7 +336,7 @@ Before a snapshot is admitted, generation verifies terminal manifest/run identit
 
 A `Completed` manifest requires all checkpoint batches to be successful. A `CompletedWithErrors` manifest may produce a catalog containing only validated successful batches, while `runStatus` preserves the incomplete-coverage fact. Any terminal package that still contains an `InProgress` batch is rejected. A successful zero-item family remains represented by its successful empty snapshot.
 
-Execution-input dependencies and Stage3 relationship identity-domain descriptors are emitted only for admitted consumer families. Required Stage1 providers must also resolve to admitted evidence; otherwise generation fails instead of publishing a broken navigation edge. The current runtime emits the concrete `execution-input` mappings defined by the collector; the `reference` dependency vocabulary remains available for future reviewed mappings rather than being guessed from payloads.
+Execution-input, reviewed reference dependencies, and Stage3 relationship identity-domain descriptors are emitted only for admitted consumer families. Required Stage1 providers must also resolve to admitted evidence; otherwise generation fails instead of publishing a broken navigation edge. Reference dependencies are explicit static contracts, not guessed from arbitrary payload fields. #178 currently uses this vocabulary for modern policy→template and legacy intent→template offline navigation.
 
 The final document is serialized without a generation timestamp and with deterministic array ordering. It is first written to a same-directory temporary file and round-tripped as JSON, then atomically replaces the prior catalog. All source validation precedes replacement, so a failed regeneration leaves the previous catalog untouched.
 
@@ -341,7 +374,14 @@ Dependencies are normalized separately from artifact rows. Each descriptor ident
 - `execution-input` — the consumer collection requires the provider family as collection input. Current examples are Stage2/Stage3 families driven from Stage1 inventory.
 - `reference` — the consumer payload contains stable identity references to the provider domain/family for offline navigation, but provider evidence is not necessarily a runtime collection prerequisite.
 
-Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families, the four `entra-governance` Stage2 detail families, and Intune `deviceCompliancePolicies`/`assignmentFilters` each depend on the same-named Stage1 inventory family. Intune `configurationPolicies` and `configurationPolicySettings` both depend on Stage1 `configurationPolicies`; classic Stage2 `deviceConfigurations` depends on Stage1 `deviceConfigurations`.
+Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families, the four `entra-governance` Stage2 detail families, and Intune `deviceCompliancePolicies`/`assignmentFilters` each depend on the same-named Stage1 inventory family. Intune general `configurationPolicies` and `configurationPolicySettings` both depend on Stage1 `configurationPolicies`; classic Stage2 `deviceConfigurations` depends on Stage1 `deviceConfigurations`. #178 adds `securityConfigurationPolicies` and `securityConfigurationPolicySettings` → Stage1 securityConfigurationPolicies, securityConfigurationPolicyTemplates → same-named Stage1, securityBaselineTemplates → same-named Stage1, and securityBaselineIntents/securityBaselineIntentSettings → Stage1 securityBaselineIntents.
+
+Reviewed current `reference` dependencies are:
+
+| Consumer | Stage1 reference provider |
+| --- | --- |
+| stage2 / intune-core / securityConfigurationPolicies | intune-core / securityConfigurationPolicyTemplates |
+| stage2 / intune-core / securityBaselineIntents | intune-core / securityBaselineTemplates |
 
 Current Stage3 execution-input dependencies are:
 
@@ -361,6 +401,8 @@ Current Stage3 execution-input dependencies are:
 | deviceCompliancePolicyAssignments | intune-core / deviceCompliancePolicies |
 | configurationPolicyAssignments | intune-core / configurationPolicies |
 | deviceConfigurationAssignments | intune-core / deviceConfigurations |
+| securityConfigurationPolicyAssignments | intune-core / securityConfigurationPolicies |
+| securityBaselineIntentAssignments | intune-core / securityBaselineIntents |
 | domainRootAcl | onprem-ad-gpo / domains |
 | ouAcl | onprem-ad-gpo / organizationalUnits |
 | gpoPermissions | onprem-ad-gpo / gpos |
@@ -390,6 +432,8 @@ V1 identity-domain semantics for current relationship families are:
 | deviceCompliancePolicyAssignments | assignment | `intune.device-compliance-policy` | `entra.group`, `entra.directory-object`, `intune.assignment-filter`, `intune.assignment-target` |
 | configurationPolicyAssignments | assignment | `intune.configuration-policy` | `entra.group`, `entra.directory-object`, `intune.assignment-filter`, `intune.assignment-target` |
 | deviceConfigurationAssignments | assignment | `intune.device-configuration` | `entra.group`, `entra.directory-object`, `intune.assignment-filter`, `intune.assignment-target` |
+| securityConfigurationPolicyAssignments | assignment | `intune.security-configuration-policy` | `entra.group`, `entra.directory-object`, `intune.assignment-filter`, `intune.assignment-target` |
+| securityBaselineIntentAssignments | assignment | `intune.security-baseline-intent` | `entra.group`, `entra.directory-object`, `intune.assignment-filter`, `intune.assignment-target` |
 | servicePrincipalAppRoleAssignedTo | assignment | `entra.service-principal` | `entra.directory-object` |
 | applicationFederatedIdentityCredentials | federated-trust | `entra.application` | `entra.federated-identity-credential` |
 | delegatedGrants | grant | `entra.service-principal` | `entra.service-principal`, `entra.directory-object` |
@@ -444,7 +488,7 @@ The catalog contract is the stable seam between collection and later offline con
 ## Failure Behavior
 
 - On-prem command absence or runtime failures are recorded as failed batches in checkpoints and manifest entries.
-- Graph collection failures, including missing permissions for explicitly selected `entra-ca` or `entra-governance` and Intune configuration reads under `intune-core`, are localized to section/family batches where possible and remain visible in checkpoints/manifest evidence.
+- Graph collection failures, including missing permissions for explicitly selected `entra-ca` or `entra-governance` and Intune configuration/security reads under `intune-core`, are localized to section/family batches where possible and remain visible in checkpoints/manifest evidence.
 - Failures are localized to section/family batches where possible and do not force a full process crash unless inventory-first gating or orchestration integrity fails.
 - Historical failures remain visible in cumulative manifest state after a later successful resume invocation.
 
