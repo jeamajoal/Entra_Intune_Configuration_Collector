@@ -115,7 +115,7 @@ function Invoke-CollectorIntuneAutopilotAssignmentFamily {
         $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $InnerContext.RunPath -Stage 'stage1' -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfiles' -ExpectedRunId $InnerContext.RunId)
         $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $InnerContext.BatchSize
 
-        return Invoke-CollectorStage3BatchLoop -Context $InnerContext -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfileAssignments' -Batches $batches -SourceType 'Graph' -SourceName 'Graph /beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments' -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpointTemplate = '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments'; method = 'GET'; dependencyFamily = 'windowsAutopilotDeploymentProfiles'; relationshipSource = 'expanded.assignments' } -BatchCollector {
+        return Invoke-CollectorStage3BatchLoop -Context $InnerContext -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfileAssignments' -Batches $batches -SourceType 'Graph' -SourceName 'Graph /beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments' -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpointTemplate = '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments'; method = 'GET'; dependencyFamily = 'windowsAutopilotDeploymentProfiles'; relationshipSource = 'expanded.assignments'; continuationProperty = 'assignments@odata.nextLink' } -BatchCollector {
             param([object[]]$batchItems)
 
             $items = @()
@@ -134,12 +134,23 @@ function Invoke-CollectorIntuneAutopilotAssignmentFamily {
                 $endpoint = '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{0}?$expand=assignments' -f $objectId
                 try {
                     $autopilotProfile = Invoke-CollectorGraphRequest -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds
-                    $relationships = @()
+                    $assignments = @()
                     if ($null -ne $autopilotProfile -and $autopilotProfile.PSObject.Properties.Match('assignments').Count -gt 0 -and $null -ne $autopilotProfile.assignments) {
-                        foreach ($assignment in @($autopilotProfile.assignments)) {
-                            if ($null -ne $assignment) {
-                                $relationships += & $effectiveTransform $assignment
-                            }
+                        $assignments += @($autopilotProfile.assignments)
+                    }
+
+                    $assignmentNextLink = $null
+                    if ($null -ne $autopilotProfile -and $autopilotProfile.PSObject.Properties.Match('assignments@odata.nextLink').Count -gt 0) {
+                        $assignmentNextLink = [string]$autopilotProfile.'assignments@odata.nextLink'
+                    }
+                    if (-not [string]::IsNullOrWhiteSpace($assignmentNextLink)) {
+                        $assignments += @(Invoke-CollectorGraphCollection -GraphToken $InnerContext.GraphToken -Endpoint $assignmentNextLink -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds)
+                    }
+
+                    $relationships = @()
+                    foreach ($assignment in $assignments) {
+                        if ($null -ne $assignment) {
+                            $relationships += & $effectiveTransform $assignment
                         }
                     }
 
