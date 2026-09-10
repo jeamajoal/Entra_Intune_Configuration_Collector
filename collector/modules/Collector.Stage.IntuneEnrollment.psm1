@@ -97,6 +97,79 @@ function ConvertTo-CollectorIntuneEnrollmentAssignment {
     }
 }
 
+function Invoke-CollectorIntuneAutopilotAssignmentFamily {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Context,
+
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$AssignmentTransform
+    )
+
+    $runner = {
+        param($InnerContext, $InnerTransform)
+
+        $effectiveTransform = $InnerTransform
+        Assert-CollectorInventoryFirstForStage3 -RunPath $InnerContext.RunPath -Section 'intune-enrollment' -Families @('windowsAutopilotDeploymentProfiles') -RunId $InnerContext.RunId
+        $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $InnerContext.RunPath -Stage 'stage1' -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfiles' -ExpectedRunId $InnerContext.RunId)
+        $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $InnerContext.BatchSize
+
+        return Invoke-CollectorStage3BatchLoop -Context $InnerContext -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfileAssignments' -Batches $batches -SourceType 'Graph' -SourceName 'Graph /beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments' -ApiVersion 'beta' -IsBeta:$true -RequestContext @{ endpointTemplate = '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments'; method = 'GET'; dependencyFamily = 'windowsAutopilotDeploymentProfiles'; relationshipSource = 'expanded.assignments' } -BatchCollector {
+            param([object[]]$batchItems)
+
+            $items = @()
+            $failedCount = 0
+            $errors = @()
+
+            foreach ($inventoryItem in $batchItems) {
+                $objectId = Get-CollectorObjectId -Item $inventoryItem
+                if (-not $objectId) {
+                    $failedCount++
+                    $errors += 'Unable to resolve Autopilot deployment profile id from Stage1 inventory item.'
+                    $items += [pscustomobject]@{ _collectorError = 'Unable to resolve Autopilot deployment profile id from Stage1 inventory item.' }
+                    continue
+                }
+
+                $endpoint = '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{0}?$expand=assignments' -f $objectId
+                try {
+                    $profile = Invoke-CollectorGraphRequest -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds
+                    $relationships = @()
+                    if ($null -ne $profile -and $profile.PSObject.Properties.Match('assignments').Count -gt 0 -and $null -ne $profile.assignments) {
+                        foreach ($assignment in @($profile.assignments)) {
+                            if ($null -ne $assignment) {
+                                $relationships += & $effectiveTransform $assignment
+                            }
+                        }
+                    }
+
+                    $items += [pscustomobject]@{
+                        parentId = $objectId
+                        relationshipCount = $relationships.Count
+                        relationships = @($relationships)
+                    }
+                }
+                catch {
+                    $failedCount++
+                    $errors += $_.Exception.Message
+                    $items += [pscustomobject]@{
+                        parentId = $objectId
+                        _collectorError = $_.Exception.Message
+                    }
+                }
+            }
+
+            return [pscustomobject]@{
+                Items = $items
+                FailedCount = $failedCount
+                Errors = $errors
+            }
+        }
+    }
+
+    return @($script:CollectorIntuneEnrollmentStage3Module.Invoke($runner, [object[]]@($Context, $AssignmentTransform)))
+}
+
 function Invoke-CollectorIntuneEnrollmentStage1 {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][hashtable]$Context)
@@ -135,12 +208,18 @@ function Invoke-CollectorIntuneEnrollmentStage3 {
     }
     $runner = {
         param($InnerContext, $InnerTransform)
-        @(
-            Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'deviceEnrollmentConfigurationAssignments' -DependencyFamily 'deviceEnrollmentConfigurations' -EndpointTemplate '/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}/assignments' -RelationshipTransform $InnerTransform)
-            Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'windowsAutopilotDeploymentProfileAssignments' -DependencyFamily 'windowsAutopilotDeploymentProfiles' -EndpointTemplate '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}/assignments' -RelationshipTransform $InnerTransform)
-        )
+        return Publish-CollectorStage3Result -Context $InnerContext -Result (Invoke-CollectorStage3GraphPerObjectFamily -Context $InnerContext -Section 'intune-enrollment' -Family 'deviceEnrollmentConfigurationAssignments' -DependencyFamily 'deviceEnrollmentConfigurations' -EndpointTemplate '/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}/assignments' -RelationshipTransform $InnerTransform)
     }
-    return @($script:CollectorIntuneEnrollmentStage3Module.Invoke($runner, [object[]]@($Context, $transform)))
+
+    $results = @($script:CollectorIntuneEnrollmentStage3Module.Invoke($runner, [object[]]@($Context, $transform)))
+    $autopilotResult = @(Invoke-CollectorIntuneAutopilotAssignmentFamily -Context $Context -AssignmentTransform $transform)
+    foreach ($result in $autopilotResult) {
+        if ($Context.ContainsKey('PartialStageResults') -and $null -ne $Context.PartialStageResults) {
+            $Context.PartialStageResults.Add($result) | Out-Null
+        }
+        $results += $result
+    }
+    return @($results)
 }
 
 Export-ModuleMember -Function @(
