@@ -263,7 +263,7 @@ Cross-cutting security policy rules:
 
 - Checkpoints are written per stage/section/family.
 - Batch statuses are Succeeded, Failed, InProgress, and Missing.
-- A family checkpoint persists plan version, BatchSize, expected batch count, ordered source fingerprint, per-batch fingerprints, expected batch count, and completion state before batch execution begins.
+- A family checkpoint persists plan version, BatchSize, expected batch count, ordered source fingerprint, per-batch fingerprints, and completion state before batch execution begins.
 - Stage2 and Stage3 reject a required Stage1 family unless its plan is complete, its expected/recorded batch counts agree, every expected batch is Succeeded, and every expected artifact exists.
 - A lone `batch-*.json` file is never sufficient readiness evidence.
 - Stage2 and Stage3 persist their own plans before downstream batch decisions, so refreshed Stage1 source identity cannot silently reuse stale successful downstream numeric batch IDs.
