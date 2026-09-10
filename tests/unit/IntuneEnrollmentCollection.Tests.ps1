@@ -86,29 +86,39 @@ Describe 'Intune enrollment and onboarding collection' {
                     })
                 }
                 '/v1.0/deviceManagement/deviceEnrollmentConfigurations/enrollment-config-2/assignments' { return @() }
-                '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/autopilot-profile-1/assignments' {
-                    return @(
-                        [pscustomobject]@{
-                            id = 'autopilot-assignment-group'
-                            source = 'direct'
-                            target = [pscustomobject]@{
-                                '@odata.type' = '#microsoft.graph.groupAssignmentTarget'
-                                groupId = 'autopilot-group-1'
-                                deviceAndAppManagementAssignmentFilterId = 'filter-1'
-                                deviceAndAppManagementAssignmentFilterType = 'include'
-                            }
-                        },
-                        [pscustomobject]@{
-                            id = 'autopilot-assignment-collection'
-                            source = 'direct'
-                            target = [pscustomobject]@{
-                                '@odata.type' = '#microsoft.graph.configurationManagerCollectionAssignmentTarget'
-                                collectionId = 'autopilot-collection-7'
-                            }
+                default { throw ('Unexpected Intune enrollment Stage3 collection endpoint: {0}' -f $Endpoint) }
+            }
+        }
+
+        Mock -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphRequest -MockWith {
+            param([string]$Endpoint)
+            if ($Endpoint -ne '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/autopilot-profile-1?$expand=assignments') {
+                throw ('Unexpected Intune enrollment Stage3 object endpoint: {0}' -f $Endpoint)
+            }
+
+            return [pscustomobject]@{
+                '@odata.type' = '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile'
+                id = 'autopilot-profile-1'
+                assignments = @(
+                    [pscustomobject]@{
+                        id = 'autopilot-assignment-group'
+                        source = 'direct'
+                        target = [pscustomobject]@{
+                            '@odata.type' = '#microsoft.graph.groupAssignmentTarget'
+                            groupId = 'autopilot-group-1'
+                            deviceAndAppManagementAssignmentFilterId = 'filter-1'
+                            deviceAndAppManagementAssignmentFilterType = 'include'
                         }
-                    )
-                }
-                default { throw ('Unexpected Intune enrollment Stage3 endpoint: {0}' -f $Endpoint) }
+                    },
+                    [pscustomobject]@{
+                        id = 'autopilot-assignment-collection'
+                        source = 'direct'
+                        target = [pscustomobject]@{
+                            '@odata.type' = '#microsoft.graph.configurationManagerCollectionAssignmentTarget'
+                            collectionId = 'autopilot-collection-7'
+                        }
+                    }
+                )
             }
         }
     }
@@ -141,7 +151,7 @@ Describe 'Intune enrollment and onboarding collection' {
         [bool]$autopilotDetail.items[0].hardwareHashExtractionEnabled | Should -BeTrue
     }
 
-    It 'normalizes enrollment and Autopilot assignments with stable group filter and ConfigMgr identities' {
+    It 'normalizes enrollment and expanded-profile Autopilot assignments with stable group filter and ConfigMgr identities' {
         $result = Start-CollectorRun -GraphToken 'test-token' -OutputRoot $script:testRoot -Stages @('Stage1', 'Stage3') -Sections @('intune-enrollment') -BatchSize 25 -MaxRetries 0 -BaseBackoffSeconds 0 -MaxBackoffSeconds 0 -ThrottleMilliseconds 0
         $result.status | Should -Be 'Completed'
 
@@ -162,6 +172,13 @@ Describe 'Intune enrollment and onboarding collection' {
         $collection.targetId | Should -Be 'autopilot-collection-7'
         $collection.collectionId | Should -Be 'autopilot-collection-7'
         $collection.targetIdentityDomain | Should -Be 'intune.assignment-target'
+
+        Assert-MockCalled -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphRequest -Times 1 -Exactly -Scope It -ParameterFilter {
+            $Endpoint -eq '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/autopilot-profile-1?$expand=assignments'
+        }
+        Assert-MockCalled -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphCollection -Times 0 -Exactly -Scope It -ParameterFilter {
+            $Endpoint -like '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/*/assignments'
+        }
     }
 
     It 'preserves zero-item and resume semantics without requesting device identity or operational enrollment surfaces' {
@@ -178,7 +195,11 @@ Describe 'Intune enrollment and onboarding collection' {
         }
         Mock -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphCollection -MockWith {
             param([string]$Endpoint)
-            throw ('Stage3 must not call Graph when enrollment inventory is empty: {0}' -f $Endpoint)
+            throw ('Stage3 collection must not call Graph when enrollment inventory is empty: {0}' -f $Endpoint)
+        }
+        Mock -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphRequest -MockWith {
+            param([string]$Endpoint)
+            throw ('Stage3 object read must not call Graph when enrollment inventory is empty: {0}' -f $Endpoint)
         }
 
         $initial = Start-CollectorRun -GraphToken 'test-token' -OutputRoot $script:testRoot -Stages @('Stage1', 'Stage2', 'Stage3') -Sections @('intune-enrollment') -BatchSize 25 -MaxRetries 0 -BaseBackoffSeconds 0 -MaxBackoffSeconds 0 -ThrottleMilliseconds 0
