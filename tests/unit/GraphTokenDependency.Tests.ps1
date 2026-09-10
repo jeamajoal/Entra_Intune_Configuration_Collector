@@ -59,6 +59,28 @@ Describe 'Graph token section dependency' {
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly -Scope It
     }
 
+    It 'rejects opt-in Intune enrollment without GraphToken before run state creation' {
+        $threw = $false
+        try {
+            Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('intune-enrollment') | Out-Null
+        }
+        catch {
+            $threw = $true
+            if ($_.Exception.Message -notmatch 'GraphToken is required' -or $_.Exception.Message -notmatch 'intune-enrollment') {
+                throw
+            }
+        }
+
+        if (-not $threw) {
+            throw 'Expected opt-in Intune enrollment execution without a token to fail.'
+        }
+        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly -Scope It
+        $markerPath = Join-Path -Path $script:testRoot -ChildPath 'current-run.json'
+        if (Test-Path -LiteralPath $markerPath) {
+            throw 'Missing GraphToken must fail before enrollment run state is created.'
+        }
+    }
+
     It 'rejects mixed on-prem and Graph selection without GraphToken' {
         $threw = $false
         try {
