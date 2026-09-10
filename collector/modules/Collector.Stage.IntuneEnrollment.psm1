@@ -133,10 +133,10 @@ function Invoke-CollectorIntuneAutopilotAssignmentFamily {
 
                 $endpoint = '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{0}?$expand=assignments' -f $objectId
                 try {
-                    $profile = Invoke-CollectorGraphRequest -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds
+                    $autopilotProfile = Invoke-CollectorGraphRequest -GraphToken $InnerContext.GraphToken -Endpoint $endpoint -MaxRetries $InnerContext.MaxRetries -BaseBackoffSeconds $InnerContext.BaseBackoffSeconds -MaxBackoffSeconds $InnerContext.MaxBackoffSeconds -ThrottleMilliseconds $InnerContext.ThrottleMilliseconds
                     $relationships = @()
-                    if ($null -ne $profile -and $profile.PSObject.Properties.Match('assignments').Count -gt 0 -and $null -ne $profile.assignments) {
-                        foreach ($assignment in @($profile.assignments)) {
+                    if ($null -ne $autopilotProfile -and $autopilotProfile.PSObject.Properties.Match('assignments').Count -gt 0 -and $null -ne $autopilotProfile.assignments) {
+                        foreach ($assignment in @($autopilotProfile.assignments)) {
                             if ($null -ne $assignment) {
                                 $relationships += & $effectiveTransform $assignment
                             }
