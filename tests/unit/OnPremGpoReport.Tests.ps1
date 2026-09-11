@@ -102,7 +102,7 @@ Describe 'On-prem GPO report evidence' {
 
     It 'collects by persisted GUID and domain, preserves computer/user settings, and redacts explicit credential-bearing XML' {
         $gpoId = [Guid]'11111111-2222-3333-4444-555555555555'
-        $result = Invoke-CollectorOnPremDetailFamily -Family 'gpoReports' -InventoryItem ([pscustomobject]@{
+        $result = Collector.Provider.OnPrem\Invoke-CollectorOnPremDetailFamily -Family 'gpoReports' -InventoryItem ([pscustomobject]@{
             id = [string]$gpoId
             displayName = 'Workstation Policy'
             domainId = 'example.com'
@@ -140,19 +140,27 @@ Describe 'On-prem GPO report evidence' {
     }
 
     It 'fails before Get-GPOReport when persisted GUID or domain identity is missing' {
-        foreach ($item in @(
-            [pscustomobject]@{ id = 'not-a-guid'; displayName = 'Invalid'; domainId = 'example.com' },
-            [pscustomobject]@{ id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'; displayName = 'No domain' }
-        )) {
-            $threw = $false
+        $cases = @(
+            [pscustomobject]@{
+                item = [pscustomobject]@{ id = 'not-a-guid'; displayName = 'Invalid'; domainId = 'example.com' }
+                expectedMessage = 'valid persisted GPO GUID'
+            },
+            [pscustomobject]@{
+                item = [pscustomobject]@{ id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'; displayName = 'No domain' }
+                expectedMessage = 'persisted domain context'
+            }
+        )
+
+        foreach ($case in $cases) {
+            $observedMessage = $null
             try {
-                Invoke-CollectorOnPremDetailFamily -Family 'gpoReports' -InventoryItem $item | Out-Null
+                Collector.Provider.OnPrem\Invoke-CollectorOnPremDetailFamily -Family 'gpoReports' -InventoryItem $case.item | Out-Null
             }
             catch {
-                $threw = $true
+                $observedMessage = $_.Exception.Message
             }
-            if (-not $threw) {
-                throw 'Expected invalid persisted GPO report identity to fail.'
+            if ([string]::IsNullOrWhiteSpace([string]$observedMessage) -or [string]$observedMessage -notmatch [regex]::Escape([string]$case.expectedMessage)) {
+                throw ('Expected identity validation error containing "{0}", observed "{1}".' -f $case.expectedMessage, $observedMessage)
             }
         }
 
