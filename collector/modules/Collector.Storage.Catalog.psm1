@@ -5,7 +5,7 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
 
 $script:CollectorCatalogStages = @('stage1', 'stage2', 'stage3')
-$script:CollectorCatalogSections = @('entra-apps', 'entra-pim', 'entra-ca', 'entra-governance', 'intune-core', 'onprem-ad-gpo')
+$script:CollectorCatalogSections = @('entra-apps', 'entra-pim', 'entra-ca', 'entra-governance', 'intune-core', 'intune-enrollment', 'onprem-ad-gpo')
 $script:CollectorCatalogStageKinds = @{ stage1 = 'inventory'; stage2 = 'detail'; stage3 = 'relationship' }
 
 $script:CollectorCatalogDependencies = @{
@@ -37,6 +37,8 @@ $script:CollectorCatalogDependencies = @{
     'stage2|intune-core|securityBaselineTemplates' = @('securityBaselineTemplates')
     'stage2|intune-core|securityBaselineIntents' = @('securityBaselineIntents')
     'stage2|intune-core|securityBaselineIntentSettings' = @('securityBaselineIntents')
+    'stage2|intune-enrollment|deviceEnrollmentConfigurations' = @('deviceEnrollmentConfigurations')
+    'stage2|intune-enrollment|windowsAutopilotDeploymentProfiles' = @('windowsAutopilotDeploymentProfiles')
     'stage2|onprem-ad-gpo|domains' = @('domains')
     'stage2|onprem-ad-gpo|organizationalUnits' = @('organizationalUnits')
     'stage2|onprem-ad-gpo|groups' = @('groups')
@@ -57,6 +59,8 @@ $script:CollectorCatalogDependencies = @{
     'stage3|intune-core|deviceConfigurationAssignments' = @('deviceConfigurations')
     'stage3|intune-core|securityConfigurationPolicyAssignments' = @('securityConfigurationPolicies')
     'stage3|intune-core|securityBaselineIntentAssignments' = @('securityBaselineIntents')
+    'stage3|intune-enrollment|deviceEnrollmentConfigurationAssignments' = @('deviceEnrollmentConfigurations')
+    'stage3|intune-enrollment|windowsAutopilotDeploymentProfileAssignments' = @('windowsAutopilotDeploymentProfiles')
     'stage3|onprem-ad-gpo|domainRootAcl' = @('domains')
     'stage3|onprem-ad-gpo|ouAcl' = @('organizationalUnits')
     'stage3|onprem-ad-gpo|gpoPermissions' = @('gpos')
@@ -81,6 +85,8 @@ $script:CollectorCatalogRelationships = @{
     'intune-core|deviceConfigurationAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.device-configuration'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
     'intune-core|securityConfigurationPolicyAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.security-configuration-policy'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
     'intune-core|securityBaselineIntentAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.security-baseline-intent'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
+    'intune-enrollment|deviceEnrollmentConfigurationAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.device-enrollment-configuration'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-target') }
+    'intune-enrollment|windowsAutopilotDeploymentProfileAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.windows-autopilot-deployment-profile'); Target = @('entra.group', 'entra.directory-object', 'intune.assignment-filter', 'intune.assignment-target') }
     'entra-apps|servicePrincipalAppRoleAssignedTo' = [pscustomobject]@{ Type = 'assignment'; Source = @('entra.service-principal'); Target = @('entra.directory-object') }
     'entra-apps|applicationFederatedIdentityCredentials' = [pscustomobject]@{ Type = 'federated-trust'; Source = @('entra.application'); Target = @('entra.federated-identity-credential') }
     'entra-apps|delegatedGrants' = [pscustomobject]@{ Type = 'grant'; Source = @('entra.service-principal'); Target = @('entra.service-principal', 'entra.directory-object') }
@@ -246,7 +252,7 @@ function Get-CollectorCatalogArtifactSet {
     param([string]$RunPath, [string]$RunId, [string]$RunStatus, [DateTimeOffset]$ManifestCompletedUtc, [object[]]$CheckpointSummary)
 
     $stageRank = @{ stage1 = 1; stage2 = 2; stage3 = 3 }
-    $sectionRank = @{ 'entra-apps' = 1; 'entra-pim' = 2; 'entra-ca' = 3; 'entra-governance' = 4; 'intune-core' = 5; 'onprem-ad-gpo' = 6 }
+    $sectionRank = @{ 'entra-apps' = 1; 'entra-pim' = 2; 'entra-ca' = 3; 'entra-governance' = 4; 'intune-core' = 5; 'intune-enrollment' = 6; 'onprem-ad-gpo' = 7 }
     $summaryRows = @($CheckpointSummary | Sort-Object @{ Expression = { $stageRank[[string]$_.stage] } }, @{ Expression = { $sectionRank[[string]$_.section] } }, @{ Expression = { [string]$_.family } })
     $artifacts = @()
 

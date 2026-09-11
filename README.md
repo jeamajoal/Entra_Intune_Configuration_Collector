@@ -25,10 +25,11 @@ The implementation is inventory-first and resumable:
 Prerequisites:
 
 - PowerShell 7+ or Windows PowerShell 5.1.
-- A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`). No Graph token is required for an `onprem-ad-gpo`-only run.
+- A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`, `intune-enrollment`). No Graph token is required for an `onprem-ad-gpo`-only run.
 - `entra-ca` is deliberately opt-in so existing default runs do not silently acquire a new Conditional Access permission dependency. Microsoft Graph permissions must cover the selected Conditional Access resources; policy and named-location reads use the Conditional Access policy read surface, authentication-strength reads use the authentication-method policy read surface, and authentication-context reads require an applicable authentication-context/Conditional Access read permission.
 - `entra-governance` is also opt-in. Its administrative-unit reads require the Microsoft Graph application permission `AdministrativeUnit.Read.All`; activated directory roles, directory role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`.
 - Intune configuration reads used by `intune-core`, including compliance policies, assignment filters, general Settings Catalog/configuration policies, classic device configurations, modern endpoint-security/security-baseline policies/templates, legacy security-baseline templates/intents, and their assignments, require Microsoft Graph application permission `DeviceManagementConfiguration.Read.All` and an active Intune tenant license. Compliance-policy and classic device-configuration inventory/detail use v1.0. Assignment-filter configuration, Settings Catalog/configuration-policy surfaces, modern security policy/template surfaces, legacy baseline template/intent surfaces, and assignment reads that preserve filter include/exclude IDs/types use beta with truthful beta provenance.
+- `intune-enrollment` is deliberately opt-in because it requires the distinct Microsoft Graph application permission `DeviceManagementServiceConfig.Read.All`. It collects tenant enrollment configuration through v1.0 and Windows Autopilot deployment-profile configuration/assignments through beta; existing default `intune-core` runs therefore do not silently acquire the enrollment service-configuration permission.
 - Optional on-prem cmdlets for onprem-ad-gpo section:
 	- ActiveDirectory module cmdlets (Get-ADForest, Get-ADOrganizationalUnit, Get-ADGroup, Get-ADDomain, Get-ADGroupMember)
 	- GroupPolicy cmdlets (Get-GPO, Get-GPPermission)
@@ -67,6 +68,15 @@ Collect Entra administrative governance explicitly:
 	-GraphToken $GraphToken `
 	-OutputRoot ./output `
 	-Sections entra-governance
+```
+
+Collect Intune enrollment and Windows Autopilot deployment-profile configuration explicitly:
+
+```powershell
+./collector/Invoke-Collector.ps1 `
+	-GraphToken $GraphToken `
+	-OutputRoot ./output `
+	-Sections intune-enrollment
 ```
 
 Run only the on-prem section without a Graph token:
@@ -118,10 +128,10 @@ The intended offline handoff is **collect -> catalog -> validate -> consume/ques
 
 Collector parameters:
 
-- GraphToken: bearer token used for Graph requests. Required when any Graph-backed section (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`) is selected; optional for `onprem-ad-gpo`-only execution.
+- GraphToken: bearer token used for Graph requests. Required when any Graph-backed section (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`, `intune-enrollment`) is selected; optional for `onprem-ad-gpo`-only execution.
 - OutputRoot (mandatory): root output folder containing per-run artifacts.
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
-- Sections: entra-apps, entra-pim, entra-ca, entra-governance, intune-core, onprem-ad-gpo. The legacy default remains `entra-apps,entra-pim,intune-core,onprem-ad-gpo`; `entra-ca` and `entra-governance` must be selected explicitly.
+- Sections: entra-apps, entra-pim, entra-ca, entra-governance, intune-core, intune-enrollment, onprem-ad-gpo. The legacy default remains `entra-apps,entra-pim,intune-core,onprem-ad-gpo`; `entra-ca`, `entra-governance`, and `intune-enrollment` must be selected explicitly.
 - Resume: resume the valid run named by `current-run.json`; if that marker is unusable, fall back to the latest valid collector run under OutputRoot. If no valid prior run exists, fail without creating or initializing run state.
 - ReprocessFailedOnly: during resume, rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches. Stage1 and Stage2 reuse a succeeded batch only after compatible-plan and canonical snapshot schema-version/identity/cardinality validation against current planned work. Stage3 also revalidates the canonical snapshot schema version, identity, and checkpoint/snapshot/actual output cardinality after compatible-plan validation, but does not require relationship output count to equal source batch count because one source object may legitimately produce multiple relationship rows.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
@@ -174,6 +184,9 @@ Stage1 inventory families:
 	- securityConfigurationPolicyTemplates from /beta/deviceManagement/configurationPolicyTemplates, filtered to the same accepted security/baseline template-family set
 	- securityBaselineTemplates from /beta/deviceManagement/templates, admitting `#microsoft.graph.securityBaselineTemplate` or reviewed security/baseline template types
 	- securityBaselineIntents from /beta/deviceManagement/intents, admitting only intents whose `templateId` resolves to an admitted securityBaselineTemplates row; `isMigratingToConfigurationPolicy` is retained
+- intune-enrollment (opt-in):
+	- deviceEnrollmentConfigurations from /v1.0/deviceManagement/deviceEnrollmentConfigurations, preserving Graph-returned derived enrollment configuration types such as enrollment restrictions, Windows Hello for Business enrollment configuration, and Enrollment Status Page/completion-page configuration
+	- windowsAutopilotDeploymentProfiles from /beta/deviceManagement/windowsAutopilotDeploymentProfiles, preserving deployment-profile/OOBE/ESP configuration and the `hardwareHashExtractionEnabled` configuration flag without requesting any Autopilot device identity or hardware-hash value
 - onprem-ad-gpo:
 	- domains from Get-ADForest
 	- organizationalUnits from Get-ADOrganizationalUnit per domain in Get-ADForest.Domains
@@ -189,6 +202,7 @@ Stage2 detail collection:
 - `intune-core` collects compliance-policy details from `/v1.0/deviceManagement/deviceCompliancePolicies/{id}` and assignment-filter details from `/beta/deviceManagement/assignmentFilters/{id}`. Raw Graph policy/filter configuration remains authoritative so platform-specific compliance requirements and filter rules are reviewable offline; no device/user compliance-result endpoint is part of this family.
 - `intune-core` also collects admitted general configuration-policy details from `/beta/deviceManagement/configurationPolicies/{id}` and classic typed profile details from `/v1.0/deviceManagement/deviceConfigurations/{id}`. `configurationPolicySettings` follows the paged beta `/configurationPolicies/{id}/settings` relationship and stores one wrapper per policy (`policyId`, `settingCount`, `settings`) so complete configured-setting evidence remains tied to the Stage1 policy identity without changing Stage2 source cardinality.
 - #178 security/baseline detail is separate from the general #177 family: `securityConfigurationPolicies` and `securityConfigurationPolicyTemplates` read their beta objects by id, and `securityConfigurationPolicySettings` reads paged `/beta/deviceManagement/configurationPolicies/{id}/settings` with one wrapper per admitted security policy. Legacy `securityBaselineTemplates` and `securityBaselineIntents` read beta template/intent detail by id; `securityBaselineIntentSettings` reads paged `/beta/deviceManagement/intents/{id}/settings` with one wrapper per admitted legacy intent. This preserves migration-era evidence rather than assuming every baseline has already moved to modern configuration policies.
+- `intune-enrollment` reads `deviceEnrollmentConfigurations` detail from `/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}` and Windows Autopilot deployment-profile detail from `/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}`. Raw derived-type/profile configuration remains authoritative; the collector does not traverse assigned devices or device-identity relationships.
 - Terms-of-Use agreement payloads are not collected in v1 because the Microsoft Graph agreement read surface does not support application permissions. Conditional Access policies still expose their Terms-of-Use IDs through the Stage3 reference family rather than hiding those dependencies or requiring delegated authentication.
 - On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
 - Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
@@ -199,10 +213,11 @@ Stage3 relationship families:
 
 - ACL metadata: domainRootAcl, ouAcl, gpoPermissions
 - Membership metadata: groupMembers, groupMembersOnPrem
-- Assignment metadata: mobileAppAssignments, deviceManagementScriptAssignments, deviceCompliancePolicyAssignments, configurationPolicyAssignments, deviceConfigurationAssignments, securityConfigurationPolicyAssignments, securityBaselineIntentAssignments, servicePrincipalAppRoleAssignedTo
+- Assignment metadata: mobileAppAssignments, deviceManagementScriptAssignments, deviceCompliancePolicyAssignments, configurationPolicyAssignments, deviceConfigurationAssignments, securityConfigurationPolicyAssignments, securityBaselineIntentAssignments, deviceEnrollmentConfigurationAssignments, windowsAutopilotDeploymentProfileAssignments, servicePrincipalAppRoleAssignedTo
 - Intune compliance assignments: `deviceCompliancePolicyAssignments` reads `/beta/deviceManagement/deviceCompliancePolicies/{id}/assignments` from persisted compliance-policy inventory. Rows normalize assignment/source identity plus target/filter references; explicit group IDs use `entra.group`, explicit Entra object IDs use `entra.directory-object`, assignment-filter IDs use `intune.assignment-filter`, and selector/other target shapes remain `intune.assignment-target` rather than being guessed into stronger types. Beta is used here specifically to retain assignment filter ID/type include/exclude context.
 - Intune general configuration assignments: `configurationPolicyAssignments` reads `/beta/deviceManagement/configurationPolicies/{id}/assignments`; `deviceConfigurationAssignments` reads `/beta/deviceManagement/deviceConfigurations/{id}/assignments`. Both preserve assignment ID, source/sourceId, intent when Graph supplies it, target type/identity, and assignment-filter ID/type. Group IDs use `entra.group`, explicit Entra object IDs use `entra.directory-object`, filter IDs use `intune.assignment-filter`, and other selectors/targets remain `intune.assignment-target`. The existing `assignmentFilters` family remains the canonical filter-definition evidence and is not duplicated.
 - Intune security/baseline assignments: `securityConfigurationPolicyAssignments` reads `/beta/deviceManagement/configurationPolicies/{id}/assignments` only for persisted securityConfigurationPolicies; `securityBaselineIntentAssignments` reads `/beta/deviceManagement/intents/{id}/assignments` only for persisted securityBaselineIntents. Both reuse the conservative assignment identity contract, including Configuration Manager `collectionId` preservation and filter include/exclude metadata. Modern and legacy sources remain distinguishable as `intune.security-configuration-policy` and `intune.security-baseline-intent`.
+- Intune enrollment assignments: `deviceEnrollmentConfigurationAssignments` reads `/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}/assignments`; `windowsAutopilotDeploymentProfileAssignments` derives assignment rows from `GET /beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments`. This uses the profile's documented `assignments` relationship without traversing `windowsAutopilotDeviceIdentities` or `assignedDevices`. Enrollment-configuration assignment targets preserve stable groups/directory objects or conservative selector identities. Autopilot assignments also preserve assignment-filter IDs/types and Configuration Manager `collectionId` where supplied. Source domains remain distinct as `intune.device-enrollment-configuration` and `intune.windows-autopilot-deployment-profile`.
 - Entra federated trust metadata: applicationFederatedIdentityCredentials from each Stage1 application, limited to id/name/issuer/subject/audiences/description
 - Delegated grants: delegatedGrants from /v1.0/oauth2PermissionGrants
 - PIM relationship edges: pimScheduleEdges derived from Stage1 PIM schedule instances
@@ -294,6 +309,8 @@ The catalog also includes `entra-governance` without a schema-version bump. Its 
 
 The `intune-core` catalog contract is additive without a schema-version bump. Compliance and #177 general configuration families retain their established execution-input and assignment relationship mappings. #178 adds Stage2 execution-input dependencies from securityConfigurationPolicies/securityConfigurationPolicySettings to Stage1 securityConfigurationPolicies, securityConfigurationPolicyTemplates to its same-named Stage1 family, securityBaselineTemplates to its same-named Stage1 family, and securityBaselineIntents/securityBaselineIntentSettings to Stage1 securityBaselineIntents. Stage3 securityConfigurationPolicyAssignments and securityBaselineIntentAssignments depend on their corresponding policy/intent Stage1 inventories. Two explicit `reference` dependencies make offline template resolution reviewable without misrepresenting collection order: Stage2 securityConfigurationPolicies references Stage1 securityConfigurationPolicyTemplates, and Stage2 securityBaselineIntents references Stage1 securityBaselineTemplates. Assignment relationships use distinct source domains (`intune.security-configuration-policy`, `intune.security-baseline-intent`) and the existing target domains (`entra.group`, `entra.directory-object`, `intune.assignment-filter`, `intune.assignment-target`). Assignment filters remain canonical under #176 and are not duplicated or modeled as execution prerequisites.
 
+The catalog also treats opt-in `intune-enrollment` as a first-class section without changing catalog schema version. Stage2 `deviceEnrollmentConfigurations` and `windowsAutopilotDeploymentProfiles` depend on their same-named Stage1 inventories. Stage3 `deviceEnrollmentConfigurationAssignments` depends on Stage1 `deviceEnrollmentConfigurations`; `windowsAutopilotDeploymentProfileAssignments` depends on Stage1 `windowsAutopilotDeploymentProfiles`. Relationship sources are `intune.device-enrollment-configuration` and `intune.windows-autopilot-deployment-profile`; targets use stable Entra group/directory-object identities when available plus conservative `intune.assignment-target`, with Autopilot filter IDs represented by `intune.assignment-filter`. The catalog does not copy enrollment/profile payloads or make the `intune-core/assignmentFilters` family an execution prerequisite.
+
 Catalog descriptors deliberately do **not** copy snapshot `items`, `requestContext`, credential payloads, or other raw tenant content. Consumers follow `relativePath` back to canonical snapshots when payload data is needed. Existing credential boundaries therefore remain unchanged: raw key material and password secret text are still excluded by the collector, and the catalog adds no new secret-bearing surface.
 
 For v1, "offline queryable" means that after a catalog is generated and validated, a consumer can discover available families, navigate Stage1 inventory to dependent Stage2/Stage3 evidence, identify relationship source/target identity domains, and locate canonical raw JSON without contacting Microsoft Graph or an on-prem provider. It does **not** imply a database/query service, embeddings/vector search, LLM runtime, UI, or tenant reconstruction/import/export model.
@@ -331,6 +348,7 @@ In scope:
 
 - Entra, Intune, and on-prem AD or GPO configuration metadata.
 - Intune compliance-policy configuration, assignment filters, general Settings Catalog/non-security configuration policies, classic device configurations, modern endpoint-security/security-baseline policies/templates, legacy security-baseline templates/intents, configured settings, migration context, and assignment targeting/filter context.
+- Opt-in Intune tenant enrollment configuration and Windows Autopilot deployment-profile configuration/assignments, without individual device identity or hardware-hash export.
 - Conditional Access policy/configuration metadata and explicit offline policy references.
 - Administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata plus scoped governance relationships.
 - ACLs, memberships, assignments, grants, role-governance edges, and policy references treated as metadata.
@@ -340,7 +358,7 @@ Out of scope:
 - Mailbox or collaboration workloads.
 - Defender telemetry domains, detections, signals, or endpoint-health streams.
 - Audit and sign-in stream ingestion.
-- Intune per-device/per-user compliance, configuration, endpoint-security, or baseline status/state; device/user status collections; state summaries; per-setting status/results; reports; or remediation.
-- Enrollment/onboarding configuration remains separately groomed under #181.
+- Intune per-device/per-user compliance, configuration, endpoint-security, baseline, enrollment, or deployment status/state; device/user status collections; state summaries; per-setting status/results; reports; or remediation.
+- Autopilot device identities/imports, assigned-device relationships, serial/product-key/device-account-password data, actual hardware-hash values, enrollment event history, and Apple/third-party enrollment service-connection/token surfaces.
 - Conditional Access simulation/evaluation, mutation, remediation, or operational sign-in/risk history.
 - Role activation event history, access-review execution/history, entitlement workflow execution, or governance mutation.
