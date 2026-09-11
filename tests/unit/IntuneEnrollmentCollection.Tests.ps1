@@ -86,6 +86,16 @@ Describe 'Intune enrollment and onboarding collection' {
                     })
                 }
                 '/v1.0/deviceManagement/deviceEnrollmentConfigurations/enrollment-config-2/assignments' { return @() }
+                'https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/autopilot-profile-1/assignments?$skiptoken=page2' {
+                    return @([pscustomobject]@{
+                        id = 'autopilot-assignment-page2'
+                        source = 'direct'
+                        target = [pscustomobject]@{
+                            '@odata.type' = '#microsoft.graph.groupAssignmentTarget'
+                            groupId = 'autopilot-group-2'
+                        }
+                    })
+                }
                 default { throw ('Unexpected Intune enrollment Stage3 collection endpoint: {0}' -f $Endpoint) }
             }
         }
@@ -99,6 +109,7 @@ Describe 'Intune enrollment and onboarding collection' {
             return [pscustomobject]@{
                 '@odata.type' = '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile'
                 id = 'autopilot-profile-1'
+                'assignments@odata.nextLink' = 'https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/autopilot-profile-1/assignments?$skiptoken=page2'
                 assignments = @(
                     [pscustomobject]@{
                         id = 'autopilot-assignment-group'
@@ -161,6 +172,7 @@ Describe 'Intune enrollment and onboarding collection' {
         $enrollmentRelationship.targetIdentityDomain | Should -Be 'entra.group'
 
         $autopilot = Get-Content -LiteralPath (Join-Path $result.runPath 'stage3/intune-enrollment/windowsAutopilotDeploymentProfileAssignments/batch-0001.json') -Raw | ConvertFrom-Json
+        [int]$autopilot.items[0].relationshipCount | Should -Be 3
         $group = @($autopilot.items[0].relationships | Where-Object { $_.assignmentId -eq 'autopilot-assignment-group' })[0]
         $group.targetId | Should -Be 'autopilot-group-1'
         $group.targetIdentityDomain | Should -Be 'entra.group'
@@ -173,8 +185,15 @@ Describe 'Intune enrollment and onboarding collection' {
         $collection.collectionId | Should -Be 'autopilot-collection-7'
         $collection.targetIdentityDomain | Should -Be 'intune.assignment-target'
 
+        $continued = @($autopilot.items[0].relationships | Where-Object { $_.assignmentId -eq 'autopilot-assignment-page2' })[0]
+        $continued.targetId | Should -Be 'autopilot-group-2'
+        $continued.targetIdentityDomain | Should -Be 'entra.group'
+
         Assert-MockCalled -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphRequest -Times 1 -Exactly -Scope It -ParameterFilter {
             $Endpoint -eq '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/autopilot-profile-1?$expand=assignments'
+        }
+        Assert-MockCalled -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphCollection -Times 1 -Exactly -Scope It -ParameterFilter {
+            $Endpoint -eq 'https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/autopilot-profile-1/assignments?$skiptoken=page2'
         }
         Assert-MockCalled -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphCollection -Times 0 -Exactly -Scope It -ParameterFilter {
             $Endpoint -like '/beta/deviceManagement/windowsAutopilotDeploymentProfiles/*/assignments'
