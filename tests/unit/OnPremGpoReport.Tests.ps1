@@ -26,7 +26,7 @@ BeforeAll {
         return $global:CollectorGpoReportXml
     }
 
-    function New-TestGpoReportXml {
+    function Get-TestGpoReportXml {
         param(
             [string]$ComputerSettingValue = '14',
             [string]$PreferenceSecret = 'encrypted-secret-value',
@@ -91,7 +91,7 @@ BeforeAll {
 Describe 'On-prem GPO report evidence' {
     BeforeEach {
         $global:CollectorGpoReportCalls = [System.Collections.Generic.List[object]]::new()
-        $global:CollectorGpoReportXml = New-TestGpoReportXml
+        $global:CollectorGpoReportXml = Get-TestGpoReportXml
     }
 
     AfterAll {
