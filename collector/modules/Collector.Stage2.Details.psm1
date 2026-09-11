@@ -523,32 +523,53 @@ function Invoke-CollectorStage2OnPremFamily {
         [string]$Section,
 
         [Parameter(Mandatory = $true)]
-        [ValidateSet('domains', 'organizationalUnits', 'groups', 'gpos')]
-        [string]$Family
+        [ValidateSet('domains', 'organizationalUnits', 'groups', 'gpos', 'gpoReports')]
+        [string]$Family,
+
+        [string]$DependencyFamily,
+
+        [int]$BatchSizeOverride = 0
     )
 
-    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $Family -RunId $Context.RunId
+    $hasExplicitDependencyFamily = -not [string]::IsNullOrWhiteSpace($DependencyFamily)
+    if (-not $hasExplicitDependencyFamily) {
+        $DependencyFamily = $Family
+    }
+
+    Assert-CollectorInventoryFirstForStage2 -RunPath $Context.RunPath -Section $Section -Family $DependencyFamily -RunId $Context.RunId
 
     $stageName = 'stage2'
     $provenanceProfile = Get-CollectorOnPremProvenanceProfile -Phase 'Details' -Family $Family
+    $effectiveBatchSize = if ($BatchSizeOverride -gt 0) { $BatchSizeOverride } else { [int]$Context.BatchSize }
     $requestContext = @{
         cmdletFamily = $Family
         cmdletNames = @($provenanceProfile.CmdletNames)
         inventoryStage = 'stage1'
         domainContextFromInventory = $true
     }
+    if ($hasExplicitDependencyFamily) {
+        $requestContext.dependencyFamily = $DependencyFamily
+    }
+    if ($BatchSizeOverride -gt 0) {
+        $requestContext.effectiveBatchSize = $effectiveBatchSize
+    }
+    if ($Family -eq 'gpoReports') {
+        $requestContext.reportType = 'Xml'
+        $requestContext.evidenceSections = @('Computer', 'User')
+        $requestContext.credentialFieldRedaction = $true
+    }
 
     $checkpoint = Get-CollectorCheckpoint -RunPath $Context.RunPath -RunId $Context.RunId -Stage $stageName -Section $Section -Family $Family
     $result = Get-CollectorFamilyResult -Stage $stageName -Section $Section -Family $Family
 
-    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $Family -ExpectedRunId $Context.RunId)
-    $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
+    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily -ExpectedRunId $Context.RunId)
+    $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $effectiveBatchSize
 
     if ($batches.Count -eq 0) {
         $batches = @(@())
     }
 
-    $checkpoint = Initialize-CollectorCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize $Context.BatchSize -Resume:$Context.Resume
+    $checkpoint = Initialize-CollectorCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize $effectiveBatchSize -Resume:$Context.Resume
     Save-CollectorCheckpoint -RunPath $Context.RunPath -Checkpoint $checkpoint | Out-Null
 
     $result.batchCount = $batches.Count
@@ -690,6 +711,7 @@ function Invoke-CollectorStage2 {
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'organizationalUnits')
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'groups')
                 $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'gpos')
+                $results += Publish-CollectorStage2Result -Context $Context -Result (Invoke-CollectorStage2OnPremFamily -Context $Context -Section $section -Family 'gpoReports' -DependencyFamily 'gpos' -BatchSizeOverride 1)
             }
 
             default {
