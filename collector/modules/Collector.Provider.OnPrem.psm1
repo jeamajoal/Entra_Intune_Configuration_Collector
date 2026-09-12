@@ -157,6 +157,41 @@ function Protect-CollectorGpoReportXmlNode {
     )
 
     $redactionCount = 0
+    $isCredentialElement = (
+        $Node.NodeType -eq [System.Xml.XmlNodeType]::Element -and
+        (Test-CollectorGpoCredentialFieldName -Name $Node.LocalName)
+    )
+
+    if ($isCredentialElement) {
+        foreach ($attribute in @($Node.Attributes)) {
+            if ($null -eq $attribute) {
+                continue
+            }
+
+            $isNamespaceDeclaration = (
+                [string]$attribute.NamespaceURI -eq 'http://www.w3.org/2000/xmlns/' -or
+                [string]$attribute.Prefix -eq 'xmlns' -or
+                [string]$attribute.Name -eq 'xmlns'
+            )
+            if ($isNamespaceDeclaration) {
+                continue
+            }
+
+            if ([string]$attribute.Value -ne '[REDACTED]') {
+                $attribute.Value = '[REDACTED]'
+                $redactionCount++
+            }
+        }
+
+        if ($Node.HasChildNodes -or -not [string]::IsNullOrEmpty([string]$Node.InnerText)) {
+            if ([string]$Node.InnerText -ne '[REDACTED]') {
+                $Node.InnerText = '[REDACTED]'
+                $redactionCount++
+            }
+        }
+
+        return $redactionCount
+    }
 
     foreach ($attribute in @($Node.Attributes)) {
         if ($null -ne $attribute -and (Test-CollectorGpoCredentialFieldName -Name $attribute.LocalName)) {
@@ -168,19 +203,6 @@ function Protect-CollectorGpoReportXmlNode {
     }
 
     $elementChildren = @($Node.ChildNodes | Where-Object { $_.NodeType -eq [System.Xml.XmlNodeType]::Element })
-    if (
-        $Node.NodeType -eq [System.Xml.XmlNodeType]::Element -and
-        (Test-CollectorGpoCredentialFieldName -Name $Node.LocalName) -and
-        $elementChildren.Count -eq 0 -and
-        -not [string]::IsNullOrEmpty([string]$Node.InnerText)
-    ) {
-        if ([string]$Node.InnerText -ne '[REDACTED]') {
-            $Node.InnerText = '[REDACTED]'
-            $redactionCount++
-        }
-        return $redactionCount
-    }
-
     foreach ($child in $elementChildren) {
         $redactionCount += [int](Protect-CollectorGpoReportXmlNode -Node $child)
     }
