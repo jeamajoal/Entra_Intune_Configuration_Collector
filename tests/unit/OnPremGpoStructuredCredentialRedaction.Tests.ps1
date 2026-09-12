@@ -13,6 +13,16 @@ BeforeAll {
             [string]$ReportType
         )
 
+        if ($Guid -ne [Guid]'22222222-3333-4444-5555-666666666666') {
+            throw ('Unexpected GPO GUID in structured credential test: {0}' -f $Guid)
+        }
+        if ($Domain -ne 'example.com') {
+            throw ('Unexpected domain in structured credential test: {0}' -f $Domain)
+        }
+        if ($ReportType -ne 'Xml') {
+            throw ('Unexpected report type in structured credential test: {0}' -f $ReportType)
+        }
+
         return @"
 <GPO xmlns="http://www.microsoft.com/GroupPolicy/Settings">
   <Computer>
