@@ -28,7 +28,7 @@ BeforeAll {
   <Computer>
     <ExtensionData>
       <Extension>
-        <Policy name="MinimumPasswordLength" value="14" />
+        <Policy xmlns:password="urn:ordinary-policy" name="MinimumPasswordLength" value="14" />
         <c:Password xmlns:c="urn:collector-test-credential" value="structured-attribute-secret" />
       </Extension>
     </ExtensionData>
@@ -52,7 +52,7 @@ Describe 'Structured GPO credential redaction' {
         Remove-Item Function:\Get-GPOReport -ErrorAction SilentlyContinue
     }
 
-    It 'redacts generic attributes and nested content when the containing element is credential-bearing' {
+    It 'redacts credential content without altering ordinary namespace declarations' {
         $gpoId = [Guid]'22222222-3333-4444-5555-666666666666'
         $result = Collector.Provider.OnPrem\Invoke-CollectorOnPremDetailFamily -Family 'gpoReports' -InventoryItem ([pscustomobject]@{
             id = [string]$gpoId
@@ -67,6 +67,9 @@ Describe 'Structured GPO credential redaction' {
         }
         if ([string]$result.computer.xml -notmatch 'MinimumPasswordLength' -or [string]$result.computer.xml -notmatch 'value="14"') {
             throw 'Ordinary password-policy configuration must remain reviewable.'
+        }
+        if ([string]$result.computer.xml -notmatch 'xmlns:password="urn:ordinary-policy"') {
+            throw 'Namespace declarations on ordinary policy elements must not be treated as credential values.'
         }
         if ([string]$result.computer.xml -notmatch 'xmlns:c="urn:collector-test-credential"') {
             throw 'Credential-element namespace declarations must be preserved.'
