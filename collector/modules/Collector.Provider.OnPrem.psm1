@@ -194,7 +194,20 @@ function Protect-CollectorGpoReportXmlNode {
     }
 
     foreach ($attribute in @($Node.Attributes)) {
-        if ($null -ne $attribute -and (Test-CollectorGpoCredentialFieldName -Name $attribute.LocalName)) {
+        if ($null -eq $attribute) {
+            continue
+        }
+
+        $isNamespaceDeclaration = (
+            [string]$attribute.NamespaceURI -eq 'http://www.w3.org/2000/xmlns/' -or
+            [string]$attribute.Prefix -eq 'xmlns' -or
+            [string]$attribute.Name -eq 'xmlns'
+        )
+        if ($isNamespaceDeclaration) {
+            continue
+        }
+
+        if (Test-CollectorGpoCredentialFieldName -Name $attribute.LocalName) {
             if ([string]$attribute.Value -ne '[REDACTED]') {
                 $attribute.Value = '[REDACTED]'
                 $redactionCount++
