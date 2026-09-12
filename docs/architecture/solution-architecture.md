@@ -57,7 +57,7 @@ ACLs, memberships, assignments, grants, policy references, and role-governance e
 - Entra application, service principal, group, PIM schedule, Conditional Access, administrative-unit, activated directory-role, directory-role-definition, and active-role-assignment configuration metadata.
 - Intune application, script, compliance-policy, assignment-filter, admitted general Settings Catalog/device-configuration policy, classic device-configuration profile, modern endpoint-security/security-baseline policy/template, legacy security-baseline template/intent, configured-setting, migration-state, and assignment target/filter metadata.
 - Opt-in Intune tenant enrollment configuration and Windows Autopilot deployment-profile configuration/assignment metadata.
-- On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets.
+- On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets, including read-only GPO Computer/User policy-setting evidence bound to stable GPO GUID/domain identity.
 - Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, active role assignments, and Intune compliance/configuration/security/enrollment targeting.
 
 Bearer-authenticated absolute Graph request and pagination URIs are restricted to the collector's public Microsoft Graph HTTPS origin (`https://graph.microsoft.com:443`); insecure, cross-origin, alternate-port, and user-info-bearing absolute URIs fail before HTTP execution.
@@ -69,6 +69,7 @@ Bearer-authenticated absolute Graph request and pagination URIs are restricted t
 - Audit and sign-in stream ingestion.
 - Intune per-device/per-user compliance/configuration/endpoint-security/baseline/enrollment state, policy-result/status overview, device/user state summaries, per-setting status/result/report telemetry, enrollment events, or remediation.
 - Windows Autopilot device identities/imports, assigned-device relationships, serial/product-key/device-account-password data, actual hardware-hash values, and Apple/third-party enrollment service-connection/token surfaces.
+- GPO backup/import/reconstruction artifacts or mutation, RSoP/gpresult/client policy-processing telemetry, and credential/password/private-key/secret values from GPO report evidence. Normalized GPO link/inheritance/WMI/security-filtering applicability topology remains a separate relationship responsibility rather than part of Stage2 policy-setting evidence.
 - Conditional Access policy simulation/evaluation, sign-in/risk history, or remediation.
 - Role activation event history, access reviews, entitlement workflow execution/history, or governance mutation.
 - Configuration mutation through the collector; the normal Graph provider request boundary is GET-only and exposes no mutation/body request surface.
@@ -259,6 +260,21 @@ Cross-cutting security policy rules:
 - Managed-device status, enrollment/deployment events or state, device health, remediation, and Apple/third-party enrollment service-connection/token surfaces are excluded.
 - Stage2/Stage3 catalog dependencies remain local to `intune-enrollment`. Autopilot assignment-filter IDs may reference canonical `intune-core/assignmentFilters` conceptually, but filter evidence is not an execution prerequisite and no cross-section execution edge is introduced.
 
+### On-prem GPO policy-setting evidence boundary
+
+#179 extends the existing `onprem-ad-gpo` Stage2 owner with policy-setting evidence without creating a second GPO inventory, backup model, or applicability topology owner.
+
+- Stage1 `gpos` remains the canonical GPO identity inventory. Each row carries the stable GPO GUID plus persisted domain context.
+- Stage2 `gpoReports` depends on Stage1 `gpos` and invokes `Get-GPOReport -Guid <guid> -Domain <persisted-domain> -ReportType Xml`; display name is descriptive only and is never the join key.
+- The provider parses the report and persists the complete direct `Computer` and `User` XML configuration subtrees in a wrapper containing `gpoId`, `domainContext`, `displayName`, report type, explicit side-presence flags, and a credential-redaction count. Root-level report material such as links and delegation context is not copied into this family.
+- Report XML is intentionally preserved rather than incompletely normalized. Group Policy extension-specific setting structures differ, and the raw sanitized Computer/User subtrees are the reviewable source evidence for what the GPO configures.
+- Each GPO report is one Stage2 batch/artifact regardless of the caller's general BatchSize. This bounds large XML artifacts and makes a single large/problematic GPO independently resumable without adding a second persistence mechanism.
+- Before persistence, explicit credential-bearing XML element or attribute names are redacted to `[REDACTED]`, including `cpassword`, password/secret/private-key/client-secret forms. Ordinary policy settings such as password-length values are not redacted merely because their setting name contains the word `Password`. This is a fail-closed contract for recognized credential fields, not a claim that arbitrary operator-authored registry/script content can be semantically inspected for every possible secret.
+- Stage2 provenance records `Get-GPOReport`, XML report type, Stage1 `gpos` dependency, persisted-domain targeting, Computer/User evidence selection, credential-field redaction, and effective batch size 1.
+- The offline catalog adds only the normal `execution-input` dependency `stage2/onprem-ad-gpo/gpoReports -> stage1/onprem-ad-gpo/gpos`; raw report payload remains exclusively in the canonical snapshot artifact.
+- Normalized links, inheritance, WMI-filter association, and security-filter/applicability topology are deliberately not owned here. They remain the subsequent Stage3 relationship responsibility (#180), while existing `gpoPermissions` remains canonical for current GPO permission evidence.
+- GPO backup/import/reconstruction, mutation, RSoP/gpresult, and per-user/per-device client policy-processing telemetry remain outside the product boundary.
+
 ## Inventory-First Gating and Resume Semantics
 
 - Checkpoints are written per stage/section/family.
@@ -328,7 +344,7 @@ Snapshot provenance envelope fields:
 
 The current supported snapshot `schemaVersion` is string `1.0`. Persisted snapshots with a missing, non-string, or unsupported version fail closed at both successful-resume reuse and shared downstream snapshot loading.
 
-For on-prem families, sourceName is cmdlet-specific and requestContext includes cmdletNames for concrete execution traceability.
+For on-prem families, sourceName is cmdlet-specific and requestContext includes cmdletNames for concrete execution traceability. `gpoReports` additionally records its source `gpos` dependency, XML report type, evidence-section/redaction choices, and effective one-GPO batch size.
 
 ## Offline Knowledge Catalog v1
 
@@ -348,7 +364,7 @@ The offline catalog is a justified boundary between provider-specific collection
 
 The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence therefore produces the same identity and deterministic content rather than churn caused by generation time.
 
-`entra-ca`, `entra-governance`, the additive Intune compliance/general-configuration/security-baseline families, and opt-in `intune-enrollment` use the existing v1 stage/kind, artifact-descriptor, dependency, and relationship schema shapes and therefore do not require a catalog schema-version bump.
+`entra-ca`, `entra-governance`, the additive Intune compliance/general-configuration/security-baseline families, opt-in `intune-enrollment`, and the additive on-prem `gpoReports` detail family use the existing v1 stage/kind, artifact-descriptor, dependency, and relationship schema shapes and therefore do not require a catalog schema-version bump.
 
 ### Runtime generation boundary
 
@@ -396,7 +412,7 @@ Dependencies are normalized separately from artifact rows. Each descriptor ident
 - `execution-input` — the consumer collection requires the provider family as collection input. Current examples are Stage2/Stage3 families driven from Stage1 inventory.
 - `reference` — the consumer payload contains stable identity references to the provider domain/family for offline navigation, but provider evidence is not necessarily a runtime collection prerequisite.
 
-Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families, the four `entra-governance` Stage2 detail families, and Intune `deviceCompliancePolicies`/`assignmentFilters` each depend on the same-named Stage1 inventory family. Intune general `configurationPolicies` and `configurationPolicySettings` both depend on Stage1 `configurationPolicies`; classic Stage2 `deviceConfigurations` depends on Stage1 `deviceConfigurations`. #178 adds `securityConfigurationPolicies` and `securityConfigurationPolicySettings` → Stage1 securityConfigurationPolicies, securityConfigurationPolicyTemplates → same-named Stage1, securityBaselineTemplates → same-named Stage1, and securityBaselineIntents/securityBaselineIntentSettings → Stage1 securityBaselineIntents. `intune-enrollment` Stage2 `deviceEnrollmentConfigurations` and `windowsAutopilotDeploymentProfiles` depend on their same-named Stage1 inventories.
+Stage2 execution-input mapping follows existing collection ownership: ordinary detail families depend on same-named Stage1 inventory; `applicationCredentials` depends on Stage1 `applications`; `servicePrincipalCredentials` depends on Stage1 `servicePrincipals`. The four `entra-ca` Stage2 detail families, the four `entra-governance` Stage2 detail families, and Intune `deviceCompliancePolicies`/`assignmentFilters` each depend on the same-named Stage1 inventory family. Intune general `configurationPolicies` and `configurationPolicySettings` both depend on Stage1 `configurationPolicies`; classic Stage2 `deviceConfigurations` depends on Stage1 `deviceConfigurations`. #178 adds `securityConfigurationPolicies` and `securityConfigurationPolicySettings` → Stage1 securityConfigurationPolicies, securityConfigurationPolicyTemplates → same-named Stage1, securityBaselineTemplates → same-named Stage1, and securityBaselineIntents/securityBaselineIntentSettings → Stage1 securityBaselineIntents. `intune-enrollment` Stage2 `deviceEnrollmentConfigurations` and `windowsAutopilotDeploymentProfiles` depend on their same-named Stage1 inventories. On-prem Stage2 `gpoReports` depends on Stage1 `onprem-ad-gpo/gpos`, while existing Stage2 `gpos` remains the canonical same-family GPO metadata detail.
 
 Reviewed current `reference` dependencies are:
 
@@ -494,7 +510,7 @@ Catalog generation/validation must fail closed rather than rewrite, repair, or s
 
 Catalog arrays use deterministic ordinal ordering and stable relative paths. No generation timestamp is required by v1 because a wall-clock value would create churn without improving source-evidence identity.
 
-The catalog inherits existing credential/privacy boundaries and deliberately copies less provenance than a snapshot: no `requestContext`, Graph token, secret text, raw key material, payload row, or provider response body is permitted in artifact descriptors. The existing credential allowlist remains the only persisted credential metadata contract.
+The catalog inherits existing credential/privacy boundaries and deliberately copies less provenance than a snapshot: no `requestContext`, Graph token, secret text, raw key material, payload row, or provider response body is permitted in artifact descriptors. Entra credential evidence remains allowlisted. GPO `gpoReports` sanitizes recognized credential-bearing Computer/User XML fields **before** snapshot persistence, while retaining ordinary policy-setting values; the catalog only points to those canonical sanitized snapshots and never copies their XML payload.
 
 For v1, "offline queryable" means a consumer can discover available evidence, follow inventory/detail/relationship dependencies, understand relationship identity domains, and locate raw JSON without Graph/on-prem access. It does not mean database-backed query execution, embeddings/vector search, LLM prompting, UI, or tenant reconstruction/export/import. The intended package flow is:
 
@@ -524,4 +540,4 @@ Remaining deferred decisions after the current implementation:
 
 - Long-term retention and archival strategy for output snapshots.
 - Optional future parallelism model beyond current sequential batch orchestration.
-- Optional policy for explicit collector-side privacy transformations.
+- Optional policy for explicit collector-side privacy transformations beyond the currently bounded credential-field redaction contracts.

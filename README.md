@@ -32,7 +32,7 @@ Prerequisites:
 - `intune-enrollment` is deliberately opt-in because it requires the distinct Microsoft Graph application permission `DeviceManagementServiceConfig.Read.All`. It collects tenant enrollment configuration through v1.0 and Windows Autopilot deployment-profile configuration/assignments through beta; existing default `intune-core` runs therefore do not silently acquire the enrollment service-configuration permission.
 - Optional on-prem cmdlets for onprem-ad-gpo section:
 	- ActiveDirectory module cmdlets (Get-ADForest, Get-ADOrganizationalUnit, Get-ADGroup, Get-ADDomain, Get-ADGroupMember)
-	- GroupPolicy cmdlets (Get-GPO, Get-GPPermission)
+	- GroupPolicy cmdlets (Get-GPO, Get-GPOReport, Get-GPPermission)
 
 Run all stages for the legacy default sections:
 
@@ -135,7 +135,7 @@ Collector parameters:
 - Resume: resume the valid run named by `current-run.json`; if that marker is unusable, fall back to the latest valid collector run under OutputRoot. If no valid prior run exists, fail without creating or initializing run state.
 - ReprocessFailedOnly: during resume, rerun failed, in-progress, missing, missing-artifact, or invalid-prior-success batches. Stage1 and Stage2 reuse a succeeded batch only after compatible-plan and canonical snapshot schema-version/identity/cardinality validation against current planned work. Stage3 also revalidates the canonical snapshot schema version, identity, and checkpoint/snapshot/actual output cardinality after compatible-plan validation, but does not require relationship output count to equal source batch count because one source object may legitimately produce multiple relationship rows.
 - Force: reserved execution switch included in run metadata for explicit operator intent.
-- BatchSize: batch size for snapshot partitioning. Default 100. A different BatchSize is an incompatible resume plan and is rejected rather than reinterpreting existing batch IDs.
+- BatchSize: batch size for snapshot partitioning. Default 100. A different BatchSize is an incompatible resume plan and is rejected rather than reinterpreting existing batch IDs. Stage2 `onprem-ad-gpo/gpoReports` deliberately overrides this to one GPO per artifact because policy-report XML can be large and each GPO must remain independently resumable.
 - MaxRetries: retry count for transient Graph failures. Default 5.
 - BaseBackoffSeconds: base exponential backoff delay. Default 2.
 - MaxBackoffSeconds: backoff upper bound and Retry-After cap. Default 30.
@@ -204,7 +204,7 @@ Stage2 detail collection:
 - #178 security/baseline detail is separate from the general #177 family: `securityConfigurationPolicies` and `securityConfigurationPolicyTemplates` read their beta objects by id, and `securityConfigurationPolicySettings` reads paged `/beta/deviceManagement/configurationPolicies/{id}/settings` with one wrapper per admitted security policy. Legacy `securityBaselineTemplates` and `securityBaselineIntents` read beta template/intent detail by id; `securityBaselineIntentSettings` reads paged `/beta/deviceManagement/intents/{id}/settings` with one wrapper per admitted legacy intent. This preserves migration-era evidence rather than assuming every baseline has already moved to modern configuration policies.
 - `intune-enrollment` reads `deviceEnrollmentConfigurations` detail from `/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}` and Windows Autopilot deployment-profile detail from `/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}`. Raw derived-type/profile configuration remains authoritative; the collector does not traverse assigned devices or device-identity relationships.
 - Terms-of-Use agreement payloads are not collected in v1 because the Microsoft Graph agreement read surface does not support application permissions. Conditional Access policies still expose their Terms-of-Use IDs through the Stage3 reference family rather than hiding those dependencies or requiring delegated authentication.
-- On-prem families are collected by object identity plus persisted domain context from Stage1 inventory.
+- Ordinary on-prem families are collected by object identity plus persisted domain context from Stage1 inventory. Stage2 `gpoReports` is an additive detail family driven by Stage1 `gpos`: it invokes read-only `Get-GPOReport` by persisted GPO GUID and domain with XML output, stores only the complete `Computer` and `User` configuration subtrees, and records explicit side presence. Each GPO is written to its own artifact. Root-level link, delegation, security-filtering, and WMI/filter topology remains outside this family for the separate GPO-scope relationship work. Before persistence, explicit credential-bearing XML element/attribute names such as `cpassword`, password/secret/private-key/client-secret fields are replaced with `[REDACTED]`; ordinary policy settings such as password-length configuration remain reviewable. This boundary does not claim to discover secrets hidden inside arbitrary operator-authored registry values or scripts.
 - Stage2 hard-fails unless the required Stage1 family has a completed persisted plan, every expected batch is Succeeded, and every expected succeeded batch still has its artifact.
 - Stage2 persists its own plan before processing so resume cannot silently reuse numeric batch IDs after Stage1 input, order, membership, or BatchSize changes.
 - During Stage2 resume, a prior successful Graph or on-prem batch is reused only when its existing canonical snapshot declares supported schema version `1.0`, matches current run/stage/section/family/batch identity, and agrees with current planned/checkpoint/snapshot item cardinality; an invalid prior success is reprocessed through the normal Stage2 write/checkpoint path. Paged settings families retain one wrapper per source policy/intent so downstream cardinality remains bound to Stage1 source identity rather than page count.
@@ -280,7 +280,7 @@ Each snapshot file includes provenance envelope fields:
 
 The current supported snapshot `schemaVersion` is string `1.0`. Resume reuse and downstream snapshot loading fail closed when a persisted snapshot omits that field, stores it with a non-string type, or declares an unsupported version.
 
-For on-prem snapshots, sourceName records concrete cmdlet names and requestContext includes cmdletNames for concrete execution traceability.
+For on-prem snapshots, sourceName records concrete cmdlet names and requestContext includes cmdletNames for concrete execution traceability. `gpoReports` additionally records its Stage1 `gpos` dependency, XML report type, Computer/User evidence sections, credential-field redaction state, and effective one-GPO batch size.
 
 ## Offline Knowledge Catalog v1 Contract
 
@@ -311,7 +311,9 @@ The `intune-core` catalog contract is additive without a schema-version bump. Co
 
 The catalog also treats opt-in `intune-enrollment` as a first-class section without changing catalog schema version. Stage2 `deviceEnrollmentConfigurations` and `windowsAutopilotDeploymentProfiles` depend on their same-named Stage1 inventories. Stage3 `deviceEnrollmentConfigurationAssignments` depends on Stage1 `deviceEnrollmentConfigurations`; `windowsAutopilotDeploymentProfileAssignments` depends on Stage1 `windowsAutopilotDeploymentProfiles`. Relationship sources are `intune.device-enrollment-configuration` and `intune.windows-autopilot-deployment-profile`; targets use stable Entra group/directory-object identities when available plus conservative `intune.assignment-target`, with Autopilot filter IDs represented by `intune.assignment-filter`. The catalog does not copy enrollment/profile payloads or make the `intune-core/assignmentFilters` family an execution prerequisite.
 
-Catalog descriptors deliberately do **not** copy snapshot `items`, `requestContext`, credential payloads, or other raw tenant content. Consumers follow `relativePath` back to canonical snapshots when payload data is needed. Existing credential boundaries therefore remain unchanged: raw key material and password secret text are still excluded by the collector, and the catalog adds no new secret-bearing surface.
+The on-prem catalog adds Stage2 `gpoReports` as an `execution-input` consumer of Stage1 `onprem-ad-gpo/gpos`. It does not duplicate report XML in the catalog and does not turn #180 applicability topology into a Stage2 dependency. Offline consumers follow the ordinary artifact descriptor to each canonical one-GPO report snapshot.
+
+Catalog descriptors deliberately do **not** copy snapshot `items`, `requestContext`, credential payloads, or other raw tenant content. Consumers follow `relativePath` back to canonical snapshots when payload data is needed. Existing credential boundaries therefore remain unchanged: raw key material and password secret text are still excluded by the collector, GPO report evidence redacts explicit credential-bearing XML fields before persistence, and the catalog adds no new secret-bearing surface.
 
 For v1, "offline queryable" means that after a catalog is generated and validated, a consumer can discover available families, navigate Stage1 inventory to dependent Stage2/Stage3 evidence, identify relationship source/target identity domains, and locate canonical raw JSON without contacting Microsoft Graph or an on-prem provider. It does **not** imply a database/query service, embeddings/vector search, LLM runtime, UI, or tenant reconstruction/import/export model.
 
@@ -347,6 +349,7 @@ The validation script runs parser checks, PSScriptAnalyzer, and Pester tests whe
 In scope:
 
 - Entra, Intune, and on-prem AD or GPO configuration metadata.
+- GPO policy-setting evidence from read-only XML reports, bound to stable GPO GUID/domain identity and split into Computer/User configuration evidence.
 - Intune compliance-policy configuration, assignment filters, general Settings Catalog/non-security configuration policies, classic device configurations, modern endpoint-security/security-baseline policies/templates, legacy security-baseline templates/intents, configured settings, migration context, and assignment targeting/filter context.
 - Opt-in Intune tenant enrollment configuration and Windows Autopilot deployment-profile configuration/assignments, without individual device identity or hardware-hash export.
 - Conditional Access policy/configuration metadata and explicit offline policy references.
@@ -360,5 +363,6 @@ Out of scope:
 - Audit and sign-in stream ingestion.
 - Intune per-device/per-user compliance, configuration, endpoint-security, baseline, enrollment, or deployment status/state; device/user status collections; state summaries; per-setting status/results; reports; or remediation.
 - Autopilot device identities/imports, assigned-device relationships, serial/product-key/device-account-password data, actual hardware-hash values, enrollment event history, and Apple/third-party enrollment service-connection/token surfaces.
+- GPO backup/import/reconstruction artifacts or mutation; normalized GPO link/inheritance/WMI/security-filtering topology owned by the subsequent relationship slice; RSoP/gpresult and per-user/per-device client policy-processing telemetry; credential/password/private-key/secret values from GPO report evidence.
 - Conditional Access simulation/evaluation, mutation, remediation, or operational sign-in/risk history.
 - Role activation event history, access-review execution/history, entitlement workflow execution, or governance mutation.

@@ -43,6 +43,7 @@ $script:CollectorCatalogDependencies = @{
     'stage2|onprem-ad-gpo|organizationalUnits' = @('organizationalUnits')
     'stage2|onprem-ad-gpo|groups' = @('groups')
     'stage2|onprem-ad-gpo|gpos' = @('gpos')
+    'stage2|onprem-ad-gpo|gpoReports' = @('gpos')
     'stage3|entra-apps|groupMembers' = @('groups')
     'stage3|entra-apps|servicePrincipalAppRoleAssignedTo' = @('servicePrincipals')
     'stage3|entra-apps|applicationFederatedIdentityCredentials' = @('applications')
