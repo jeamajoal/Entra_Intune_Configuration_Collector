@@ -264,12 +264,66 @@ BeforeAll {
         return ('{0}|{1}|{2}|{3}' -f $Section, $Stage, $Family, $normalizedEndpoint)
     }
 
+    function Get-TestCustomGraphRoutesFromAst {
+        param(
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Ast,
+            [Parameter(Mandatory = $true)][string]$Path
+        )
+
+        $routes = @()
+        $scriptBlocks = @($Ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.ScriptBlockAst]
+        }, $true))
+
+        foreach ($scriptBlock in $scriptBlocks) {
+            $graphCommands = @($scriptBlock.FindAll({
+                param($node)
+                if ($node -isnot [System.Management.Automation.Language.CommandAst]) { return $false }
+                $name = [string]$node.GetCommandName()
+                return $name -match '^Invoke-CollectorGraph(Request|Collection)$'
+            }, $false))
+            if ($graphCommands.Count -eq 0) { continue }
+
+            $assignments = @($scriptBlock.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $node.Left -is [System.Management.Automation.Language.VariableExpressionAst]
+            }, $false))
+            $endpointAssignments = @($assignments | Where-Object { [string]$_.Left.VariablePath.UserPath -ieq 'endpointTemplate' })
+            if ($endpointAssignments.Count -eq 0) { continue }
+
+            $sectionAssignments = @($assignments | Where-Object { [string]$_.Left.VariablePath.UserPath -ieq 'section' })
+            $familyAssignments = @($assignments | Where-Object { [string]$_.Left.VariablePath.UserPath -ieq 'family' })
+            if ($sectionAssignments.Count -ne 1 -or $familyAssignments.Count -ne 1 -or $endpointAssignments.Count -ne 1) {
+                throw ('Unable to resolve custom Graph route declaration in {0}; expected one local section, family, and endpointTemplate assignment.' -f $Path)
+            }
+
+            $enclosingFunction = Get-TestEnclosingFunction -Anchor $endpointAssignments[0]
+            $stage = if ($null -ne $enclosingFunction) { Get-TestCommandStage -CommandName ([string]$enclosingFunction.Name) } else { $null }
+            if ($null -eq $stage) {
+                throw ('Unable to resolve custom Graph route stage in {0}.' -f $Path)
+            }
+
+            $section = Resolve-TestRequiredStringExpression -Expression $sectionAssignments[0].Right -Anchor $sectionAssignments[0] -RootAst $Ast -Label 'custom Graph route Section'
+            $family = Resolve-TestRequiredStringExpression -Expression $familyAssignments[0].Right -Anchor $familyAssignments[0] -RootAst $Ast -Label 'custom Graph route Family'
+            $endpoint = Resolve-TestRequiredStringExpression -Expression $endpointAssignments[0].Right -Anchor $endpointAssignments[0] -RootAst $Ast -Label 'custom Graph route endpoint'
+            $route = ConvertTo-TestGraphRoute -Section $section -Stage $stage -Family $family -Endpoint $endpoint
+            if ($null -eq $route) {
+                throw ('Resolved custom route is not a valid Graph route: section={0}; stage={1}; family={2}; endpoint={3}' -f $section, $stage, $family, $endpoint)
+            }
+            $routes += $route
+        }
+
+        return @($routes | Sort-Object -Unique)
+    }
+
     function Get-TestGraphRoutesFromFile {
         param([Parameter(Mandatory = $true)][string]$Path)
 
         $ast = Get-TestParsedAst -Path $Path
         $fileSection = Get-TestFileSectionValue -Ast $ast
-        $routes = @()
+        $routes = @(Get-TestCustomGraphRoutesFromAst -Ast $ast -Path $Path)
         $commands = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
 
         foreach ($command in $commands) {
@@ -387,6 +441,20 @@ Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
 
         { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'extracts custom Graph stage routes declared by local routing assignments' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'CustomGraphStage2.psm1'
+        @'
+function Invoke-CollectorSyntheticStage2 {
+    $section = 'intune-core'
+    $family = 'configurationPolicySettings'
+    $endpointTemplate = '/beta/deviceManagement/configurationPolicies/{id}/settings'
+    Invoke-CollectorGraphCollection -Endpoint $endpointTemplate
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        @(Get-TestGraphRoutesFromFile -Path $fixturePath) | Should -Contain 'intune-core|stage2|configurationPolicySettings|/beta/deviceManagement/configurationPolicies/{id}/settings'
     }
 
     It 'ignores explicitly derived route-shaped batch calls' {
