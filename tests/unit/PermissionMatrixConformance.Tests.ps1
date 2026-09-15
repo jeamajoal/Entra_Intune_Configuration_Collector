@@ -223,11 +223,16 @@ BeforeAll {
             return [string]$Expression.Value
         }
 
-        $expressionText = [string]$Expression.Extent.Text
-        if ($expressionText -match '^\(\s*[\x27\x22]Graph \{0\}[\x27\x22]\s*-f\s*\$(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)$') {
-            $resolvedValue = Resolve-TestVariableStringValue -VariableName ([string]$Matches.name) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
-            if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
-                return ('Graph {0}' -f $resolvedValue)
+        if ([string]$Expression.Extent.Text -match 'Graph\s+\{0\}') {
+            $formatVariables = @($Expression.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.VariableExpressionAst]
+            }, $true) | Sort-Object { $_.Extent.StartOffset })
+            if ($formatVariables.Count -eq 1) {
+                $resolvedValue = Resolve-TestVariableStringValue -VariableName ([string]$formatVariables[0].VariablePath.UserPath) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
+                if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
+                    return ('Graph {0}' -f $resolvedValue)
+                }
             }
         }
 
@@ -261,12 +266,12 @@ BeforeAll {
 
     function Get-TestAssignedStringValue {
         param(
-            [Parameter(Mandatory = $true)][System.Management.Automation.Language.FunctionDefinitionAst]$FunctionAst,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$ScopeAst,
             [Parameter(Mandatory = $true)][string]$VariableName
         )
 
         $leftText = ('$' + $VariableName)
-        return @($FunctionAst.Body.FindAll({
+        return @($ScopeAst.FindAll({
             param($node)
             $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
             [string]$node.Left.Extent.Text -ieq $leftText -and
@@ -360,17 +365,25 @@ BeforeAll {
             $routes += ('{0}|{1}|{2}|{3}' -f $section, $stage, $family, $endpoint)
         }
 
-        foreach ($functionAst in @($ast.FindAll({
+        foreach ($scriptBlockExpression in @($ast.FindAll({
             param($node)
-            $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
+            $node -is [System.Management.Automation.Language.ScriptBlockExpressionAst]
         }, $true))) {
-            $stage = if ([string]$functionAst.Name -match 'Stage1') {
+            $ancestor = $scriptBlockExpression.Parent
+            while ($null -ne $ancestor -and $ancestor -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                $ancestor = $ancestor.Parent
+            }
+            if ($null -eq $ancestor) {
+                continue
+            }
+
+            $stage = if ([string]$ancestor.Name -match 'Stage1') {
                 'stage1'
             }
-            elseif ([string]$functionAst.Name -match 'Stage2') {
+            elseif ([string]$ancestor.Name -match 'Stage2') {
                 'stage2'
             }
-            elseif ([string]$functionAst.Name -match 'Stage3') {
+            elseif ([string]$ancestor.Name -match 'Stage3') {
                 'stage3'
             }
             else {
@@ -380,9 +393,10 @@ BeforeAll {
                 continue
             }
 
-            $assignedSections = @(Get-TestAssignedStringValue -FunctionAst $functionAst -VariableName 'section' | Where-Object { $_ -match '^(entra-|intune-)' })
-            $assignedFamilies = @(Get-TestAssignedStringValue -FunctionAst $functionAst -VariableName 'family')
-            $assignedEndpoints = @(Get-TestAssignedStringValue -FunctionAst $functionAst -VariableName 'endpointTemplate' | Where-Object { $_ -match '^/(v1\.0|beta)/' })
+            $scopeAst = $scriptBlockExpression.ScriptBlock
+            $assignedSections = @(Get-TestAssignedStringValue -ScopeAst $scopeAst -VariableName 'section' | Where-Object { $_ -match '^(entra-|intune-)' })
+            $assignedFamilies = @(Get-TestAssignedStringValue -ScopeAst $scopeAst -VariableName 'family')
+            $assignedEndpoints = @(Get-TestAssignedStringValue -ScopeAst $scopeAst -VariableName 'endpointTemplate' | Where-Object { $_ -match '^/(v1\.0|beta)/' })
             if ($assignedSections.Count -eq 1 -and $assignedFamilies.Count -eq 1 -and $assignedEndpoints.Count -eq 1) {
                 $routes += ('{0}|{1}|{2}|{3}' -f $assignedSections[0], $stage, $assignedFamilies[0], $assignedEndpoints[0].Replace('{0}', '{id}'))
             }
