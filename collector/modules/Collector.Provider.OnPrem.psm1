@@ -279,6 +279,142 @@ function ConvertTo-CollectorGpoReportEvidence {
     }
 }
 
+function ConvertTo-CollectorOnPremBoolean {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Value,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+
+    switch -Regex ([string]$Value) {
+        '^(?i:true|yes)$' { return $true }
+        '^(?i:false|no)$' { return $false }
+        default { throw ('Unable to interpret {0} as a Boolean value: {1}' -f $Label, $Value) }
+    }
+}
+
+function Get-CollectorXmlChildText {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Xml.XmlNode]$Node,
+
+        [Parameter(Mandatory = $true)]
+        [string]$LocalName
+    )
+
+    $child = $Node.SelectSingleNode("./*[local-name()='$LocalName']")
+    if ($null -eq $child) {
+        return $null
+    }
+
+    return [string]$child.InnerText
+}
+
+function ConvertTo-CollectorGpoScopeLinkEvidence {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ReportXml,
+
+        [Parameter(Mandatory = $true)]
+        [Guid]$GpoId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DomainContext,
+
+        [string]$DisplayName
+    )
+
+    $document = [System.Xml.XmlDocument]::new()
+    try {
+        $document.LoadXml($ReportXml)
+    }
+    catch {
+        throw ('Get-GPOReport returned invalid XML for GPO scope links {0} in domain {1}: {2}' -f $GpoId, $DomainContext, $_.Exception.Message)
+    }
+
+    if ($null -eq $document.DocumentElement -or [string]$document.DocumentElement.LocalName -ne 'GPO') {
+        throw ('Get-GPOReport returned an unexpected XML root for GPO scope links {0} in domain {1}.' -f $GpoId, $DomainContext)
+    }
+
+    $links = @()
+    foreach ($linkNode in @($document.SelectNodes("/*[local-name()='GPO']/*[local-name()='LinksTo']"))) {
+        $enabledText = Get-CollectorXmlChildText -Node $linkNode -LocalName 'Enabled'
+        $enforcedText = Get-CollectorXmlChildText -Node $linkNode -LocalName 'NoOverride'
+        if ([string]::IsNullOrWhiteSpace($enabledText) -or [string]::IsNullOrWhiteSpace($enforcedText)) {
+            throw ('Get-GPOReport link evidence is missing Enabled or NoOverride for GPO {0} in domain {1}.' -f $GpoId, $DomainContext)
+        }
+
+        $targetName = Get-CollectorXmlChildText -Node $linkNode -LocalName 'SOMName'
+        $targetPath = Get-CollectorXmlChildText -Node $linkNode -LocalName 'SOMPath'
+        if ([string]::IsNullOrWhiteSpace($targetPath)) {
+            throw ('Get-GPOReport link evidence is missing SOMPath for GPO {0} in domain {1}.' -f $GpoId, $DomainContext)
+        }
+
+        $links += [pscustomobject]@{
+            targetId = [string]$targetPath
+            targetName = $targetName
+            targetPath = [string]$targetPath
+            enabled = ConvertTo-CollectorOnPremBoolean -Value $enabledText -Label 'GPO link Enabled'
+            enforced = ConvertTo-CollectorOnPremBoolean -Value $enforcedText -Label 'GPO link NoOverride'
+        }
+    }
+
+    return [pscustomobject]@{
+        gpoId = [string]$GpoId
+        gpoDisplayName = $DisplayName
+        domainContext = $DomainContext
+        linkCount = $links.Count
+        links = @($links)
+    }
+}
+
+function ConvertTo-CollectorGpoLinkRecord {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Link
+    )
+
+    $gpoId = Get-CollectorFirstPropertyValue -Item $Link -PropertyNames @('GpoId', 'Id')
+    $displayName = Get-CollectorFirstPropertyValue -Item $Link -PropertyNames @('DisplayName', 'Name')
+    $domainName = Get-CollectorFirstPropertyValue -Item $Link -PropertyNames @('GpoDomainName', 'DomainName')
+    $target = Get-CollectorFirstPropertyValue -Item $Link -PropertyNames @('Target')
+    $orderValue = Get-CollectorFirstPropertyValue -Item $Link -PropertyNames @('Order')
+    $enabledValue = Get-CollectorFirstPropertyValue -Item $Link -PropertyNames @('Enabled')
+    $enforcedValue = Get-CollectorFirstPropertyValue -Item $Link -PropertyNames @('Enforced')
+
+    if (-not $gpoId) {
+        throw 'Get-GPInheritance returned a GPO link without a stable GpoId.'
+    }
+    if ($null -eq $enabledValue -or $null -eq $enforcedValue) {
+        throw ('Get-GPInheritance returned incomplete enabled/enforced state for GPO link {0}.' -f $gpoId)
+    }
+
+    $order = 0
+    if ($null -ne $orderValue -and -not [int]::TryParse([string]$orderValue, [ref]$order)) {
+        throw ('Get-GPInheritance returned an invalid link order for GPO {0}: {1}' -f $gpoId, $orderValue)
+    }
+
+    return [pscustomobject]@{
+        gpoId = [string]$gpoId
+        displayName = $displayName
+        domainName = $domainName
+        target = $target
+        order = if ($null -ne $orderValue) { [int]$order } else { $null }
+        enabled = ConvertTo-CollectorOnPremBoolean -Value $enabledValue -Label 'GPO link Enabled'
+        enforced = ConvertTo-CollectorOnPremBoolean -Value $enforcedValue -Label 'GPO link Enforced'
+    }
+}
+
 function Get-CollectorOnPremProvenanceProfile {
     [CmdletBinding()]
     param(
@@ -389,6 +525,27 @@ function Get-CollectorOnPremProvenanceProfile {
                     return [pscustomobject]@{
                         SourceName = 'Get-ADGroupMember'
                         CmdletNames = @('Get-ADGroupMember')
+                    }
+                }
+
+                'gpoScopeLinks' {
+                    return [pscustomobject]@{
+                        SourceName = 'Get-GPOReport'
+                        CmdletNames = @('Get-GPOReport')
+                    }
+                }
+
+                'gpoScopeInheritance' {
+                    return [pscustomobject]@{
+                        SourceName = 'Get-ADDomain, Get-GPInheritance'
+                        CmdletNames = @('Get-ADDomain', 'Get-GPInheritance')
+                    }
+                }
+
+                'gpoWmiFilterAssociations' {
+                    return [pscustomobject]@{
+                        SourceName = 'Get-GPO'
+                        CmdletNames = @('Get-GPO')
                     }
                 }
             }
@@ -596,7 +753,7 @@ function Invoke-CollectorOnPremRelationshipFamily {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('domainRootAcl', 'ouAcl', 'gpoPermissions', 'groupMembersOnPrem')]
+        [ValidateSet('domainRootAcl', 'ouAcl', 'gpoPermissions', 'groupMembersOnPrem', 'gpoScopeLinks', 'gpoScopeInheritance', 'gpoWmiFilterAssociations')]
         [string]$Family,
 
         [Parameter(Mandatory = $true)]
@@ -750,6 +907,163 @@ function Invoke-CollectorOnPremRelationshipFamily {
                         domainContext = $domainContext
                         _collectorError = $_.Exception.Message
                     }
+                }
+            }
+        }
+
+        'gpoScopeLinks' {
+            Assert-CollectorOnPremCommand -CommandNames @('Get-GPOReport')
+            foreach ($gpoItem in @($InventoryItems)) {
+                $gpoId = Get-CollectorFirstPropertyValue -Item $gpoItem -PropertyNames @('id', 'Id')
+                $gpoName = Get-CollectorFirstPropertyValue -Item $gpoItem -PropertyNames @('displayName', 'name')
+                $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $gpoItem
+                $parsedGpoId = [Guid]::Empty
+
+                if (-not $gpoId -or -not [Guid]::TryParse([string]$gpoId, [ref]$parsedGpoId)) {
+                    $results += [pscustomobject]@{ gpoId = if ($gpoId) { [string]$gpoId } else { $null }; gpoDisplayName = $gpoName; domainContext = $domainContext; _collectorError = 'Unable to resolve a valid persisted GPO GUID for scope-link collection.' }
+                    continue
+                }
+                if ([string]::IsNullOrWhiteSpace([string]$domainContext)) {
+                    $results += [pscustomobject]@{ gpoId = [string]$parsedGpoId; gpoDisplayName = $gpoName; domainContext = $null; _collectorError = 'Unable to resolve persisted domain context for GPO scope-link collection.' }
+                    continue
+                }
+
+                try {
+                    $report = Get-GPOReport -Guid $parsedGpoId -Domain $domainContext -ReportType Xml
+                    $reportXml = if ($report -is [System.Xml.XmlDocument]) { [string]$report.OuterXml } else { [string]$report }
+                    if ([string]::IsNullOrWhiteSpace($reportXml)) {
+                        throw ('Get-GPOReport returned empty XML for GPO scope links {0} in domain {1}.' -f $parsedGpoId, $domainContext)
+                    }
+                    $results += ConvertTo-CollectorGpoScopeLinkEvidence -ReportXml $reportXml -GpoId $parsedGpoId -DomainContext ([string]$domainContext) -DisplayName $gpoName
+                }
+                catch {
+                    $results += [pscustomobject]@{ gpoId = [string]$parsedGpoId; gpoDisplayName = $gpoName; domainContext = [string]$domainContext; _collectorError = $_.Exception.Message }
+                }
+            }
+        }
+
+        'gpoScopeInheritance' {
+            Assert-CollectorOnPremCommand -CommandNames @('Get-ADDomain', 'Get-GPInheritance')
+            foreach ($scopeEnvelope in @($InventoryItems)) {
+                $dependencyFamily = Get-CollectorFirstPropertyValue -Item $scopeEnvelope -PropertyNames @('dependencyFamily')
+                $scopeItem = if ($scopeEnvelope.PSObject.Properties.Match('inventoryItem').Count -gt 0) { $scopeEnvelope.inventoryItem } else { $scopeEnvelope }
+                if (-not $dependencyFamily) {
+                    $dependencyFamily = if ($scopeItem.PSObject.Properties.Match('distinguishedName').Count -gt 0) { 'organizationalUnits' } else { 'domains' }
+                }
+
+                $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $scopeItem
+                if ([string]::IsNullOrWhiteSpace([string]$domainContext)) {
+                    $results += [pscustomobject]@{ scopeType = $dependencyFamily; domainContext = $null; _collectorError = 'Unable to resolve persisted domain context for GPO inheritance collection.' }
+                    continue
+                }
+
+                try {
+                    $scopeType = $null
+                    $scopeId = $null
+                    $targetDn = $null
+                    if ($dependencyFamily -eq 'domains') {
+                        $scopeType = 'domain'
+                        $scopeId = Get-CollectorFirstPropertyValue -Item $scopeItem -PropertyNames @('id', 'name')
+                        if (-not $scopeId) {
+                            throw 'Unable to resolve domain identity for GPO inheritance collection.'
+                        }
+                        $domain = Get-ADDomain -Identity $scopeId -Server $domainContext
+                        $targetDn = [string]$domain.DistinguishedName
+                    }
+                    elseif ($dependencyFamily -eq 'organizationalUnits') {
+                        $scopeType = 'organizationalUnit'
+                        $targetDn = Get-CollectorFirstPropertyValue -Item $scopeItem -PropertyNames @('id', 'distinguishedName')
+                        $scopeId = $targetDn
+                    }
+                    else {
+                        throw ('Unsupported GPO inheritance dependency family: {0}' -f $dependencyFamily)
+                    }
+
+                    if ([string]::IsNullOrWhiteSpace([string]$targetDn)) {
+                        throw 'Unable to resolve domain/OU distinguished name for GPO inheritance collection.'
+                    }
+
+                    $inheritance = Get-GPInheritance -Target $targetDn -Domain $domainContext
+                    if ($null -eq $inheritance) {
+                        throw ('Get-GPInheritance returned no result for {0}.' -f $targetDn)
+                    }
+
+                    $directLinks = @()
+                    foreach ($link in @($inheritance.GpoLinks)) {
+                        if ($null -ne $link) { $directLinks += ConvertTo-CollectorGpoLinkRecord -Link $link }
+                    }
+                    $effectiveLinks = @()
+                    foreach ($link in @($inheritance.InheritedGpoLinks)) {
+                        if ($null -ne $link) { $effectiveLinks += ConvertTo-CollectorGpoLinkRecord -Link $link }
+                    }
+
+                    $results += [pscustomobject]@{
+                        scopeId = [string]$scopeId
+                        scopeType = $scopeType
+                        domainContext = [string]$domainContext
+                        targetDistinguishedName = [string]$targetDn
+                        inheritanceBlocked = ConvertTo-CollectorOnPremBoolean -Value $inheritance.GpoInheritanceBlocked -Label 'GpoInheritanceBlocked'
+                        directLinkCount = $directLinks.Count
+                        directLinks = @($directLinks)
+                        effectiveLinkCount = $effectiveLinks.Count
+                        effectiveLinks = @($effectiveLinks)
+                    }
+                }
+                catch {
+                    $results += [pscustomobject]@{ scopeType = $dependencyFamily; domainContext = [string]$domainContext; _collectorError = $_.Exception.Message }
+                }
+            }
+        }
+
+        'gpoWmiFilterAssociations' {
+            Assert-CollectorOnPremCommand -CommandNames @('Get-GPO')
+            foreach ($gpoItem in @($InventoryItems)) {
+                $gpoId = Get-CollectorFirstPropertyValue -Item $gpoItem -PropertyNames @('id', 'Id')
+                $gpoName = Get-CollectorFirstPropertyValue -Item $gpoItem -PropertyNames @('displayName', 'name')
+                $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $gpoItem
+                $parsedGpoId = [Guid]::Empty
+
+                if (-not $gpoId -or -not [Guid]::TryParse([string]$gpoId, [ref]$parsedGpoId)) {
+                    $results += [pscustomobject]@{ gpoId = if ($gpoId) { [string]$gpoId } else { $null }; gpoDisplayName = $gpoName; domainContext = $domainContext; _collectorError = 'Unable to resolve a valid persisted GPO GUID for WMI-filter collection.' }
+                    continue
+                }
+                if ([string]::IsNullOrWhiteSpace([string]$domainContext)) {
+                    $results += [pscustomobject]@{ gpoId = [string]$parsedGpoId; gpoDisplayName = $gpoName; domainContext = $null; _collectorError = 'Unable to resolve persisted domain context for GPO WMI-filter collection.' }
+                    continue
+                }
+
+                try {
+                    $gpo = Get-GPO -Guid $parsedGpoId -Domain $domainContext
+                    $filter = if ($gpo -and $gpo.PSObject.Properties.Match('WmiFilter').Count -gt 0) { $gpo.WmiFilter } else { $null }
+                    if ($null -eq $filter) {
+                        $results += [pscustomobject]@{
+                            gpoId = [string]$parsedGpoId
+                            gpoDisplayName = $gpoName
+                            domainContext = [string]$domainContext
+                            hasWmiFilter = $false
+                            wmiFilter = $null
+                        }
+                        continue
+                    }
+
+                    $filterPath = Get-CollectorFirstPropertyValue -Item $filter -PropertyNames @('Path')
+                    if ([string]::IsNullOrWhiteSpace([string]$filterPath)) {
+                        throw ('GPO {0} has a WMI filter without a stable provider Path.' -f $parsedGpoId)
+                    }
+                    $results += [pscustomobject]@{
+                        gpoId = [string]$parsedGpoId
+                        gpoDisplayName = $gpoName
+                        domainContext = [string]$domainContext
+                        hasWmiFilter = $true
+                        wmiFilter = [pscustomobject]@{
+                            path = [string]$filterPath
+                            name = Get-CollectorFirstPropertyValue -Item $filter -PropertyNames @('Name')
+                            description = Get-CollectorFirstPropertyValue -Item $filter -PropertyNames @('Description')
+                        }
+                    }
+                }
+                catch {
+                    $results += [pscustomobject]@{ gpoId = [string]$parsedGpoId; gpoDisplayName = $gpoName; domainContext = [string]$domainContext; _collectorError = $_.Exception.Message }
                 }
             }
         }

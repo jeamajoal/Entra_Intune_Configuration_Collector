@@ -593,24 +593,43 @@ function Invoke-CollectorStage3OnPremFamily {
         [string]$Section,
 
         [Parameter(Mandatory = $true)]
-        [ValidateSet('domainRootAcl', 'ouAcl', 'gpoPermissions', 'groupMembersOnPrem')]
+        [ValidateSet('domainRootAcl', 'ouAcl', 'gpoPermissions', 'groupMembersOnPrem', 'gpoScopeLinks', 'gpoScopeInheritance', 'gpoWmiFilterAssociations')]
         [string]$Family,
 
         [Parameter(Mandatory = $true)]
+        [Alias('DependencyFamily')]
         [ValidateSet('domains', 'organizationalUnits', 'gpos', 'groups')]
-        [string]$DependencyFamily
+        [string[]]$DependencyFamilies
     )
 
-    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families @($DependencyFamily) -RunId $Context.RunId
+    Assert-CollectorInventoryFirstForStage3 -RunPath $Context.RunPath -Section $Section -Families $DependencyFamilies -RunId $Context.RunId
 
-    $inventoryItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $DependencyFamily -ExpectedRunId $Context.RunId)
+    $inventoryItems = @()
+    foreach ($dependencyFamily in $DependencyFamilies) {
+        $familyItems = @(Get-CollectorSnapshotItems -RunPath $Context.RunPath -Stage 'stage1' -Section $Section -Family $dependencyFamily -ExpectedRunId $Context.RunId)
+        if ($DependencyFamilies.Count -eq 1) {
+            $inventoryItems += $familyItems
+        }
+        else {
+            foreach ($familyItem in $familyItems) {
+                $inventoryItems += [pscustomobject]@{
+                    dependencyFamily = [string]$dependencyFamily
+                    inventoryItem = $familyItem
+                }
+            }
+        }
+    }
+
     $batches = Split-CollectorItems -Items $inventoryItems -BatchSize $Context.BatchSize
     $provenanceProfile = Get-CollectorOnPremProvenanceProfile -Phase 'Relationships' -Family $Family
     $requestContext = @{
-        dependencyFamily = $DependencyFamily
+        dependencyFamilies = @($DependencyFamilies)
         cmdletFamily = $Family
         cmdletNames = @($provenanceProfile.CmdletNames)
         domainContextFromInventory = $true
+    }
+    if ($DependencyFamilies.Count -eq 1) {
+        $requestContext.dependencyFamily = [string]$DependencyFamilies[0]
     }
 
     Invoke-CollectorStage3BatchLoop -Context $Context -Section $Section -Family $Family -Batches $batches -SourceType 'OnPrem' -SourceName $provenanceProfile.SourceName -ApiVersion 'n/a' -RequestContext $requestContext -BatchCollector {
@@ -670,6 +689,9 @@ function Invoke-CollectorStage3 {
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'ouAcl' -DependencyFamily 'organizationalUnits')
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'gpoPermissions' -DependencyFamily 'gpos')
                 $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'groupMembersOnPrem' -DependencyFamily 'groups')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'gpoScopeLinks' -DependencyFamily 'gpos')
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'gpoScopeInheritance' -DependencyFamilies @('domains', 'organizationalUnits'))
+                $results += Publish-CollectorStage3Result -Context $Context -Result (Invoke-CollectorStage3OnPremFamily -Context $Context -Section $section -Family 'gpoWmiFilterAssociations' -DependencyFamily 'gpos')
             }
 
             default {
