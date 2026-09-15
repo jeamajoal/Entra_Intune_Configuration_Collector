@@ -136,6 +136,149 @@ function Get-CollectorDomainAcl {
     }
 }
 
+function Test-CollectorGpoCredentialFieldName {
+    [CmdletBinding()]
+    param(
+        [string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $false
+    }
+
+    return $Name -match '^(?i:cpassword|password|passwordvalue|passwordtext|passwd|secret|secretvalue|secrettext|privatekey|privatekeyvalue|privatekeymaterial|clientsecret)$'
+}
+
+function Protect-CollectorGpoReportXmlNode {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Xml.XmlNode]$Node
+    )
+
+    $redactionCount = 0
+    $isCredentialElement = (
+        $Node.NodeType -eq [System.Xml.XmlNodeType]::Element -and
+        (Test-CollectorGpoCredentialFieldName -Name $Node.LocalName)
+    )
+
+    if ($isCredentialElement) {
+        foreach ($attribute in @($Node.Attributes)) {
+            if ($null -eq $attribute) {
+                continue
+            }
+
+            $isNamespaceDeclaration = (
+                [string]$attribute.NamespaceURI -eq 'http://www.w3.org/2000/xmlns/' -or
+                [string]$attribute.Prefix -eq 'xmlns' -or
+                [string]$attribute.Name -eq 'xmlns'
+            )
+            if ($isNamespaceDeclaration) {
+                continue
+            }
+
+            if ([string]$attribute.Value -ne '[REDACTED]') {
+                $attribute.Value = '[REDACTED]'
+                $redactionCount++
+            }
+        }
+
+        if ($Node.HasChildNodes -or -not [string]::IsNullOrEmpty([string]$Node.InnerText)) {
+            if ([string]$Node.InnerText -ne '[REDACTED]') {
+                $Node.InnerText = '[REDACTED]'
+                $redactionCount++
+            }
+        }
+
+        return $redactionCount
+    }
+
+    foreach ($attribute in @($Node.Attributes)) {
+        if ($null -eq $attribute) {
+            continue
+        }
+
+        $isNamespaceDeclaration = (
+            [string]$attribute.NamespaceURI -eq 'http://www.w3.org/2000/xmlns/' -or
+            [string]$attribute.Prefix -eq 'xmlns' -or
+            [string]$attribute.Name -eq 'xmlns'
+        )
+        if ($isNamespaceDeclaration) {
+            continue
+        }
+
+        if (Test-CollectorGpoCredentialFieldName -Name $attribute.LocalName) {
+            if ([string]$attribute.Value -ne '[REDACTED]') {
+                $attribute.Value = '[REDACTED]'
+                $redactionCount++
+            }
+        }
+    }
+
+    $elementChildren = @($Node.ChildNodes | Where-Object { $_.NodeType -eq [System.Xml.XmlNodeType]::Element })
+    foreach ($child in $elementChildren) {
+        $redactionCount += [int](Protect-CollectorGpoReportXmlNode -Node $child)
+    }
+
+    return $redactionCount
+}
+
+function ConvertTo-CollectorGpoReportEvidence {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ReportXml,
+
+        [Parameter(Mandatory = $true)]
+        [Guid]$GpoId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DomainContext,
+
+        [string]$DisplayName
+    )
+
+    $document = [System.Xml.XmlDocument]::new()
+    try {
+        $document.LoadXml($ReportXml)
+    }
+    catch {
+        throw ('Get-GPOReport returned invalid XML for GPO {0} in domain {1}: {2}' -f $GpoId, $DomainContext, $_.Exception.Message)
+    }
+
+    if ($null -eq $document.DocumentElement -or [string]$document.DocumentElement.LocalName -ne 'GPO') {
+        throw ('Get-GPOReport returned an unexpected XML root for GPO {0} in domain {1}.' -f $GpoId, $DomainContext)
+    }
+
+    $computerNode = $document.SelectSingleNode("/*[local-name()='GPO']/*[local-name()='Computer']")
+    $userNode = $document.SelectSingleNode("/*[local-name()='GPO']/*[local-name()='User']")
+    $redactionCount = 0
+
+    if ($null -ne $computerNode) {
+        $redactionCount += [int](Protect-CollectorGpoReportXmlNode -Node $computerNode)
+    }
+    if ($null -ne $userNode) {
+        $redactionCount += [int](Protect-CollectorGpoReportXmlNode -Node $userNode)
+    }
+
+    return [pscustomobject]@{
+        id = [string]$GpoId
+        gpoId = [string]$GpoId
+        displayName = $DisplayName
+        domainContext = $DomainContext
+        reportType = 'Xml'
+        computer = [pscustomobject]@{
+            present = ($null -ne $computerNode)
+            xml = if ($null -ne $computerNode) { [string]$computerNode.OuterXml } else { $null }
+        }
+        user = [pscustomobject]@{
+            present = ($null -ne $userNode)
+            xml = if ($null -ne $userNode) { [string]$userNode.OuterXml } else { $null }
+        }
+        redactedCredentialValueCount = $redactionCount
+    }
+}
+
 function Get-CollectorOnPremProvenanceProfile {
     [CmdletBinding()]
     param(
@@ -207,6 +350,13 @@ function Get-CollectorOnPremProvenanceProfile {
                     return [pscustomobject]@{
                         SourceName = 'Get-GPO'
                         CmdletNames = @('Get-GPO')
+                    }
+                }
+
+                'gpoReports' {
+                    return [pscustomobject]@{
+                        SourceName = 'Get-GPOReport'
+                        CmdletNames = @('Get-GPOReport')
                     }
                 }
             }
@@ -345,7 +495,7 @@ function Invoke-CollectorOnPremDetailFamily {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('domains', 'organizationalUnits', 'groups', 'gpos')]
+        [ValidateSet('domains', 'organizationalUnits', 'groups', 'gpos', 'gpoReports')]
         [string]$Family,
 
         [Parameter(Mandatory = $true)]
@@ -411,6 +561,33 @@ function Invoke-CollectorOnPremDetailFamily {
             }
 
             return Get-GPO -Guid ([Guid]$gpoId)
+        }
+
+        'gpoReports' {
+            Assert-CollectorOnPremCommand -CommandNames @('Get-GPOReport')
+            $gpoId = Get-CollectorFirstPropertyValue -Item $InventoryItem -PropertyNames @('id', 'Id')
+            $parsedGpoId = [Guid]::Empty
+            if (-not $gpoId -or -not [Guid]::TryParse([string]$gpoId, [ref]$parsedGpoId)) {
+                throw 'Unable to resolve a valid persisted GPO GUID for report collection.'
+            }
+
+            $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $InventoryItem
+            if ([string]::IsNullOrWhiteSpace([string]$domainContext)) {
+                throw 'Unable to resolve persisted domain context for GPO report collection.'
+            }
+
+            $displayName = Get-CollectorFirstPropertyValue -Item $InventoryItem -PropertyNames @('displayName', 'name')
+            $report = Get-GPOReport -Guid $parsedGpoId -Domain $domainContext -ReportType Xml
+            if ($null -eq $report) {
+                throw ('Get-GPOReport returned no XML for GPO {0} in domain {1}.' -f $parsedGpoId, $domainContext)
+            }
+
+            $reportXml = if ($report -is [System.Xml.XmlDocument]) { [string]$report.OuterXml } else { [string]$report }
+            if ([string]::IsNullOrWhiteSpace($reportXml)) {
+                throw ('Get-GPOReport returned empty XML for GPO {0} in domain {1}.' -f $parsedGpoId, $domainContext)
+            }
+
+            return ConvertTo-CollectorGpoReportEvidence -ReportXml $reportXml -GpoId $parsedGpoId -DomainContext ([string]$domainContext) -DisplayName $displayName
         }
     }
 }
