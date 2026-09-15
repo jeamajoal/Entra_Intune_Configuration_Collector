@@ -208,6 +208,21 @@ BeforeAll {
         return $null
     }
 
+    function Resolve-TestRequiredStringExpression {
+        param(
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Expression,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Anchor,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$RootAst,
+            [Parameter(Mandatory = $true)][string]$Label
+        )
+
+        $resolved = Resolve-TestStringExpression -Expression $Expression -Anchor $Anchor -RootAst $RootAst
+        if ([string]::IsNullOrWhiteSpace([string]$resolved)) {
+            throw ('Unable to resolve {0}: {1}' -f $Label, [string]$Expression.Extent.Text)
+        }
+        return [string]$resolved
+    }
+
     function Get-TestFileSectionValue {
         param([Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Ast)
 
@@ -285,14 +300,6 @@ BeforeAll {
             }
 
             $familyExpression = Get-TestCommandParameterExpression -Command $command -Name 'Family'
-            if ($null -eq $familyExpression) {
-                continue
-            }
-            $family = Resolve-TestStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast
-            if ([string]::IsNullOrWhiteSpace([string]$family)) {
-                continue
-            }
-
             $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'EndpointTemplate'
             if ($null -eq $endpointExpression) {
                 $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'Endpoint'
@@ -300,32 +307,29 @@ BeforeAll {
             if ($null -eq $endpointExpression) {
                 $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceName'
             }
-            if ($null -eq $endpointExpression) {
-                continue
-            }
-            $endpoint = Resolve-TestStringExpression -Expression $endpointExpression -Anchor $command -RootAst $ast
-            if ([string]::IsNullOrWhiteSpace([string]$endpoint)) {
+            if ($null -eq $familyExpression -or $null -eq $endpointExpression) {
                 continue
             }
 
+            $family = Resolve-TestRequiredStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast -Label ('Graph route Family for {0}' -f $commandName)
+            $endpoint = Resolve-TestRequiredStringExpression -Expression $endpointExpression -Anchor $command -RootAst $ast -Label ('Graph route endpoint for {0}' -f $commandName)
+
             $sectionExpression = Get-TestCommandParameterExpression -Command $command -Name 'Section'
-            $section = if ($null -ne $sectionExpression) {
-                Resolve-TestStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast
+            if ($null -ne $sectionExpression) {
+                $section = Resolve-TestRequiredStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast -Label ('Graph route Section for {0}' -f $commandName)
             }
             else {
-                $null
-            }
-            if ([string]::IsNullOrWhiteSpace([string]$section)) {
                 $section = $fileSection
             }
             if ([string]::IsNullOrWhiteSpace([string]$section)) {
-                continue
+                throw ('Unable to resolve Graph route Section for {0} in {1}.' -f $commandName, $Path)
             }
 
             $route = ConvertTo-TestGraphRoute -Section $section -Stage $stage -Family $family -Endpoint $endpoint
-            if ($null -ne $route) {
-                $routes += $route
+            if ($null -eq $route) {
+                throw ('Resolved route for {0} is not a valid Graph route: section={1}; stage={2}; family={3}; endpoint={4}' -f $commandName, $section, $stage, $family, $endpoint)
             }
+            $routes += $route
         }
 
         foreach ($command in $commands | Where-Object { [string]$_.GetCommandName() -ieq 'New-CollectorProvenanceSnapshot' }) {
@@ -338,27 +342,20 @@ BeforeAll {
                 continue
             }
 
-            $sourceType = Resolve-TestStringExpression -Expression $sourceTypeExpression -Anchor $command -RootAst $ast
+            $sourceType = Resolve-TestRequiredStringExpression -Expression $sourceTypeExpression -Anchor $command -RootAst $ast -Label 'provenance SourceType'
             if ([string]$sourceType -ine 'Graph') {
                 continue
             }
-            $stage = Resolve-TestStringExpression -Expression $stageExpression -Anchor $command -RootAst $ast
-            $section = Resolve-TestStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast
-            $family = Resolve-TestStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast
-            $endpoint = Resolve-TestStringExpression -Expression $sourceNameExpression -Anchor $command -RootAst $ast
-            if (
-                [string]::IsNullOrWhiteSpace([string]$stage) -or
-                [string]::IsNullOrWhiteSpace([string]$section) -or
-                [string]::IsNullOrWhiteSpace([string]$family) -or
-                [string]::IsNullOrWhiteSpace([string]$endpoint)
-            ) {
-                continue
-            }
+            $stage = Resolve-TestRequiredStringExpression -Expression $stageExpression -Anchor $command -RootAst $ast -Label 'Graph provenance Stage'
+            $section = Resolve-TestRequiredStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast -Label 'Graph provenance Section'
+            $family = Resolve-TestRequiredStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast -Label 'Graph provenance Family'
+            $endpoint = Resolve-TestRequiredStringExpression -Expression $sourceNameExpression -Anchor $command -RootAst $ast -Label 'Graph provenance SourceName'
 
             $route = ConvertTo-TestGraphRoute -Section $section -Stage $stage -Family $family -Endpoint $endpoint
-            if ($null -ne $route) {
-                $routes += $route
+            if ($null -eq $route) {
+                throw ('Resolved Graph provenance route is invalid: section={0}; stage={1}; family={2}; endpoint={3}' -f $section, $stage, $family, $endpoint)
             }
+            $routes += $route
         }
 
         return @($routes | Sort-Object -Unique)
@@ -410,6 +407,17 @@ Describe 'Graph permission route conformance' {
         $script:productionRoutes.Count | Should -BeGreaterThan 0
         $script:matrixRoutes.Count | Should -BeGreaterThan 0
         Assert-TestSetEqual -Expected $script:productionRoutes -Actual $script:matrixRoutes -Label 'Graph route inventory'
+    }
+
+    It 'fails closed when a route-shaped call contains an unresolved routing expression' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'UnresolvedGraphRoute.psm1'
+        @'
+$descriptor = [pscustomobject]@{ Family = 'applications' }
+Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family -EndpointTemplate '/v1.0/applications'
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } |
+            Should -Throw '*Unable to resolve Graph route Family*'
     }
 
     It 'rejects family stage missing and stale route drift even when endpoint membership is preserved' {
