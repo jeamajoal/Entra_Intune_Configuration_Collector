@@ -20,7 +20,7 @@ BeforeAll {
         return $ast
     }
 
-    function Get-TestScriptArrayAssignmentValues {
+    function Get-TestScriptArrayAssignmentValue {
         param(
             [Parameter(Mandatory = $true)]
             [System.Management.Automation.Language.Ast]$Ast,
@@ -73,7 +73,7 @@ BeforeAll {
         }
     }
 
-    function Get-TestPathPatternSections {
+    function Get-TestPathPatternSection {
         param(
             [Parameter(Mandatory = $true)]
             [string]$Pattern,
@@ -118,16 +118,16 @@ BeforeAll {
     $script:orchestratorAst = Get-TestParsedAst -Path $orchestratorPath
     $script:catalogAst = Get-TestParsedAst -Path $catalogPath
     $script:cliContract = Get-TestCliSectionsContract -Ast $script:cliAst
-    $script:orchestratorSupported = @(Get-TestScriptArrayAssignmentValues -Ast $script:orchestratorAst -VariableName 'SupportedSections')
-    $script:orchestratorDefaults = @(Get-TestScriptArrayAssignmentValues -Ast $script:orchestratorAst -VariableName 'DefaultSections')
-    $script:orchestratorGraphBacked = @(Get-TestScriptArrayAssignmentValues -Ast $script:orchestratorAst -VariableName 'GraphBackedSections')
-    $script:catalogSections = @(Get-TestScriptArrayAssignmentValues -Ast $script:catalogAst -VariableName 'CollectorCatalogSections')
+    $script:orchestratorSupported = @(Get-TestScriptArrayAssignmentValue -Ast $script:orchestratorAst -VariableName 'SupportedSections')
+    $script:orchestratorDefaults = @(Get-TestScriptArrayAssignmentValue -Ast $script:orchestratorAst -VariableName 'DefaultSections')
+    $script:orchestratorGraphBacked = @(Get-TestScriptArrayAssignmentValue -Ast $script:orchestratorAst -VariableName 'GraphBackedSections')
+    $script:catalogSections = @(Get-TestScriptArrayAssignmentValue -Ast $script:catalogAst -VariableName 'CollectorCatalogSections')
 
     $script:catalogSchema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json
     $script:catalogDefinitions = $script:catalogSchema.PSObject.Properties['$defs'].Value
     $script:schemaSections = @($script:catalogDefinitions.section.enum)
-    $script:artifactPathSections = @(Get-TestPathPatternSections -Pattern ([string]$script:catalogDefinitions.artifact.properties.relativePath.pattern) -Label 'catalog artifact relativePath')
-    $script:checkpointPathSections = @(Get-TestPathPatternSections -Pattern ([string]$script:catalogDefinitions.artifact.properties.checkpointRelativePath.pattern) -Label 'catalog checkpointRelativePath')
+    $script:artifactPathSections = @(Get-TestPathPatternSection -Pattern ([string]$script:catalogDefinitions.artifact.properties.relativePath.pattern) -Label 'catalog artifact relativePath')
+    $script:checkpointPathSections = @(Get-TestPathPatternSection -Pattern ([string]$script:catalogDefinitions.artifact.properties.checkpointRelativePath.pattern) -Label 'catalog checkpointRelativePath')
 }
 
 Describe 'Supported section vocabulary conformance' {
