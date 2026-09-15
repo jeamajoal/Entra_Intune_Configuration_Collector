@@ -83,6 +83,245 @@ BeforeAll {
         return @($property.Value)
     }
 
+    function Get-TestCommandParameterExpression {
+        param(
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.CommandAst]$Command,
+            [Parameter(Mandatory = $true)][string]$Name
+        )
+
+        $elements = @($Command.CommandElements)
+        for ($index = 1; $index -lt $elements.Count; $index++) {
+            $element = $elements[$index]
+            if ($element -isnot [System.Management.Automation.Language.CommandParameterAst] -or [string]$element.ParameterName -ine $Name) {
+                continue
+            }
+
+            if ($null -ne $element.Argument) {
+                return $element.Argument
+            }
+            if ($index + 1 -lt $elements.Count -and $elements[$index + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]) {
+                return $elements[$index + 1]
+            }
+            return $null
+        }
+
+        return $null
+    }
+
+    function Get-TestEnclosingSwitchValue {
+        param([Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Anchor)
+
+        $ancestor = $Anchor.Parent
+        while ($null -ne $ancestor) {
+            if ($ancestor -is [System.Management.Automation.Language.SwitchStatementAst]) {
+                foreach ($clause in @($ancestor.Clauses)) {
+                    $labelAst = $clause.Item1
+                    $bodyAst = $clause.Item2
+                    if (
+                        $Anchor.Extent.StartOffset -ge $bodyAst.Extent.StartOffset -and
+                        $Anchor.Extent.EndOffset -le $bodyAst.Extent.EndOffset -and
+                        $labelAst -is [System.Management.Automation.Language.StringConstantExpressionAst]
+                    ) {
+                        return [string]$labelAst.Value
+                    }
+                }
+            }
+            $ancestor = $ancestor.Parent
+        }
+
+        return $null
+    }
+
+    function Resolve-TestStringExpression {
+        param(
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Expression,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Anchor,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$RootAst,
+            [int]$Depth = 0
+        )
+
+        if ($Depth -gt 8) {
+            return $null
+        }
+
+        if ($Expression -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+            return [string]$Expression.Value
+        }
+        if ($Expression -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -and @($Expression.NestedExpressions).Count -eq 0) {
+            return [string]$Expression.Value
+        }
+
+        $expressionText = [string]$Expression.Extent.Text
+        if ($expressionText -match '^\(\s*[\x27\x22]Graph \{0\}[\x27\x22]\s*-f\s*\$(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)$') {
+            $variableName = [string]$Matches.name
+            $syntheticVariable = $RootAst.Find({
+                param($node)
+                $node -is [System.Management.Automation.Language.VariableExpressionAst] -and [string]$node.VariablePath.UserPath -ieq $variableName
+            }, $true)
+            if ($null -ne $syntheticVariable) {
+                $resolvedValue = Resolve-TestStringExpression -Expression $syntheticVariable -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
+                if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
+                    return ('Graph {0}' -f $resolvedValue)
+                }
+            }
+        }
+
+        if ($Expression -is [System.Management.Automation.Language.VariableExpressionAst]) {
+            $variableName = [string]$Expression.VariablePath.UserPath
+            $scope = $Anchor
+            while ($null -ne $scope -and $scope -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+                $scope = $scope.Parent
+            }
+            if ($null -eq $scope) {
+                $scope = $RootAst
+            }
+
+            $leftText = ('$' + $variableName)
+            $assignments = @($scope.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                [string]$node.Left.Extent.Text -ieq $leftText
+            }, $true) | Where-Object {
+                $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset -and [string]$_.Right.Extent.Text -ine $leftText
+            } | Sort-Object { $_.Extent.EndOffset } -Descending)
+
+            foreach ($assignment in $assignments) {
+                $resolvedValue = Resolve-TestStringExpression -Expression $assignment.Right -Anchor $assignment -RootAst $RootAst -Depth ($Depth + 1)
+                if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
+                    return [string]$resolvedValue
+                }
+            }
+
+            if ($variableName -ieq 'section') {
+                return Get-TestEnclosingSwitchValue -Anchor $Anchor
+            }
+        }
+
+        return $null
+    }
+
+    function Get-TestFileSectionValue {
+        param([Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Ast)
+
+        $sectionValues = @($Ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst]
+        }, $true) | ForEach-Object {
+            $sectionExpression = Get-TestCommandParameterExpression -Command $_ -Name 'Section'
+            if ($sectionExpression -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+                [string]$sectionExpression.Value
+            }
+        } | Where-Object {
+            $_ -match '^(entra-|intune-)'
+        } | Sort-Object -Unique)
+
+        if ($sectionValues.Count -eq 1) {
+            return [string]$sectionValues[0]
+        }
+        return $null
+    }
+
+    function Get-TestGraphRoute {
+        param([Parameter(Mandatory = $true)][string]$Path)
+
+        $ast = Get-TestParsedAst -Path $Path
+        $fileSection = Get-TestFileSectionValue -Ast $ast
+        $routes = @()
+
+        foreach ($command in @($ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst]
+        }, $true))) {
+            $commandName = [string]$command.GetCommandName()
+            if ([string]::IsNullOrWhiteSpace($commandName)) {
+                continue
+            }
+
+            $stage = $null
+            if ($commandName -ieq 'Invoke-CollectorGraphInventoryFamily') {
+                $stage = 'stage1'
+            }
+            elseif ($commandName -match 'Stage1') {
+                $stage = 'stage1'
+            }
+            elseif ($commandName -match 'Stage2') {
+                $stage = 'stage2'
+            }
+            elseif ($commandName -match 'Stage3') {
+                $stage = 'stage3'
+            }
+            if ($null -eq $stage) {
+                continue
+            }
+
+            $familyExpression = Get-TestCommandParameterExpression -Command $command -Name 'Family'
+            if ($null -eq $familyExpression) {
+                continue
+            }
+            $family = Resolve-TestStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast
+            if ([string]::IsNullOrWhiteSpace([string]$family)) {
+                continue
+            }
+
+            $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'EndpointTemplate'
+            if ($null -eq $endpointExpression) {
+                $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'Endpoint'
+            }
+            $endpointFromSourceName = $false
+            if ($null -eq $endpointExpression) {
+                $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceName'
+                $endpointFromSourceName = $null -ne $endpointExpression
+            }
+            if ($null -eq $endpointExpression) {
+                continue
+            }
+
+            $endpoint = Resolve-TestStringExpression -Expression $endpointExpression -Anchor $command -RootAst $ast
+            if ([string]::IsNullOrWhiteSpace([string]$endpoint)) {
+                continue
+            }
+            if ($endpointFromSourceName -and $endpoint.StartsWith('Graph ', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $endpoint = $endpoint.Substring(6)
+            }
+            $endpoint = ([string]$endpoint).Replace('{0}', '{id}')
+            if ($endpoint -notmatch '^/(v1\.0|beta)/') {
+                continue
+            }
+
+            $sectionExpression = Get-TestCommandParameterExpression -Command $command -Name 'Section'
+            $section = if ($null -ne $sectionExpression) {
+                Resolve-TestStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast
+            }
+            else {
+                $null
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$section)) {
+                $section = $fileSection
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$section)) {
+                continue
+            }
+
+            $routes += ('{0}|{1}|{2}|{3}' -f $section, $stage, $family, $endpoint)
+        }
+
+        return @($routes | Sort-Object -Unique)
+    }
+
+    function Get-TestMatrixGraphRoute {
+        param([Parameter(Mandatory = $true)][object]$Matrix)
+
+        $routes = @()
+        foreach ($family in @($Matrix.graphFamilies)) {
+            foreach ($stageProperty in @($family.requests.PSObject.Properties)) {
+                foreach ($endpoint in @($stageProperty.Value)) {
+                    $routes += ('{0}|{1}|{2}|{3}' -f [string]$family.section, [string]$stageProperty.Name, [string]$family.family, [string]$endpoint)
+                }
+            }
+        }
+        return @($routes | Sort-Object -Unique)
+    }
+
     function Assert-TestSetEqual {
         param(
             [Parameter(Mandatory = $true)][string[]]$Expected,
@@ -119,6 +358,12 @@ BeforeAll {
             }
         }
     ) | Sort-Object -Unique
+    $script:productionGraphRoutes = @(
+        Get-ChildItem -LiteralPath $moduleRoot -Filter '*.psm1' -File | ForEach-Object {
+            Get-TestGraphRoute -Path $_.FullName
+        }
+    ) | Sort-Object -Unique
+    $script:matrixGraphRoutes = @(Get-TestMatrixGraphRoute -Matrix $script:matrix)
     $script:productionOnPremCommands = @(Get-TestExternalCommand -Path $onPremProviderPath)
     $script:matrixOnPremCommands = @(
         foreach ($module in @($script:matrix.onPrem.modules)) {
@@ -145,6 +390,12 @@ Describe 'Permission matrix conformance' {
         $script:productionGraphEndpoints.Count | Should -BeGreaterThan 0
         $script:matrixGraphEndpoints.Count | Should -BeGreaterThan 0
         Assert-TestSetEqual -Expected $script:productionGraphEndpoints -Actual $script:matrixGraphEndpoints -Label 'Graph endpoint inventory'
+    }
+
+    It 'binds every Graph endpoint to its production section stage and family' {
+        $script:productionGraphRoutes.Count | Should -BeGreaterThan 0
+        $script:matrixGraphRoutes.Count | Should -BeGreaterThan 0
+        Assert-TestSetEqual -Expected $script:productionGraphRoutes -Actual $script:matrixGraphRoutes -Label 'Graph route inventory'
     }
 
     It 'covers every on-prem external command dependency at the set boundary' {
@@ -250,5 +501,37 @@ Describe 'Permission matrix conformance' {
             Should -Throw '*Missing: Get-ADForest*'
         { Assert-TestSetEqual -Expected $script:productionOnPremCommands -Actual $staleCommand -Label 'stale command mutation' } |
             Should -Throw '*Stale: Get-ADStalePermissionMatrixCommand*'
+    }
+
+    It 'proves family and stage route mutations fail even when endpoint membership is preserved' {
+        $applicationStage1 = 'entra-apps|stage1|applications|/v1.0/applications'
+        $servicePrincipalStage1 = 'entra-apps|stage1|servicePrincipals|/v1.0/servicePrincipals'
+        $swappedFamilyRoutes = @($script:matrixGraphRoutes | ForEach-Object {
+            if ($_ -eq $applicationStage1) {
+                'entra-apps|stage1|applications|/v1.0/servicePrincipals'
+            }
+            elseif ($_ -eq $servicePrincipalStage1) {
+                'entra-apps|stage1|servicePrincipals|/v1.0/applications'
+            }
+            else {
+                $_
+            }
+        })
+        $wrongStageRoutes = @($script:matrixGraphRoutes | ForEach-Object {
+            if ($_ -eq $applicationStage1) {
+                'entra-apps|stage2|applications|/v1.0/applications'
+            }
+            else {
+                $_
+            }
+        })
+        $staleRoute = @($script:matrixGraphRoutes + 'entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute')
+
+        { Assert-TestSetEqual -Expected $script:productionGraphRoutes -Actual $swappedFamilyRoutes -Label 'family swap mutation' } |
+            Should -Throw '*Graph route*'
+        { Assert-TestSetEqual -Expected $script:productionGraphRoutes -Actual $wrongStageRoutes -Label 'stage mutation' } |
+            Should -Throw '*Graph route*'
+        { Assert-TestSetEqual -Expected $script:productionGraphRoutes -Actual $staleRoute -Label 'stale route mutation' } |
+            Should -Throw '*Stale: entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute*'
     }
 }
