@@ -89,6 +89,80 @@ BeforeAll {
         return $null
     }
 
+    function Resolve-TestScriptBlockParameterValue {
+        param(
+            [Parameter(Mandatory = $true)][string]$VariableName,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.ScriptBlockAst]$ScriptBlock,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$RootAst,
+            [int]$Depth = 0
+        )
+
+        if ($Depth -gt 8 -or $null -eq $ScriptBlock.ParamBlock) {
+            return $null
+        }
+
+        $parameters = @($ScriptBlock.ParamBlock.Parameters)
+        $parameterIndex = -1
+        for ($index = 0; $index -lt $parameters.Count; $index++) {
+            if ([string]$parameters[$index].Name.VariablePath.UserPath -ieq $VariableName) {
+                $parameterIndex = $index
+                break
+            }
+        }
+        if ($parameterIndex -lt 0) {
+            return $null
+        }
+
+        $assignments = @($RootAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst]
+        }, $true) | Where-Object {
+            $_.Right.Extent.StartOffset -le $ScriptBlock.Extent.StartOffset -and
+            $_.Right.Extent.EndOffset -ge $ScriptBlock.Extent.EndOffset
+        } | Sort-Object { $_.Extent.StartOffset } -Descending)
+        if ($assignments.Count -lt 1) {
+            return $null
+        }
+
+        $runnerAssignment = $assignments[0]
+        $runnerName = [string]$runnerAssignment.Left.VariablePath.UserPath
+        if ([string]::IsNullOrWhiteSpace($runnerName)) {
+            return $null
+        }
+
+        $pattern = '(?s)\.Invoke\(\s*\$' + [regex]::Escape($runnerName) + '\s*,\s*\[object\[\]\]\s*@\((?<args>[^)]*)\)\s*\)'
+        $values = @([regex]::Matches([string]$RootAst.Extent.Text, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) | ForEach-Object {
+            $arguments = @($_.Groups['args'].Value -split ',' | ForEach-Object { $_.Trim() })
+            if ($parameterIndex -ge $arguments.Count) {
+                return
+            }
+
+            $argumentText = [string]$arguments[$parameterIndex]
+            if ($argumentText -match '^\$(?:[^:]+:)?(?<name>[A-Za-z_][A-Za-z0-9_]*)$') {
+                $resolved = Resolve-TestVariableStringValue -VariableName $Matches['name'] -Anchor $runnerAssignment -RootAst $RootAst -Depth ($Depth + 1)
+                if (-not [string]::IsNullOrWhiteSpace([string]$resolved)) {
+                    [string]$resolved
+                }
+                return
+            }
+
+            if (
+                ($argumentText.StartsWith("'", [System.StringComparison]::Ordinal) -and $argumentText.EndsWith("'", [System.StringComparison]::Ordinal)) -or
+                ($argumentText.StartsWith('"', [System.StringComparison]::Ordinal) -and $argumentText.EndsWith('"', [System.StringComparison]::Ordinal))
+            ) {
+                $argumentText.Substring(1, $argumentText.Length - 2)
+            }
+        } | Where-Object {
+            -not [string]::IsNullOrWhiteSpace([string]$_)
+        } | Sort-Object -Unique)
+
+        if ($values.Count -eq 1) {
+            return [string]$values[0]
+        }
+        return $null
+    }
+
     function Resolve-TestVariableStringValue {
         param(
             [Parameter(Mandatory = $true)][string]$VariableName,
@@ -124,6 +198,13 @@ BeforeAll {
             $switchValue = Get-TestEnclosingSwitchValue -Anchor $Anchor
             if (-not [string]::IsNullOrWhiteSpace([string]$switchValue)) {
                 return [string]$switchValue
+            }
+        }
+
+        if ($null -ne $scriptBlock) {
+            $scriptBlockValue = Resolve-TestScriptBlockParameterValue -VariableName $VariableName -ScriptBlock $scriptBlock -RootAst $RootAst -Depth ($Depth + 1)
+            if (-not [string]::IsNullOrWhiteSpace([string]$scriptBlockValue)) {
+                return [string]$scriptBlockValue
             }
         }
 
