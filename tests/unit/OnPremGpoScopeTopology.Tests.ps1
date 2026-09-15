@@ -27,6 +27,9 @@ BeforeAll {
         [CmdletBinding()]
         param([string]$Target, [string]$Domain)
         $global:CollectorTopologyInheritanceCalls.Add([pscustomobject]@{ Target = $Target; Domain = $Domain }) | Out-Null
+        if ($global:CollectorTopologyInheritanceFailureTarget -and $Target -eq $global:CollectorTopologyInheritanceFailureTarget) {
+            throw ('Synthetic inheritance failure for {0}' -f $Target)
+        }
         return [pscustomobject]@{
             GpoInheritanceBlocked = 'Yes'
             GpoLinks = @(
@@ -67,10 +70,10 @@ BeforeAll {
         )
     }
 
-    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.OnPrem.psm1') -Force -ErrorAction Stop
 }
 
 Describe 'GPO scope topology provider evidence' {
@@ -80,6 +83,7 @@ Describe 'GPO scope topology provider evidence' {
         $global:CollectorTopologyInheritanceCalls = [System.Collections.Generic.List[object]]::new()
         $global:CollectorTopologyGpoCalls = [System.Collections.Generic.List[object]]::new()
         $global:CollectorTopologyReturnWmiFilter = $true
+        $global:CollectorTopologyInheritanceFailureTarget = $null
         $global:CollectorTopologyReportXml = @"
 <GPO xmlns="http://www.microsoft.com/GroupPolicy/Settings">
   <LinksTo><SOMName>example.com</SOMName><SOMPath>example.com</SOMPath><Enabled>true</Enabled><NoOverride>false</NoOverride></LinksTo>
@@ -93,7 +97,7 @@ Describe 'GPO scope topology provider evidence' {
         foreach ($name in @('Get-GPOReport', 'Get-ADDomain', 'Get-GPInheritance', 'Get-GPO', 'Get-GPPermission')) {
             Remove-Item -LiteralPath ('Function:\{0}' -f $name) -ErrorAction SilentlyContinue
         }
-        foreach ($name in @('CollectorTopologyReportCalls', 'CollectorTopologyDomainCalls', 'CollectorTopologyInheritanceCalls', 'CollectorTopologyGpoCalls', 'CollectorTopologyReturnWmiFilter', 'CollectorTopologyReportXml')) {
+        foreach ($name in @('CollectorTopologyReportCalls', 'CollectorTopologyDomainCalls', 'CollectorTopologyInheritanceCalls', 'CollectorTopologyGpoCalls', 'CollectorTopologyReturnWmiFilter', 'CollectorTopologyInheritanceFailureTarget', 'CollectorTopologyReportXml')) {
             Remove-Variable -Name $name -Scope Global -ErrorAction SilentlyContinue
         }
     }
@@ -155,6 +159,22 @@ Describe 'GPO scope topology provider evidence' {
         }
         $results[0].scopeType | Should -Be 'domain'
         $results[1].scopeType | Should -Be 'organizationalUnit'
+    }
+
+    It 'retains source scope identity when inheritance collection fails' {
+        $ouDn = 'OU=Broken,DC=example,DC=com'
+        $global:CollectorTopologyInheritanceFailureTarget = $ouDn
+        $ouEnvelope = [pscustomobject]@{
+            dependencyFamily = 'organizationalUnits'
+            inventoryItem = [pscustomobject]@{ id = $ouDn; distinguishedName = $ouDn; domainId = 'example.com' }
+        }
+
+        $result = @(Invoke-CollectorOnPremRelationshipFamily -Family 'gpoScopeInheritance' -InventoryItems @($ouEnvelope))[0]
+        $result.scopeId | Should -Be $ouDn
+        $result.scopeType | Should -Be 'organizationalUnit'
+        $result.domainContext | Should -Be 'example.com'
+        $result.targetDistinguishedName | Should -Be $ouDn
+        $result._collectorError | Should -Match '^Synthetic inheritance failure'
     }
 
     It 'preserves provider-native WMI filter identity and explicit absence' {
