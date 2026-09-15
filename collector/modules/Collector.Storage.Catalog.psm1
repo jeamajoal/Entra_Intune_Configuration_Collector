@@ -66,6 +66,9 @@ $script:CollectorCatalogDependencies = @{
     'stage3|onprem-ad-gpo|ouAcl' = @('organizationalUnits')
     'stage3|onprem-ad-gpo|gpoPermissions' = @('gpos')
     'stage3|onprem-ad-gpo|groupMembersOnPrem' = @('groups')
+    'stage3|onprem-ad-gpo|gpoScopeLinks' = @('gpos')
+    'stage3|onprem-ad-gpo|gpoScopeInheritance' = @('domains', 'organizationalUnits')
+    'stage3|onprem-ad-gpo|gpoWmiFilterAssociations' = @('gpos')
 }
 
 $script:CollectorCatalogReferenceDependencies = @{
@@ -77,6 +80,9 @@ $script:CollectorCatalogRelationships = @{
     'onprem-ad-gpo|domainRootAcl' = [pscustomobject]@{ Type = 'acl'; Source = @('ad.domain'); Target = @('ad.security-principal') }
     'onprem-ad-gpo|ouAcl' = [pscustomobject]@{ Type = 'acl'; Source = @('ad.organizational-unit'); Target = @('ad.security-principal') }
     'onprem-ad-gpo|gpoPermissions' = [pscustomobject]@{ Type = 'acl'; Source = @('gpo.policy'); Target = @('ad.security-principal') }
+    'onprem-ad-gpo|gpoScopeLinks' = [pscustomobject]@{ Type = 'policy-link'; Source = @('gpo.policy'); Target = @('ad.scope') }
+    'onprem-ad-gpo|gpoScopeInheritance' = [pscustomobject]@{ Type = 'policy-inheritance'; Source = @('ad.scope'); Target = @('gpo.policy') }
+    'onprem-ad-gpo|gpoWmiFilterAssociations' = [pscustomobject]@{ Type = 'policy-filter'; Source = @('gpo.policy'); Target = @('gpo.wmi-filter') }
     'entra-apps|groupMembers' = [pscustomobject]@{ Type = 'membership'; Source = @('entra.group'); Target = @('entra.directory-object') }
     'onprem-ad-gpo|groupMembersOnPrem' = [pscustomobject]@{ Type = 'membership'; Source = @('ad.group'); Target = @('ad.directory-object') }
     'intune-core|mobileAppAssignments' = [pscustomobject]@{ Type = 'assignment'; Source = @('intune.mobile-app'); Target = @('intune.assignment-target') }
