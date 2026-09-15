@@ -280,9 +280,9 @@ BeforeAll {
 
             $enclosingFunction = Get-TestEnclosingFunction -Anchor $command
             if (
-                $commandName -ieq 'Invoke-CollectorStage1Family' -and
                 $null -ne $enclosingFunction -and
-                [string]$enclosingFunction.Name -ieq 'Invoke-CollectorGraphInventoryFamily'
+                [string]$enclosingFunction.Name -match 'Graph' -and
+                $commandName -notmatch 'Graph'
             ) {
                 continue
             }
