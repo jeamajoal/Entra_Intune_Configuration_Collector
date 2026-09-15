@@ -107,7 +107,7 @@ BeforeAll {
                 param($node)
                 $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
                 [string]$node.Left.Extent.Text -ieq $leftText
-            }, $true) | Where-Object {
+            }, $false) | Where-Object {
                 $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset -and [string]$_.Right.Extent.Text -ine $leftText
             } | Sort-Object { $_.Extent.EndOffset } -Descending)
 
@@ -359,6 +359,13 @@ BeforeAll {
                 continue
             }
 
+            $splattedArguments = @($command.CommandElements | Where-Object {
+                $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and $_.Splatted
+            })
+            if ($splattedArguments.Count -gt 0) {
+                throw ('Unable to resolve recognized Graph route command {0}; splatted arguments are not supported: {1}' -f $commandName, (($splattedArguments | ForEach-Object { [string]$_.Extent.Text }) -join ', '))
+            }
+
             $familyExpression = Get-TestCommandParameterExpression -Command $command -Name 'Family'
             if ($null -eq $familyExpression) { continue }
 
@@ -459,6 +466,30 @@ Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
 
         { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'rejects splatted recognized route arguments' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'SplattedGraphRoute.psm1'
+        @'
+$route = @{ Section = 'entra-apps'; Family = 'applications'; Endpoint = '/v1.0/applications' }
+Invoke-CollectorGraphInventoryFamily @route
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*splatted arguments are not supported*'
+    }
+
+    It 'does not let nested callback assignments override the current lexical route scope' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'NestedAssignmentScope.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1 {
+    $descriptor = [pscustomobject]@{ Endpoint = '/v1.0/servicePrincipals' }
+    $endpoint = $descriptor.Endpoint
+    $callback = { $endpoint = '/v1.0/applications' }
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family 'applications' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint)
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route endpoint*'
     }
 
     It 'does not fall back past the latest unresolved route assignment' {
