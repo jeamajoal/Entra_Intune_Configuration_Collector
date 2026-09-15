@@ -70,6 +70,19 @@ BeforeAll {
         } | Sort-Object -Unique)
     }
 
+    function Get-TestOptionalPropertyValues {
+        param(
+            [Parameter(Mandatory = $true)][object]$InputObject,
+            [Parameter(Mandatory = $true)][string]$Name
+        )
+
+        $property = $InputObject.PSObject.Properties[$Name]
+        if ($null -eq $property -or $null -eq $property.Value) {
+            return @()
+        }
+        return @($property.Value)
+    }
+
     function Assert-TestSetEqual {
         param(
             [Parameter(Mandatory = $true)][string[]]$Expected,
@@ -150,7 +163,12 @@ Describe 'Permission matrix conformance' {
             @($permissionProfileEntry.delegatedPermissions).Count | Should -BeGreaterThan 0
             @($permissionProfileEntry.sourceUrls).Count | Should -BeGreaterThan 0
 
-            foreach ($permission in @($permissionProfileEntry.applicationPermissions) + @($permissionProfileEntry.delegatedPermissions) + @($permissionProfileEntry.optionalApplicationPermissions) + @($permissionProfileEntry.optionalDelegatedPermissions)) {
+            $allPermissions = @()
+            $allPermissions += @($permissionProfileEntry.applicationPermissions)
+            $allPermissions += @($permissionProfileEntry.delegatedPermissions)
+            $allPermissions += @(Get-TestOptionalPropertyValues -InputObject $permissionProfileEntry -Name 'optionalApplicationPermissions')
+            $allPermissions += @(Get-TestOptionalPropertyValues -InputObject $permissionProfileEntry -Name 'optionalDelegatedPermissions')
+            foreach ($permission in $allPermissions) {
                 if (-not [string]::IsNullOrWhiteSpace([string]$permission)) {
                     [string]$permission | Should -Not -Match 'ReadWrite'
                 }
