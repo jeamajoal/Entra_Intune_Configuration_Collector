@@ -111,11 +111,13 @@ BeforeAll {
                 $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset -and [string]$_.Right.Extent.Text -ine $leftText
             } | Sort-Object { $_.Extent.EndOffset } -Descending)
 
-            foreach ($assignment in $assignments) {
-                $resolved = Resolve-TestStringExpression -Expression $assignment.Right -Anchor $assignment -RootAst $RootAst -Depth ($Depth + 1)
-                if (-not [string]::IsNullOrWhiteSpace([string]$resolved)) {
-                    return [string]$resolved
+            if ($assignments.Count -gt 0) {
+                $latestAssignment = $assignments[0]
+                $resolved = Resolve-TestStringExpression -Expression $latestAssignment.Right -Anchor $latestAssignment -RootAst $RootAst -Depth ($Depth + 1)
+                if ([string]::IsNullOrWhiteSpace([string]$resolved)) {
+                    return $null
                 }
+                return [string]$resolved
             }
         }
 
@@ -138,20 +140,31 @@ BeforeAll {
             return $null
         }
 
-        $callerValues = @($RootAst.FindAll({
+        $callerCommands = @($RootAst.FindAll({
             param($node)
             $node -is [System.Management.Automation.Language.CommandAst]
         }, $true) | Where-Object {
             [string]$_.GetCommandName() -ieq [string]$functionAst.Name -and
             ($_.Extent.StartOffset -lt $functionAst.Extent.StartOffset -or $_.Extent.EndOffset -gt $functionAst.Extent.EndOffset)
-        } | ForEach-Object {
-            $argumentExpression = Get-TestCommandParameterExpression -Command $_ -Name $VariableName
-            if ($null -ne $argumentExpression) {
-                Resolve-TestStringExpression -Expression $argumentExpression -Anchor $_ -RootAst $RootAst -Depth ($Depth + 1)
+        })
+        if ($callerCommands.Count -eq 0) {
+            return $null
+        }
+
+        $callerValues = @()
+        foreach ($callerCommand in $callerCommands) {
+            $argumentExpression = Get-TestCommandParameterExpression -Command $callerCommand -Name $VariableName
+            if ($null -eq $argumentExpression) {
+                return $null
             }
-        } | Where-Object {
-            -not [string]::IsNullOrWhiteSpace([string]$_)
-        } | Sort-Object -Unique)
+
+            $resolvedCallerValue = Resolve-TestStringExpression -Expression $argumentExpression -Anchor $callerCommand -RootAst $RootAst -Depth ($Depth + 1)
+            if ([string]::IsNullOrWhiteSpace([string]$resolvedCallerValue)) {
+                return $null
+            }
+            $callerValues += [string]$resolvedCallerValue
+        }
+        $callerValues = @($callerValues | Sort-Object -Unique)
 
         if ($callerValues.Count -eq 1) {
             return [string]$callerValues[0]
@@ -325,6 +338,11 @@ BeforeAll {
         $fileSection = Get-TestFileSectionValue -Ast $ast
         $routes = @(Get-TestCustomGraphRoutesFromAst -Ast $ast -Path $Path)
         $commands = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
+        $genericGraphWrappers = @(
+            'Invoke-CollectorGraphInventoryFamily',
+            'Invoke-CollectorStage2GraphFamily',
+            'Invoke-CollectorStage3GraphPerObjectFamily'
+        )
 
         foreach ($command in $commands) {
             $commandName = [string]$command.GetCommandName()
@@ -335,7 +353,7 @@ BeforeAll {
             $enclosingFunction = Get-TestEnclosingFunction -Anchor $command
             if (
                 $null -ne $enclosingFunction -and
-                [string]$enclosingFunction.Name -match 'Graph' -and
+                $genericGraphWrappers -contains [string]$enclosingFunction.Name -and
                 $commandName -notmatch 'Graph'
             ) {
                 continue
@@ -441,6 +459,47 @@ Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
 
         { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'does not fall back past the latest unresolved route assignment' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'LatestAssignmentMustResolve.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1 {
+    $endpoint = '/v1.0/applications'
+    $descriptor = [pscustomobject]@{ Endpoint = '/v1.0/servicePrincipals' }
+    $endpoint = $descriptor.Endpoint
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family 'applications' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint)
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route endpoint*'
+    }
+
+    It 'fails closed when any helper caller cannot resolve a route parameter' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'UnresolvedHelperCaller.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1Helper {
+    param([string]$Family)
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family $Family -SourceType 'Graph' -SourceName 'Graph /v1.0/applications'
+}
+
+Invoke-CollectorSyntheticStage1Helper -Family 'applications'
+$descriptor = [pscustomobject]@{ Family = 'servicePrincipals' }
+Invoke-CollectorSyntheticStage1Helper -Family $descriptor.Family
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'does not exclude concrete Graph-named collectors' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'ConcreteGraphNamedCollector.psm1'
+        @'
+function Invoke-CollectorGraphSyntheticStage1 {
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family 'applications' -SourceType 'Graph' -SourceName 'Graph /v1.0/applications'
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        @(Get-TestGraphRoutesFromFile -Path $fixturePath) | Should -Contain 'entra-apps|stage1|applications|/v1.0/applications'
     }
 
     It 'extracts custom Graph stage routes declared by local routing assignments' {
