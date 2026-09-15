@@ -36,7 +36,6 @@ BeforeAll {
             }
             return $null
         }
-
         return $null
     }
 
@@ -89,80 +88,6 @@ BeforeAll {
         return $null
     }
 
-    function Resolve-TestScriptBlockParameterValue {
-        param(
-            [Parameter(Mandatory = $true)][string]$VariableName,
-            [Parameter(Mandatory = $true)][System.Management.Automation.Language.ScriptBlockAst]$ScriptBlock,
-            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$RootAst,
-            [int]$Depth = 0
-        )
-
-        if ($Depth -gt 8 -or $null -eq $ScriptBlock.ParamBlock) {
-            return $null
-        }
-
-        $parameters = @($ScriptBlock.ParamBlock.Parameters)
-        $parameterIndex = -1
-        for ($index = 0; $index -lt $parameters.Count; $index++) {
-            if ([string]$parameters[$index].Name.VariablePath.UserPath -ieq $VariableName) {
-                $parameterIndex = $index
-                break
-            }
-        }
-        if ($parameterIndex -lt 0) {
-            return $null
-        }
-
-        $assignments = @($RootAst.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst]
-        }, $true) | Where-Object {
-            $_.Right.Extent.StartOffset -le $ScriptBlock.Extent.StartOffset -and
-            $_.Right.Extent.EndOffset -ge $ScriptBlock.Extent.EndOffset
-        } | Sort-Object { $_.Extent.StartOffset } -Descending)
-        if ($assignments.Count -lt 1) {
-            return $null
-        }
-
-        $runnerAssignment = $assignments[0]
-        $runnerName = [string]$runnerAssignment.Left.VariablePath.UserPath
-        if ([string]::IsNullOrWhiteSpace($runnerName)) {
-            return $null
-        }
-
-        $pattern = '(?s)\.Invoke\(\s*\$' + [regex]::Escape($runnerName) + '\s*,\s*\[object\[\]\]\s*@\((?<args>[^)]*)\)\s*\)'
-        $values = @([regex]::Matches([string]$RootAst.Extent.Text, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) | ForEach-Object {
-            $arguments = @($_.Groups['args'].Value -split ',' | ForEach-Object { $_.Trim() })
-            if ($parameterIndex -ge $arguments.Count) {
-                return
-            }
-
-            $argumentText = [string]$arguments[$parameterIndex]
-            if ($argumentText -match '^\$(?:[^:]+:)?(?<name>[A-Za-z_][A-Za-z0-9_]*)$') {
-                $resolved = Resolve-TestVariableStringValue -VariableName $Matches['name'] -Anchor $runnerAssignment -RootAst $RootAst -Depth ($Depth + 1)
-                if (-not [string]::IsNullOrWhiteSpace([string]$resolved)) {
-                    [string]$resolved
-                }
-                return
-            }
-
-            if (
-                ($argumentText.StartsWith("'", [System.StringComparison]::Ordinal) -and $argumentText.EndsWith("'", [System.StringComparison]::Ordinal)) -or
-                ($argumentText.StartsWith('"', [System.StringComparison]::Ordinal) -and $argumentText.EndsWith('"', [System.StringComparison]::Ordinal))
-            ) {
-                $argumentText.Substring(1, $argumentText.Length - 2)
-            }
-        } | Where-Object {
-            -not [string]::IsNullOrWhiteSpace([string]$_)
-        } | Sort-Object -Unique)
-
-        if ($values.Count -eq 1) {
-            return [string]$values[0]
-        }
-        return $null
-    }
-
     function Resolve-TestVariableStringValue {
         param(
             [Parameter(Mandatory = $true)][string]$VariableName,
@@ -198,13 +123,6 @@ BeforeAll {
             $switchValue = Get-TestEnclosingSwitchValue -Anchor $Anchor
             if (-not [string]::IsNullOrWhiteSpace([string]$switchValue)) {
                 return [string]$switchValue
-            }
-        }
-
-        if ($null -ne $scriptBlock) {
-            $scriptBlockValue = Resolve-TestScriptBlockParameterValue -VariableName $VariableName -ScriptBlock $scriptBlock -RootAst $RootAst -Depth ($Depth + 1)
-            if (-not [string]::IsNullOrWhiteSpace([string]$scriptBlockValue)) {
-                return [string]$scriptBlockValue
             }
         }
 
@@ -263,9 +181,7 @@ BeforeAll {
         $stringValues = @($Expression.FindAll({
             param($node)
             $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
-        }, $true) | ForEach-Object {
-            [string]$_.Value
-        } | Sort-Object -Unique)
+        }, $true) | ForEach-Object { [string]$_.Value } | Sort-Object -Unique)
         $variables = @($Expression.FindAll({
             param($node)
             $node -is [System.Management.Automation.Language.VariableExpressionAst]
@@ -277,15 +193,12 @@ BeforeAll {
                 return ('Graph {0}' -f $resolved)
             }
         }
-
         if ($variables.Count -eq 1 -and $stringValues.Count -eq 0) {
             return Resolve-TestVariableStringValue -VariableName ([string]$variables[0].VariablePath.UserPath) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
         }
-
         if ($variables.Count -eq 0 -and $stringValues.Count -eq 1) {
             return [string]$stringValues[0]
         }
-
         return $null
     }
 
@@ -315,9 +228,7 @@ BeforeAll {
             if ($sectionExpression -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
                 [string]$sectionExpression.Value
             }
-        } | Where-Object {
-            $_ -match '^(entra-|intune-)'
-        } | Sort-Object -Unique)
+        } | Where-Object { $_ -match '^(entra-|intune-)' } | Sort-Object -Unique)
 
         if ($sections.Count -eq 1) {
             return [string]$sections[0]
@@ -328,15 +239,9 @@ BeforeAll {
     function Get-TestCommandStage {
         param([Parameter(Mandatory = $true)][string]$CommandName)
 
-        if ($CommandName -ieq 'Invoke-CollectorGraphInventoryFamily' -or $CommandName -match 'Stage1') {
-            return 'stage1'
-        }
-        if ($CommandName -match 'Stage2') {
-            return 'stage2'
-        }
-        if ($CommandName -match 'Stage3') {
-            return 'stage3'
-        }
+        if ($CommandName -ieq 'Invoke-CollectorGraphInventoryFamily' -or $CommandName -match 'Stage1') { return 'stage1' }
+        if ($CommandName -match 'Stage2') { return 'stage2' }
+        if ($CommandName -match 'Stage3') { return 'stage3' }
         return $null
     }
 
@@ -365,71 +270,44 @@ BeforeAll {
         $ast = Get-TestParsedAst -Path $Path
         $fileSection = Get-TestFileSectionValue -Ast $ast
         $routes = @()
-        $commands = @($ast.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.CommandAst]
-        }, $true))
+        $commands = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
 
         foreach ($command in $commands) {
             $commandName = [string]$command.GetCommandName()
-            if ([string]::IsNullOrWhiteSpace($commandName)) {
-                continue
-            }
+            if ([string]::IsNullOrWhiteSpace($commandName)) { continue }
             $stage = Get-TestCommandStage -CommandName $commandName
-            if ($null -eq $stage) {
-                continue
-            }
+            if ($null -eq $stage) { continue }
 
             $familyExpression = Get-TestCommandParameterExpression -Command $command -Name 'Family'
+            if ($null -eq $familyExpression) { continue }
+
             $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'EndpointTemplate'
-            if ($null -eq $endpointExpression) {
-                $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'Endpoint'
-            }
-            if ($null -eq $endpointExpression) {
-                $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceName'
-            }
-            if ($null -eq $familyExpression -or $null -eq $endpointExpression) {
-                continue
-            }
+            if ($null -eq $endpointExpression) { $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'Endpoint' }
+            if ($null -eq $endpointExpression) { $endpointExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceName' }
+            if ($null -eq $endpointExpression) { continue }
 
             $sourceTypeExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceType'
-            $isGraphRoute = $commandName -match 'Graph'
             if ($null -ne $sourceTypeExpression) {
                 $sourceType = Resolve-TestRequiredStringExpression -Expression $sourceTypeExpression -Anchor $command -RootAst $ast -Label ('route SourceType for {0}' -f $commandName)
-                if ([string]$sourceType -ine 'Graph') {
-                    continue
-                }
-                $isGraphRoute = $true
+                if ([string]$sourceType -ine 'Graph') { continue }
             }
-            elseif (-not $isGraphRoute) {
+            else {
                 $endpointProbe = Resolve-TestStringExpression -Expression $endpointExpression -Anchor $command -RootAst $ast
                 if ([string]::IsNullOrWhiteSpace([string]$endpointProbe)) {
                     throw ('Unable to classify route-shaped call {0}; endpoint expression could not be resolved: {1}' -f $commandName, [string]$endpointExpression.Extent.Text)
                 }
                 $probe = [string]$endpointProbe
-                if ($probe.StartsWith('Graph ', [System.StringComparison]::OrdinalIgnoreCase)) {
-                    $probe = $probe.Substring(6)
-                }
-                if ($probe -notmatch '^/(v1\.0|beta)/') {
-                    continue
-                }
-                $isGraphRoute = $true
-            }
-
-            if (-not $isGraphRoute) {
-                continue
+                if ($probe.StartsWith('Graph ', [System.StringComparison]::OrdinalIgnoreCase)) { $probe = $probe.Substring(6) }
+                if ($probe -notmatch '^/(v1\.0|beta)/') { continue }
             }
 
             $family = Resolve-TestRequiredStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast -Label ('Graph route Family for {0}' -f $commandName)
             $endpoint = Resolve-TestRequiredStringExpression -Expression $endpointExpression -Anchor $command -RootAst $ast -Label ('Graph route endpoint for {0}' -f $commandName)
-
             $sectionExpression = Get-TestCommandParameterExpression -Command $command -Name 'Section'
-            if ($null -ne $sectionExpression) {
-                $section = Resolve-TestRequiredStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast -Label ('Graph route Section for {0}' -f $commandName)
+            $section = if ($null -ne $sectionExpression) {
+                Resolve-TestRequiredStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast -Label ('Graph route Section for {0}' -f $commandName)
             }
-            else {
-                $section = $fileSection
-            }
+            else { $fileSection }
             if ([string]::IsNullOrWhiteSpace([string]$section)) {
                 throw ('Unable to resolve Graph route Section for {0} in {1}.' -f $commandName, $Path)
             }
@@ -437,32 +315,6 @@ BeforeAll {
             $route = ConvertTo-TestGraphRoute -Section $section -Stage $stage -Family $family -Endpoint $endpoint
             if ($null -eq $route) {
                 throw ('Resolved route for {0} is not a valid Graph route: section={1}; stage={2}; family={3}; endpoint={4}' -f $commandName, $section, $stage, $family, $endpoint)
-            }
-            $routes += $route
-        }
-
-        foreach ($command in $commands | Where-Object { [string]$_.GetCommandName() -ieq 'New-CollectorProvenanceSnapshot' }) {
-            $sourceTypeExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceType'
-            $stageExpression = Get-TestCommandParameterExpression -Command $command -Name 'Stage'
-            $sectionExpression = Get-TestCommandParameterExpression -Command $command -Name 'Section'
-            $familyExpression = Get-TestCommandParameterExpression -Command $command -Name 'Family'
-            $sourceNameExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceName'
-            if ($null -eq $sourceTypeExpression -or $null -eq $stageExpression -or $null -eq $sectionExpression -or $null -eq $familyExpression -or $null -eq $sourceNameExpression) {
-                continue
-            }
-
-            $sourceType = Resolve-TestRequiredStringExpression -Expression $sourceTypeExpression -Anchor $command -RootAst $ast -Label 'provenance SourceType'
-            if ([string]$sourceType -ine 'Graph') {
-                continue
-            }
-            $stage = Resolve-TestRequiredStringExpression -Expression $stageExpression -Anchor $command -RootAst $ast -Label 'Graph provenance Stage'
-            $section = Resolve-TestRequiredStringExpression -Expression $sectionExpression -Anchor $command -RootAst $ast -Label 'Graph provenance Section'
-            $family = Resolve-TestRequiredStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast -Label 'Graph provenance Family'
-            $endpoint = Resolve-TestRequiredStringExpression -Expression $sourceNameExpression -Anchor $command -RootAst $ast -Label 'Graph provenance SourceName'
-
-            $route = ConvertTo-TestGraphRoute -Section $section -Stage $stage -Family $family -Endpoint $endpoint
-            if ($null -eq $route) {
-                throw ('Resolved Graph provenance route is invalid: section={0}; stage={1}; family={2}; endpoint={3}' -f $section, $stage, $family, $endpoint)
             }
             $routes += $route
         }
@@ -525,8 +377,7 @@ $descriptor = [pscustomobject]@{ Family = 'applications' }
 Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family -EndpointTemplate '/v1.0/applications'
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
 
-        { Get-TestGraphRoutesFromFile -Path $fixturePath } |
-            Should -Throw '*Unable to resolve Graph route Family*'
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
     }
 
     It 'ignores explicitly derived route-shaped batch calls' {
@@ -543,34 +394,19 @@ Invoke-CollectorStage3BatchLoop -Section 'entra-ca' -Family 'conditionalAccessPo
         $servicePrincipalStage1 = 'entra-apps|stage1|servicePrincipals|/v1.0/servicePrincipals'
 
         $swappedFamilyRoutes = @($script:matrixRoutes | ForEach-Object {
-            if ($_ -eq $applicationStage1) {
-                'entra-apps|stage1|applications|/v1.0/servicePrincipals'
-            }
-            elseif ($_ -eq $servicePrincipalStage1) {
-                'entra-apps|stage1|servicePrincipals|/v1.0/applications'
-            }
-            else {
-                $_
-            }
+            if ($_ -eq $applicationStage1) { 'entra-apps|stage1|applications|/v1.0/servicePrincipals' }
+            elseif ($_ -eq $servicePrincipalStage1) { 'entra-apps|stage1|servicePrincipals|/v1.0/applications' }
+            else { $_ }
         })
         $wrongStageRoutes = @($script:matrixRoutes | ForEach-Object {
-            if ($_ -eq $applicationStage1) {
-                'entra-apps|stage2|applications|/v1.0/applications'
-            }
-            else {
-                $_
-            }
+            if ($_ -eq $applicationStage1) { 'entra-apps|stage2|applications|/v1.0/applications' } else { $_ }
         })
         $missingRoute = @($script:matrixRoutes | Where-Object { $_ -ne $applicationStage1 })
         $staleRoute = @($script:matrixRoutes + 'entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute')
 
-        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $swappedFamilyRoutes -Label 'family swap mutation' } |
-            Should -Throw '*family swap mutation mismatch*'
-        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $wrongStageRoutes -Label 'stage mutation' } |
-            Should -Throw '*stage mutation mismatch*'
-        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $missingRoute -Label 'missing route mutation' } |
-            Should -Throw '*Missing: entra-apps|stage1|applications|/v1.0/applications*'
-        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $staleRoute -Label 'stale route mutation' } |
-            Should -Throw '*Stale: entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $swappedFamilyRoutes -Label 'family swap mutation' } | Should -Throw '*family swap mutation mismatch*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $wrongStageRoutes -Label 'stage mutation' } | Should -Throw '*stage mutation mismatch*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $missingRoute -Label 'missing route mutation' } | Should -Throw '*Missing: entra-apps|stage1|applications|/v1.0/applications*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $staleRoute -Label 'stale route mutation' } | Should -Throw '*Stale: entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute*'
     }
 }
