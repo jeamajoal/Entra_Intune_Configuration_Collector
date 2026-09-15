@@ -951,19 +951,28 @@ function Invoke-CollectorOnPremRelationshipFamily {
                     $dependencyFamily = if ($scopeItem.PSObject.Properties.Match('distinguishedName').Count -gt 0) { 'organizationalUnits' } else { 'domains' }
                 }
 
+                $scopeType = if ($dependencyFamily -eq 'domains') { 'domain' } elseif ($dependencyFamily -eq 'organizationalUnits') { 'organizationalUnit' } else { [string]$dependencyFamily }
+                $scopeId = if ($dependencyFamily -eq 'domains') {
+                    Get-CollectorFirstPropertyValue -Item $scopeItem -PropertyNames @('id', 'name')
+                }
+                else {
+                    Get-CollectorFirstPropertyValue -Item $scopeItem -PropertyNames @('id', 'distinguishedName', 'name')
+                }
+                $targetDn = if ($dependencyFamily -eq 'organizationalUnits') { $scopeId } else { $null }
                 $domainContext = Resolve-CollectorOnPremDomainContext -InventoryItem $scopeItem
                 if ([string]::IsNullOrWhiteSpace([string]$domainContext)) {
-                    $results += [pscustomobject]@{ scopeType = $dependencyFamily; domainContext = $null; _collectorError = 'Unable to resolve persisted domain context for GPO inheritance collection.' }
+                    $results += [pscustomobject]@{
+                        scopeId = if ($scopeId) { [string]$scopeId } else { $null }
+                        scopeType = $scopeType
+                        domainContext = $null
+                        targetDistinguishedName = if ($targetDn) { [string]$targetDn } else { $null }
+                        _collectorError = 'Unable to resolve persisted domain context for GPO inheritance collection.'
+                    }
                     continue
                 }
 
                 try {
-                    $scopeType = $null
-                    $scopeId = $null
-                    $targetDn = $null
                     if ($dependencyFamily -eq 'domains') {
-                        $scopeType = 'domain'
-                        $scopeId = Get-CollectorFirstPropertyValue -Item $scopeItem -PropertyNames @('id', 'name')
                         if (-not $scopeId) {
                             throw 'Unable to resolve domain identity for GPO inheritance collection.'
                         }
@@ -971,9 +980,9 @@ function Invoke-CollectorOnPremRelationshipFamily {
                         $targetDn = [string]$domain.DistinguishedName
                     }
                     elseif ($dependencyFamily -eq 'organizationalUnits') {
-                        $scopeType = 'organizationalUnit'
-                        $targetDn = Get-CollectorFirstPropertyValue -Item $scopeItem -PropertyNames @('id', 'distinguishedName')
-                        $scopeId = $targetDn
+                        if ([string]::IsNullOrWhiteSpace([string]$targetDn)) {
+                            throw 'Unable to resolve OU distinguished name for GPO inheritance collection.'
+                        }
                     }
                     else {
                         throw ('Unsupported GPO inheritance dependency family: {0}' -f $dependencyFamily)
@@ -1010,7 +1019,13 @@ function Invoke-CollectorOnPremRelationshipFamily {
                     }
                 }
                 catch {
-                    $results += [pscustomobject]@{ scopeType = $dependencyFamily; domainContext = [string]$domainContext; _collectorError = $_.Exception.Message }
+                    $results += [pscustomobject]@{
+                        scopeId = if ($scopeId) { [string]$scopeId } else { $null }
+                        scopeType = $scopeType
+                        domainContext = [string]$domainContext
+                        targetDistinguishedName = if ($targetDn) { [string]$targetDn } else { $null }
+                        _collectorError = $_.Exception.Message
+                    }
                 }
             }
         }
