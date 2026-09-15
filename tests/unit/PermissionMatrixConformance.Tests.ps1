@@ -4,15 +4,12 @@ BeforeAll {
     $orchestratorPath = Join-Path -Path $moduleRoot -ChildPath 'Collector.Orchestrator.psm1'
     $onPremProviderPath = Join-Path -Path $moduleRoot -ChildPath 'Collector.Provider.OnPrem.psm1'
     $matrixPath = Join-Path -Path $repoRoot -ChildPath 'docs/permissions/permission-matrix.json'
-    $guidePath = Join-Path -Path $repoRoot -ChildPath 'docs/permissions.md'
-    $readmePath = Join-Path -Path $repoRoot -ChildPath 'README.md'
-    $agentsPath = Join-Path -Path $repoRoot -ChildPath 'AGENTS.md'
+    $script:guidePath = Join-Path -Path $repoRoot -ChildPath 'docs/permissions.md'
+    $script:readmePath = Join-Path -Path $repoRoot -ChildPath 'README.md'
+    $script:agentsPath = Join-Path -Path $repoRoot -ChildPath 'AGENTS.md'
 
     function Get-TestParsedAst {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Path
-        )
+        param([Parameter(Mandatory = $true)][string]$Path)
 
         $tokens = $null
         $parseErrors = $null
@@ -25,11 +22,8 @@ BeforeAll {
 
     function Get-TestScriptArrayAssignmentValue {
         param(
-            [Parameter(Mandatory = $true)]
-            [System.Management.Automation.Language.Ast]$Ast,
-
-            [Parameter(Mandatory = $true)]
-            [string]$VariableName
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Ast,
+            [Parameter(Mandatory = $true)][string]$VariableName
         )
 
         $assignments = @($Ast.FindAll({
@@ -37,7 +31,6 @@ BeforeAll {
             $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
             [string]$node.Left.Extent.Text -eq ('$script:{0}' -f $VariableName)
         }, $true))
-
         if ($assignments.Count -ne 1) {
             throw ('Expected exactly one $script:{0} assignment, found {1}.' -f $VariableName, $assignments.Count)
         }
@@ -49,10 +42,7 @@ BeforeAll {
     }
 
     function Get-TestGraphEndpoint {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Path
-        )
+        param([Parameter(Mandatory = $true)][string]$Path)
 
         $ast = Get-TestParsedAst -Path $Path
         return @($ast.FindAll({
@@ -65,10 +55,7 @@ BeforeAll {
     }
 
     function Get-TestExternalCommand {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Path
-        )
+        param([Parameter(Mandatory = $true)][string]$Path)
 
         $ast = Get-TestParsedAst -Path $Path
         return @($ast.FindAll({
@@ -85,21 +72,15 @@ BeforeAll {
 
     function Assert-TestSetEqual {
         param(
-            [Parameter(Mandatory = $true)]
-            [string[]]$Expected,
-
-            [Parameter(Mandatory = $true)]
-            [string[]]$Actual,
-
-            [Parameter(Mandatory = $true)]
-            [string]$Label
+            [Parameter(Mandatory = $true)][string[]]$Expected,
+            [Parameter(Mandatory = $true)][string[]]$Actual,
+            [Parameter(Mandatory = $true)][string]$Label
         )
 
         $expectedSet = @($Expected | Sort-Object -Unique)
         $actualSet = @($Actual | Sort-Object -Unique)
         $missing = @($expectedSet | Where-Object { $actualSet -notcontains $_ })
         $stale = @($actualSet | Where-Object { $expectedSet -notcontains $_ })
-
         if ($missing.Count -gt 0 -or $stale.Count -gt 0) {
             $missingText = if ($missing.Count -gt 0) { $missing -join ', ' } else { '<none>' }
             $staleText = if ($stale.Count -gt 0) { $stale -join ', ' } else { '<none>' }
@@ -108,16 +89,14 @@ BeforeAll {
     }
 
     $script:matrix = Get-Content -LiteralPath $matrixPath -Raw | ConvertFrom-Json
-    $script:orchestratorAst = Get-TestParsedAst -Path $orchestratorPath
-    $script:supportedSections = @(Get-TestScriptArrayAssignmentValue -Ast $script:orchestratorAst -VariableName 'SupportedSections')
-    $script:graphBackedSections = @(Get-TestScriptArrayAssignmentValue -Ast $script:orchestratorAst -VariableName 'GraphBackedSections')
-
+    $orchestratorAst = Get-TestParsedAst -Path $orchestratorPath
+    $script:supportedSections = @(Get-TestScriptArrayAssignmentValue -Ast $orchestratorAst -VariableName 'SupportedSections')
+    $script:graphBackedSections = @(Get-TestScriptArrayAssignmentValue -Ast $orchestratorAst -VariableName 'GraphBackedSections')
     $script:productionGraphEndpoints = @(
         Get-ChildItem -LiteralPath $moduleRoot -Filter '*.psm1' -File | ForEach-Object {
             Get-TestGraphEndpoint -Path $_.FullName
         }
     ) | Sort-Object -Unique
-
     $script:matrixGraphEndpoints = @(
         foreach ($family in @($script:matrix.graphFamilies)) {
             foreach ($stageProperty in @($family.requests.PSObject.Properties)) {
@@ -127,7 +106,6 @@ BeforeAll {
             }
         }
     ) | Sort-Object -Unique
-
     $script:productionOnPremCommands = @(Get-TestExternalCommand -Path $onPremProviderPath)
     $script:matrixOnPremCommands = @(
         foreach ($module in @($script:matrix.onPrem.modules)) {
@@ -136,6 +114,8 @@ BeforeAll {
             }
         }
     ) | Sort-Object -Unique
+
+    Import-Module -Name $onPremProviderPath -Force -ErrorAction Stop
 }
 
 Describe 'Permission matrix conformance' {
@@ -143,19 +123,18 @@ Describe 'Permission matrix conformance' {
         [string]$script:matrix.schemaVersion | Should -Be '1.0'
         [string]$script:matrix.lastReviewedUtc | Should -Be '2026-09-15'
         [string]$script:matrix.recommendedTokenMode | Should -Be 'application'
-
         Assert-TestSetEqual -Expected $script:supportedSections -Actual @($script:matrix.sections) -Label 'matrix supported sections'
         Assert-TestSetEqual -Expected $script:graphBackedSections -Actual @($script:matrix.graphBackedSections) -Label 'matrix Graph-backed sections'
         [string]$script:matrix.onPrem.section | Should -Be 'onprem-ad-gpo'
     }
 
-    It 'covers every production Graph endpoint literal exactly once at the set boundary' {
+    It 'covers every production Graph endpoint at the set boundary' {
         $script:productionGraphEndpoints.Count | Should -BeGreaterThan 0
         $script:matrixGraphEndpoints.Count | Should -BeGreaterThan 0
         Assert-TestSetEqual -Expected $script:productionGraphEndpoints -Actual $script:matrixGraphEndpoints -Label 'Graph endpoint inventory'
     }
 
-    It 'covers every on-prem external command dependency exactly at the set boundary' {
+    It 'covers every on-prem external command dependency at the set boundary' {
         $script:productionOnPremCommands.Count | Should -BeGreaterThan 0
         $script:matrixOnPremCommands.Count | Should -BeGreaterThan 0
         Assert-TestSetEqual -Expected $script:productionOnPremCommands -Actual $script:matrixOnPremCommands -Label 'on-prem command inventory'
@@ -166,17 +145,17 @@ Describe 'Permission matrix conformance' {
         $profileNames.Count | Should -BeGreaterThan 0
 
         foreach ($profileProperty in @($script:matrix.permissionProfiles.PSObject.Properties)) {
-            $profile = $profileProperty.Value
-            @($profile.applicationPermissions).Count | Should -BeGreaterThan 0
-            @($profile.delegatedPermissions).Count | Should -BeGreaterThan 0
-            @($profile.sourceUrls).Count | Should -BeGreaterThan 0
+            $permissionProfileEntry = $profileProperty.Value
+            @($permissionProfileEntry.applicationPermissions).Count | Should -BeGreaterThan 0
+            @($permissionProfileEntry.delegatedPermissions).Count | Should -BeGreaterThan 0
+            @($permissionProfileEntry.sourceUrls).Count | Should -BeGreaterThan 0
 
-            foreach ($permission in @($profile.applicationPermissions) + @($profile.delegatedPermissions) + @($profile.optionalApplicationPermissions) + @($profile.optionalDelegatedPermissions)) {
+            foreach ($permission in @($permissionProfileEntry.applicationPermissions) + @($permissionProfileEntry.delegatedPermissions) + @($permissionProfileEntry.optionalApplicationPermissions) + @($permissionProfileEntry.optionalDelegatedPermissions)) {
                 if (-not [string]::IsNullOrWhiteSpace([string]$permission)) {
                     [string]$permission | Should -Not -Match 'ReadWrite'
                 }
             }
-            foreach ($sourceUrl in @($profile.sourceUrls)) {
+            foreach ($sourceUrl in @($permissionProfileEntry.sourceUrls)) {
                 [string]$sourceUrl | Should -Match '^https://learn\.microsoft\.com/'
             }
         }
@@ -214,13 +193,23 @@ Describe 'Permission matrix conformance' {
             foreach ($command in @($family.commands)) {
                 $script:matrixOnPremCommands | Should -Contain ([string]$command)
             }
+
+            $phase = switch ([string]$family.stage) {
+                'stage1' { 'Inventory' }
+                'stage2' { 'Details' }
+                'stage3' { 'Relationships' }
+            }
+            $providerProfile = Get-CollectorOnPremProvenanceProfile -Phase $phase -Family ([string]$family.family)
+            foreach ($providerCommand in @($providerProfile.CmdletNames)) {
+                @($family.commands) | Should -Contain ([string]$providerCommand)
+            }
         }
     }
 
     It 'requires durable operator and agent guidance to point to the canonical matrix' {
-        $guide = Get-Content -LiteralPath $guidePath -Raw
-        $readme = Get-Content -LiteralPath $readmePath -Raw
-        $agents = Get-Content -LiteralPath $agentsPath -Raw
+        $guide = Get-Content -LiteralPath $script:guidePath -Raw
+        $readme = Get-Content -LiteralPath $script:readmePath -Raw
+        $agents = Get-Content -LiteralPath $script:agentsPath -Raw
 
         $guide | Should -Match 'docs/permissions/permission-matrix\.json'
         $guide | Should -Match '403 Forbidden'
