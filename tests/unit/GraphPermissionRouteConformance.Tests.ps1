@@ -361,7 +361,7 @@ BeforeAll {
         return @($routes | Sort-Object -Unique)
     }
 
-    function Get-TestMatrixGraphRoutes {
+    function Get-TestMatrixGraphRoute {
         param([Parameter(Mandatory = $true)][object]$Matrix)
 
         $routes = @()
@@ -399,7 +399,7 @@ BeforeAll {
             Get-TestGraphRoutesFromFile -Path $_.FullName
         }
     ) | Sort-Object -Unique
-    $script:matrixRoutes = @(Get-TestMatrixGraphRoutes -Matrix $script:matrix)
+    $script:matrixRoutes = @(Get-TestMatrixGraphRoute -Matrix $script:matrix)
 }
 
 Describe 'Graph permission route conformance' {
