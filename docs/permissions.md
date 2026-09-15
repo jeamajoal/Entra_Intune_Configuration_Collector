@@ -84,7 +84,7 @@ During grooming/implementation:
 5. update `lastReviewedUtc`, affected matrix request/family entries, and source URLs;
 6. run dual-runtime aggregate validation.
 
-`tests/unit/PermissionMatrixConformance.Tests.ps1` is the enforcement backstop. It compares production Graph endpoint literals and on-prem external command invocations against the matrix and also verifies current section coverage and documentation links.
+`tests/unit/PermissionMatrixConformance.Tests.ps1` keeps the global Graph endpoint set, on-prem external-command set, section vocabulary, permission-profile, and durable-documentation guards aligned with the matrix. `tests/unit/GraphPermissionRouteConformance.Tests.ps1` independently derives production Graph `section | stage | family | endpoint-template` tuples from collector PowerShell AST and requires exact equality with the matrix, so family or stage drift cannot hide behind an unchanged global endpoint set.
 
 ## Review record
 
