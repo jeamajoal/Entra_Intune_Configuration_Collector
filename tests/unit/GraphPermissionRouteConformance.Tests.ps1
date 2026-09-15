@@ -276,6 +276,9 @@ BeforeAll {
 
         foreach ($command in $commands) {
             $commandName = [string]$command.GetCommandName()
+            if ([string]::IsNullOrWhiteSpace($commandName)) {
+                continue
+            }
             $stage = Get-TestCommandStage -CommandName $commandName
             if ($null -eq $stage) {
                 continue
@@ -409,7 +412,7 @@ Describe 'Graph permission route conformance' {
         Assert-TestSetEqual -Expected $script:productionRoutes -Actual $script:matrixRoutes -Label 'Graph route inventory'
     }
 
-    It 'rejects family and stage drift even when the global endpoint set is unchanged' {
+    It 'rejects family stage missing and stale route drift even when endpoint membership is preserved' {
         $applicationStage1 = 'entra-apps|stage1|applications|/v1.0/applications'
         $servicePrincipalStage1 = 'entra-apps|stage1|servicePrincipals|/v1.0/servicePrincipals'
 
@@ -432,10 +435,16 @@ Describe 'Graph permission route conformance' {
                 $_
             }
         })
+        $missingRoute = @($script:matrixRoutes | Where-Object { $_ -ne $applicationStage1 })
+        $staleRoute = @($script:matrixRoutes + 'entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute')
 
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $swappedFamilyRoutes -Label 'family swap mutation' } |
             Should -Throw '*family swap mutation mismatch*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $wrongStageRoutes -Label 'stage mutation' } |
             Should -Throw '*stage mutation mismatch*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $missingRoute -Label 'missing route mutation' } |
+            Should -Throw '*Missing: entra-apps|stage1|applications|/v1.0/applications*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $staleRoute -Label 'stale route mutation' } |
+            Should -Throw '*Stale: entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute*'
     }
 }
