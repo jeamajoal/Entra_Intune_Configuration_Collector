@@ -18,6 +18,8 @@ The implementation is inventory-first and resumable:
 - Unit tests: [tests/unit](tests/unit)
 - Local validation script: [tools/Invoke-LocalValidation.ps1](tools/Invoke-LocalValidation.ps1)
 - Architecture owner document: [docs/architecture/solution-architecture.md](docs/architecture/solution-architecture.md)
+- Permission/dependency guide: [docs/permissions.md](docs/permissions.md)
+- Canonical permission matrix: [docs/permissions/permission-matrix.json](docs/permissions/permission-matrix.json)
 - Repository engineering guardrails: [AGENTS.md](AGENTS.md)
 
 ## Quick Start
@@ -25,14 +27,13 @@ The implementation is inventory-first and resumable:
 Prerequisites:
 
 - PowerShell 7+ or Windows PowerShell 5.1.
-- A Microsoft Graph access token with permissions required by any selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`, `intune-enrollment`). No Graph token is required for an `onprem-ad-gpo`-only run.
-- `entra-ca` is deliberately opt-in so existing default runs do not silently acquire a new Conditional Access permission dependency. Microsoft Graph permissions must cover the selected Conditional Access resources; policy and named-location reads use the Conditional Access policy read surface, authentication-strength reads use the authentication-method policy read surface, and authentication-context reads require an applicable authentication-context/Conditional Access read permission.
-- `entra-governance` is also opt-in. Its administrative-unit reads require the Microsoft Graph application permission `AdministrativeUnit.Read.All`; activated directory roles, directory role definitions, active role assignments, and administrative-unit scoped-role membership reads require `RoleManagement.Read.Directory`.
-- Intune configuration reads used by `intune-core`, including compliance policies, assignment filters, general Settings Catalog/configuration policies, classic device configurations, modern endpoint-security/security-baseline policies/templates, legacy security-baseline templates/intents, and their assignments, require Microsoft Graph application permission `DeviceManagementConfiguration.Read.All` and an active Intune tenant license. Compliance-policy and classic device-configuration inventory/detail use v1.0. Assignment-filter configuration, Settings Catalog/configuration-policy surfaces, modern security policy/template surfaces, legacy baseline template/intent surfaces, and assignment reads that preserve filter include/exclude IDs/types use beta with truthful beta provenance.
+- A Microsoft Graph access token with the read permissions required by the selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`, `intune-enrollment`). Application permissions are the recommended unattended-run contract; delegated access can additionally require a supported signed-in-user Entra role. The exact section/stage/family mapping is maintained in [docs/permissions/permission-matrix.json](docs/permissions/permission-matrix.json) and explained in [docs/permissions.md](docs/permissions.md). No Graph token is required for an `onprem-ad-gpo`-only run.
+- `entra-ca` is deliberately opt-in so existing default runs do not silently acquire new Conditional Access permission dependencies. Current policy/named-location reads use `Policy.Read.All`, authentication-strength reads use `Policy.Read.AuthenticationMethod`, and authentication-context reads use `AuthenticationContext.Read.All`.
+- `entra-governance` is also opt-in. Administrative-unit reads use `AdministrativeUnit.Read.All`; directory-role, role-definition, role-assignment, and administrative-unit scoped-role reads use `RoleManagement.Read.Directory`. Hidden administrative-unit membership can additionally require `Member.Read.Hidden`.
+- `intune-core` requires an active Intune tenant license. Current app reads use `DeviceManagementApps.Read.All`; script inventory/detail uses the dedicated `DeviceManagementScripts.Read.All`; script-assignment, compliance, assignment-filter, Settings Catalog/classic configuration, endpoint-security/security-baseline, settings, and assignment reads use `DeviceManagementConfiguration.Read.All`.
 - `intune-enrollment` is deliberately opt-in because it requires the distinct Microsoft Graph application permission `DeviceManagementServiceConfig.Read.All`. It collects tenant enrollment configuration through v1.0 and Windows Autopilot deployment-profile configuration/assignments through beta; existing default `intune-core` runs therefore do not silently acquire the enrollment service-configuration permission.
-- Optional on-prem cmdlets for onprem-ad-gpo section:
-	- ActiveDirectory module cmdlets (Get-ADForest, Get-ADOrganizationalUnit, Get-ADGroup, Get-ADDomain, Get-ADGroupMember)
-	- GroupPolicy cmdlets (Get-GPO, Get-GPOReport, Get-GPInheritance, Get-GPPermission)
+- The `onprem-ad-gpo` section requires the ActiveDirectory and GroupPolicy RSAT modules plus read access to the targeted forest/domain/GPO/ACL data. Current commands are enumerated in the canonical permission matrix; no mutation rights are required.
+- For `403 Forbidden` or equivalent authorization errors, verify the token grants/admin consent, delegated user role, Intune licensing, and target visibility **and** confirm that the permission matrix is still current for the failing endpoint. Do not add broad `ReadWrite` scopes solely to make a read-only collector request work.
 
 Run all stages for the legacy default sections:
 

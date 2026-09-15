@@ -1,0 +1,209 @@
+{
+  "schemaVersion": "1.0",
+  "lastReviewedUtc": "2026-09-15",
+  "reviewedAgainstCommit": "11da32287a836ea13edaa2b8499102a2900d49e0",
+  "recommendedTokenMode": "application",
+  "sections": ["entra-apps", "entra-pim", "entra-ca", "entra-governance", "intune-core", "intune-enrollment", "onprem-ad-gpo"],
+  "graphBackedSections": ["entra-apps", "entra-pim", "entra-ca", "entra-governance", "intune-core", "intune-enrollment"],
+  "permissionProfiles": {
+    "application-read": {
+      "applicationPermissions": ["Application.Read.All"],
+      "delegatedPermissions": ["Application.Read.All"],
+      "delegatedRoleCaveat": "Delegated application reads can require a supported Microsoft Entra role depending on the caller and relationship.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/application-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/serviceprincipal-list?view=graph-rest-1.0"
+      ]
+    },
+    "group-read": {
+      "applicationPermissions": ["Group.Read.All"],
+      "delegatedPermissions": ["Group.Read.All"],
+      "delegatedRoleCaveat": "The collector deliberately uses a read-only accepted permission rather than a write-flavored permission for GET /groups.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/group-get?view=graph-rest-1.0"
+      ]
+    },
+    "directory-relationship-read": {
+      "applicationPermissions": ["Directory.Read.All"],
+      "delegatedPermissions": ["Directory.Read.All"],
+      "delegatedRoleCaveat": "Directory.Read.All is used for full heterogeneous directory relationship evidence and delegated permission grants; narrower member scopes can return limited member properties.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/group-list-members?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-list?view=graph-rest-1.0"
+      ]
+    },
+    "pim-assignment-read": {
+      "applicationPermissions": ["RoleAssignmentSchedule.Read.Directory"],
+      "delegatedPermissions": ["RoleAssignmentSchedule.Read.Directory"],
+      "delegatedRoleCaveat": "Delegated PIM assignment-schedule reads require the signed-in user to hold a supported Microsoft Entra role.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/unifiedroleassignmentscheduleinstance-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/unifiedroleassignmentscheduleinstance-get?view=graph-rest-1.0"
+      ]
+    },
+    "pim-eligibility-read": {
+      "applicationPermissions": ["RoleEligibilitySchedule.Read.Directory"],
+      "delegatedPermissions": ["RoleEligibilitySchedule.Read.Directory"],
+      "delegatedRoleCaveat": "Delegated PIM eligibility-schedule reads require the signed-in user to hold a supported Microsoft Entra role.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/unifiedroleeligibilityscheduleinstance-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/unifiedroleeligibilityscheduleinstance-get?view=graph-rest-1.0"
+      ]
+    },
+    "conditional-access-read": {
+      "applicationPermissions": ["Policy.Read.All"],
+      "delegatedPermissions": ["Policy.Read.All"],
+      "delegatedRoleCaveat": "Delegated Conditional Access reads require the signed-in user to hold a supported Microsoft Entra role.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/conditionalaccessroot-list-policies?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/conditionalaccessroot-list-namedlocations?view=graph-rest-1.0"
+      ]
+    },
+    "authentication-strength-read": {
+      "applicationPermissions": ["Policy.Read.AuthenticationMethod"],
+      "delegatedPermissions": ["Policy.Read.AuthenticationMethod"],
+      "delegatedRoleCaveat": "Delegated authentication-strength reads require a supported Microsoft Entra role such as Conditional Access Administrator, Security Administrator, or Security Reader.",
+      "sourceUrls": ["https://learn.microsoft.com/en-us/graph/api/authenticationstrengthroot-list-policies?view=graph-rest-1.0"]
+    },
+    "authentication-context-read": {
+      "applicationPermissions": ["AuthenticationContext.Read.All"],
+      "delegatedPermissions": ["AuthenticationContext.Read.All"],
+      "delegatedRoleCaveat": "Delegated authentication-context reads require the signed-in user to hold a supported Microsoft Entra role.",
+      "sourceUrls": ["https://learn.microsoft.com/en-us/graph/api/conditionalaccessroot-list-authenticationcontextclassreferences?view=graph-rest-1.0"]
+    },
+    "administrative-unit-read": {
+      "applicationPermissions": ["AdministrativeUnit.Read.All"],
+      "delegatedPermissions": ["AdministrativeUnit.Read.All"],
+      "optionalApplicationPermissions": ["Member.Read.Hidden"],
+      "optionalDelegatedPermissions": ["Member.Read.Hidden"],
+      "delegatedRoleCaveat": "Delegated administrative-unit reads require a member user or supported Microsoft Entra role. Member.Read.Hidden is additionally required to enumerate hidden membership.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/directory-list-administrativeunits?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/administrativeunit-list-members?view=graph-rest-1.0"
+      ]
+    },
+    "role-management-read": {
+      "applicationPermissions": ["RoleManagement.Read.Directory"],
+      "delegatedPermissions": ["RoleManagement.Read.Directory"],
+      "delegatedRoleCaveat": "Delegated role-management reads require the signed-in user to hold a supported Microsoft Entra role.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roledefinitions?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignments?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/administrativeunit-list-scopedrolemembers?view=graph-rest-1.0"
+      ]
+    },
+    "intune-app-read": {
+      "applicationPermissions": ["DeviceManagementApps.Read.All"],
+      "delegatedPermissions": ["DeviceManagementApps.Read.All"],
+      "delegatedRoleCaveat": "Microsoft Graph Intune APIs require an appropriately licensed Intune tenant and delegated callers require sufficient Intune administrative access.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/intune-apps-mobileapp-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/intune-apps-mobileapp-get?view=graph-rest-1.0"
+      ]
+    },
+    "intune-script-read": {
+      "applicationPermissions": ["DeviceManagementScripts.Read.All"],
+      "delegatedPermissions": ["DeviceManagementScripts.Read.All"],
+      "delegatedRoleCaveat": "Microsoft Graph Intune APIs require an appropriately licensed Intune tenant and delegated callers require sufficient Intune administrative access.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/intune-devices-devicemanagementscript-list?view=graph-rest-beta",
+        "https://learn.microsoft.com/en-us/graph/permissions-reference"
+      ]
+    },
+    "intune-configuration-read": {
+      "applicationPermissions": ["DeviceManagementConfiguration.Read.All"],
+      "delegatedPermissions": ["DeviceManagementConfiguration.Read.All"],
+      "delegatedRoleCaveat": "Microsoft Graph Intune APIs require an appropriately licensed Intune tenant and delegated callers require sufficient Intune administrative access.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfig-devicecompliancepolicy-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfig-deviceconfiguration-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfigv2-devicemanagementconfigurationpolicy-list?view=graph-rest-beta"
+      ]
+    },
+    "intune-service-config-read": {
+      "applicationPermissions": ["DeviceManagementServiceConfig.Read.All"],
+      "delegatedPermissions": ["DeviceManagementServiceConfig.Read.All"],
+      "delegatedRoleCaveat": "Microsoft Graph Intune APIs require an appropriately licensed Intune tenant and delegated callers require sufficient Intune administrative access.",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/graph/api/intune-onboarding-deviceenrollmentconfiguration-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/intune-enrollment-windowsautopilotdeploymentprofile-list?view=graph-rest-beta"
+      ]
+    }
+  },
+  "graphFamilies": [
+    {"section":"entra-apps","family":"applications","permissionProfile":"application-read","requests":{"stage1":["/v1.0/applications"],"stage2":["/v1.0/applications/{id}"]}},
+    {"section":"entra-apps","family":"servicePrincipals","permissionProfile":"application-read","requests":{"stage1":["/v1.0/servicePrincipals"],"stage2":["/v1.0/servicePrincipals/{id}"]}},
+    {"section":"entra-apps","family":"groups","permissionProfile":"group-read","requests":{"stage1":["/v1.0/groups"],"stage2":["/v1.0/groups/{id}"]}},
+    {"section":"entra-apps","family":"applicationCredentials","permissionProfile":"application-read","requests":{"stage2":["/v1.0/applications/{id}"]}},
+    {"section":"entra-apps","family":"servicePrincipalCredentials","permissionProfile":"application-read","requests":{"stage2":["/v1.0/servicePrincipals/{id}"]}},
+    {"section":"entra-apps","family":"servicePrincipalAppRoleAssignedTo","permissionProfile":"application-read","requests":{"stage3":["/v1.0/servicePrincipals/{id}/appRoleAssignedTo"]}},
+    {"section":"entra-apps","family":"groupMembers","permissionProfile":"directory-relationship-read","requests":{"stage3":["/v1.0/groups/{id}/members"]}},
+    {"section":"entra-apps","family":"applicationFederatedIdentityCredentials","permissionProfile":"application-read","requests":{"stage3":["/v1.0/applications/{id}/federatedIdentityCredentials?$select=id,name,issuer,subject,audiences,description"]}},
+    {"section":"entra-apps","family":"delegatedGrants","permissionProfile":"directory-relationship-read","requests":{"stage3":["/v1.0/oauth2PermissionGrants"]}},
+    {"section":"entra-pim","family":"roleAssignmentScheduleInstances","permissionProfile":"pim-assignment-read","requests":{"stage1":["/v1.0/roleManagement/directory/roleAssignmentScheduleInstances"],"stage2":["/v1.0/roleManagement/directory/roleAssignmentScheduleInstances/{id}"]}},
+    {"section":"entra-pim","family":"roleEligibilityScheduleInstances","permissionProfile":"pim-eligibility-read","requests":{"stage1":["/v1.0/roleManagement/directory/roleEligibilityScheduleInstances"],"stage2":["/v1.0/roleManagement/directory/roleEligibilityScheduleInstances/{id}"]}},
+    {"section":"entra-ca","family":"conditionalAccessPolicies","permissionProfile":"conditional-access-read","requests":{"stage1":["/v1.0/identity/conditionalAccess/policies"],"stage2":["/v1.0/identity/conditionalAccess/policies/{id}"]}},
+    {"section":"entra-ca","family":"namedLocations","permissionProfile":"conditional-access-read","requests":{"stage1":["/v1.0/identity/conditionalAccess/namedLocations"],"stage2":["/v1.0/identity/conditionalAccess/namedLocations/{id}"]}},
+    {"section":"entra-ca","family":"authenticationStrengthPolicies","permissionProfile":"authentication-strength-read","requests":{"stage1":["/v1.0/policies/authenticationStrengthPolicies"],"stage2":["/v1.0/policies/authenticationStrengthPolicies/{id}"]}},
+    {"section":"entra-ca","family":"authenticationContextClassReferences","permissionProfile":"authentication-context-read","requests":{"stage1":["/v1.0/identity/conditionalAccess/authenticationContextClassReferences"],"stage2":["/v1.0/identity/conditionalAccess/authenticationContextClassReferences/{id}"]}},
+    {"section":"entra-governance","family":"administrativeUnits","permissionProfile":"administrative-unit-read","requests":{"stage1":["/v1.0/directory/administrativeUnits"],"stage2":["/v1.0/directory/administrativeUnits/{id}"]}},
+    {"section":"entra-governance","family":"directoryRoles","permissionProfile":"role-management-read","requests":{"stage1":["/v1.0/directoryRoles"],"stage2":["/v1.0/directoryRoles/{id}"]}},
+    {"section":"entra-governance","family":"roleDefinitions","permissionProfile":"role-management-read","requests":{"stage1":["/v1.0/roleManagement/directory/roleDefinitions"],"stage2":["/v1.0/roleManagement/directory/roleDefinitions/{id}"]}},
+    {"section":"entra-governance","family":"roleAssignments","permissionProfile":"role-management-read","requests":{"stage1":["/v1.0/roleManagement/directory/roleAssignments"],"stage2":["/v1.0/roleManagement/directory/roleAssignments/{id}"]}},
+    {"section":"entra-governance","family":"administrativeUnitMembers","permissionProfile":"administrative-unit-read","requests":{"stage3":["/v1.0/directory/administrativeUnits/{id}/members"]}},
+    {"section":"entra-governance","family":"administrativeUnitScopedRoleMembers","permissionProfile":"role-management-read","requests":{"stage3":["/v1.0/directory/administrativeUnits/{id}/scopedRoleMembers"]}},
+    {"section":"intune-core","family":"mobileApps","permissionProfile":"intune-app-read","requests":{"stage1":["/v1.0/deviceAppManagement/mobileApps"],"stage2":["/v1.0/deviceAppManagement/mobileApps/{id}"]}},
+    {"section":"intune-core","family":"deviceManagementScripts","permissionProfile":"intune-script-read","requests":{"stage1":["/beta/deviceManagement/deviceManagementScripts"],"stage2":["/beta/deviceManagement/deviceManagementScripts/{id}"]}},
+    {"section":"intune-core","family":"mobileAppAssignments","permissionProfile":"intune-app-read","requests":{"stage3":["/v1.0/deviceAppManagement/mobileApps/{id}/assignments"]}},
+    {"section":"intune-core","family":"deviceManagementScriptAssignments","permissionProfile":"intune-configuration-read","requests":{"stage3":["/beta/deviceManagement/deviceManagementScripts/{id}/assignments"]}},
+    {"section":"intune-core","family":"deviceCompliancePolicies","permissionProfile":"intune-configuration-read","requests":{"stage1":["/v1.0/deviceManagement/deviceCompliancePolicies"],"stage2":["/v1.0/deviceManagement/deviceCompliancePolicies/{id}"]}},
+    {"section":"intune-core","family":"assignmentFilters","permissionProfile":"intune-configuration-read","requests":{"stage1":["/beta/deviceManagement/assignmentFilters"],"stage2":["/beta/deviceManagement/assignmentFilters/{id}"]}},
+    {"section":"intune-core","family":"deviceCompliancePolicyAssignments","permissionProfile":"intune-configuration-read","requests":{"stage3":["/beta/deviceManagement/deviceCompliancePolicies/{id}/assignments"]}},
+    {"section":"intune-core","family":"configurationPolicies","permissionProfile":"intune-configuration-read","requests":{"stage1":["/beta/deviceManagement/configurationPolicies"],"stage2":["/beta/deviceManagement/configurationPolicies/{id}"]}},
+    {"section":"intune-core","family":"configurationPolicySettings","permissionProfile":"intune-configuration-read","requests":{"stage2":["/beta/deviceManagement/configurationPolicies/{id}/settings"]}},
+    {"section":"intune-core","family":"deviceConfigurations","permissionProfile":"intune-configuration-read","requests":{"stage1":["/v1.0/deviceManagement/deviceConfigurations"],"stage2":["/v1.0/deviceManagement/deviceConfigurations/{id}"]}},
+    {"section":"intune-core","family":"configurationPolicyAssignments","permissionProfile":"intune-configuration-read","requests":{"stage3":["/beta/deviceManagement/configurationPolicies/{id}/assignments"]}},
+    {"section":"intune-core","family":"deviceConfigurationAssignments","permissionProfile":"intune-configuration-read","requests":{"stage3":["/beta/deviceManagement/deviceConfigurations/{id}/assignments"]}},
+    {"section":"intune-core","family":"securityConfigurationPolicies","permissionProfile":"intune-configuration-read","requests":{"stage1":["/beta/deviceManagement/configurationPolicies"],"stage2":["/beta/deviceManagement/configurationPolicies/{id}"]}},
+    {"section":"intune-core","family":"securityConfigurationPolicyTemplates","permissionProfile":"intune-configuration-read","requests":{"stage1":["/beta/deviceManagement/configurationPolicyTemplates"],"stage2":["/beta/deviceManagement/configurationPolicyTemplates/{id}"]}},
+    {"section":"intune-core","family":"securityBaselineTemplates","permissionProfile":"intune-configuration-read","requests":{"stage1":["/beta/deviceManagement/templates"],"stage2":["/beta/deviceManagement/templates/{id}"]}},
+    {"section":"intune-core","family":"securityBaselineIntents","permissionProfile":"intune-configuration-read","requests":{"stage1":["/beta/deviceManagement/intents"],"stage2":["/beta/deviceManagement/intents/{id}"]}},
+    {"section":"intune-core","family":"securityConfigurationPolicySettings","permissionProfile":"intune-configuration-read","requests":{"stage2":["/beta/deviceManagement/configurationPolicies/{id}/settings"]}},
+    {"section":"intune-core","family":"securityBaselineIntentSettings","permissionProfile":"intune-configuration-read","requests":{"stage2":["/beta/deviceManagement/intents/{id}/settings"]}},
+    {"section":"intune-core","family":"securityConfigurationPolicyAssignments","permissionProfile":"intune-configuration-read","requests":{"stage3":["/beta/deviceManagement/configurationPolicies/{id}/assignments"]}},
+    {"section":"intune-core","family":"securityBaselineIntentAssignments","permissionProfile":"intune-configuration-read","requests":{"stage3":["/beta/deviceManagement/intents/{id}/assignments"]}},
+    {"section":"intune-enrollment","family":"deviceEnrollmentConfigurations","permissionProfile":"intune-service-config-read","requests":{"stage1":["/v1.0/deviceManagement/deviceEnrollmentConfigurations"],"stage2":["/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}"]}},
+    {"section":"intune-enrollment","family":"windowsAutopilotDeploymentProfiles","permissionProfile":"intune-service-config-read","requests":{"stage1":["/beta/deviceManagement/windowsAutopilotDeploymentProfiles"],"stage2":["/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}"]}},
+    {"section":"intune-enrollment","family":"deviceEnrollmentConfigurationAssignments","permissionProfile":"intune-service-config-read","requests":{"stage3":["/v1.0/deviceManagement/deviceEnrollmentConfigurations/{id}/assignments"]}},
+    {"section":"intune-enrollment","family":"windowsAutopilotDeploymentProfileAssignments","permissionProfile":"intune-service-config-read","requests":{"stage3":["/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{id}?$expand=assignments"]}}
+  ],
+  "onPrem": {
+    "section": "onprem-ad-gpo",
+    "identityAssumption": "The execution identity has read access to the targeted forest/domain directory objects, GPO configuration/permissions/inheritance, and ActiveDirectory-provider ACLs. No mutation rights are required.",
+    "modules": [
+      {"name":"ActiveDirectory","installation":"RSAT Active Directory Domain Services and Lightweight Directory Services Tools","commands":["Get-ADForest","Get-ADDomain","Get-ADOrganizationalUnit","Get-ADGroup","Get-ADGroupMember"],"providers":["ActiveDirectory"],"sourceUrls":["https://learn.microsoft.com/en-us/powershell/module/activedirectory/?view=windowsserver2025-ps"]},
+      {"name":"GroupPolicy","installation":"RSAT Group Policy Management Tools","commands":["Get-GPO","Get-GPOReport","Get-GPPermission","Get-GPInheritance"],"providers":[],"sourceUrls":["https://learn.microsoft.com/en-us/powershell/module/grouppolicy/?view=windowsserver2025-ps"]},
+      {"name":"Microsoft.PowerShell.Security","installation":"Built in to Windows PowerShell/PowerShell on Windows","commands":["Get-Acl"],"providers":[],"sourceUrls":["https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-acl"]},
+      {"name":"Microsoft.PowerShell.Management","installation":"Built in to Windows PowerShell/PowerShell on Windows","commands":["New-PSDrive","Remove-PSDrive"],"providers":[],"sourceUrls":["https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/new-psdrive","https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/remove-psdrive"]}
+    ],
+    "families": [
+      {"stage":"stage1","family":"domains","commands":["Get-ADForest"]},
+      {"stage":"stage1","family":"organizationalUnits","commands":["Get-ADForest","Get-ADOrganizationalUnit"]},
+      {"stage":"stage1","family":"groups","commands":["Get-ADForest","Get-ADGroup"]},
+      {"stage":"stage1","family":"gpos","commands":["Get-ADForest","Get-GPO"]},
+      {"stage":"stage2","family":"domains","commands":["Get-ADDomain"]},
+      {"stage":"stage2","family":"organizationalUnits","commands":["Get-ADOrganizationalUnit"]},
+      {"stage":"stage2","family":"groups","commands":["Get-ADGroup"]},
+      {"stage":"stage2","family":"gpos","commands":["Get-GPO"]},
+      {"stage":"stage2","family":"gpoReports","commands":["Get-GPOReport"]},
+      {"stage":"stage3","family":"domainRootAcl","commands":["Get-ADDomain","New-PSDrive","Get-Acl","Remove-PSDrive"]},
+      {"stage":"stage3","family":"ouAcl","commands":["New-PSDrive","Get-Acl","Remove-PSDrive"]},
+      {"stage":"stage3","family":"gpoPermissions","commands":["Get-GPPermission"]},
+      {"stage":"stage3","family":"groupMembersOnPrem","commands":["Get-ADGroupMember"]},
+      {"stage":"stage3","family":"gpoScopeLinks","commands":["Get-GPOReport"]},
+      {"stage":"stage3","family":"gpoScopeInheritance","commands":["Get-ADDomain","Get-GPInheritance"]},
+      {"stage":"stage3","family":"gpoWmiFilterAssociations","commands":["Get-GPO"]}
+    ]
+  }
+}
