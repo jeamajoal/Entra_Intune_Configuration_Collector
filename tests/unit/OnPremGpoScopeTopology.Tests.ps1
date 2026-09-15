@@ -58,6 +58,9 @@ BeforeAll {
     function global:Get-GPPermission {
         [CmdletBinding()]
         param([Guid]$Guid, [switch]$All, [string]$DomainName)
+        if ($Guid -eq [Guid]::Empty -or -not $All -or [string]::IsNullOrWhiteSpace($DomainName)) {
+            throw 'Expected GPO permission collection to use GUID, -All, and persisted domain context.'
+        }
         return @(
             [pscustomobject]@{ Trustee = [pscustomobject]@{ Name = 'Domain Computers' }; PermissionLevel = 'GpoApply' },
             [pscustomobject]@{ Trustee = [pscustomobject]@{ Name = 'Policy Admins' }; PermissionLevel = 'GpoEdit' }
