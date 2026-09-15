@@ -14,9 +14,9 @@ Execution is inventory-first and resumable:
 
 1. Stage1 collects inventory lists by section and family.
 2. Stage2 collects object details by id or object identity from Stage1 artifacts.
-3. Stage3 collects relationship metadata (ACLs, memberships, assignments, delegated grants, PIM edges, policy references, and role-governance edges) from Stage1 artifacts.
+3. Stage3 collects relationship metadata (ACLs, memberships, assignments, delegated grants, PIM edges, policy references, role-governance edges, and GPO applicability topology) from Stage1 artifacts.
 
-ACLs, memberships, assignments, grants, policy references, and role-governance edges are classified as metadata.
+ACLs, memberships, assignments, grants, policy references, role-governance edges, and GPO applicability edges are classified as metadata.
 
 ## Concretized Implementation Layout
 
@@ -58,7 +58,7 @@ ACLs, memberships, assignments, grants, policy references, and role-governance e
 - Intune application, script, compliance-policy, assignment-filter, admitted general Settings Catalog/device-configuration policy, classic device-configuration profile, modern endpoint-security/security-baseline policy/template, legacy security-baseline template/intent, configured-setting, migration-state, and assignment target/filter metadata.
 - Opt-in Intune tenant enrollment configuration and Windows Autopilot deployment-profile configuration/assignment metadata.
 - On-prem forest/domain/OU/group/GPO metadata via AD and Group Policy cmdlets, including read-only GPO Computer/User policy-setting evidence bound to stable GPO GUID/domain identity.
-- Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, active role assignments, and Intune compliance/configuration/security/enrollment targeting.
+- Relationship metadata for ACLs, memberships, assignments, delegated grants, PIM schedule edges, Conditional Access policy references, administrative-unit memberships/scoped roles, active role assignments, Intune compliance/configuration/security/enrollment targeting, and GPO direct-link/inheritance/WMI/security-filter applicability topology.
 
 Bearer-authenticated absolute Graph request and pagination URIs are restricted to the collector's public Microsoft Graph HTTPS origin (`https://graph.microsoft.com:443`); insecure, cross-origin, alternate-port, and user-info-bearing absolute URIs fail before HTTP execution.
 
@@ -69,7 +69,7 @@ Bearer-authenticated absolute Graph request and pagination URIs are restricted t
 - Audit and sign-in stream ingestion.
 - Intune per-device/per-user compliance/configuration/endpoint-security/baseline/enrollment state, policy-result/status overview, device/user state summaries, per-setting status/result/report telemetry, enrollment events, or remediation.
 - Windows Autopilot device identities/imports, assigned-device relationships, serial/product-key/device-account-password data, actual hardware-hash values, and Apple/third-party enrollment service-connection/token surfaces.
-- GPO backup/import/reconstruction artifacts or mutation, RSoP/gpresult/client policy-processing telemetry, and credential/password/private-key/secret values from GPO report evidence. Normalized GPO link/inheritance/WMI/security-filtering applicability topology remains a separate relationship responsibility rather than part of Stage2 policy-setting evidence.
+- GPO backup/import/reconstruction artifacts or mutation, RSoP/gpresult/client policy-processing telemetry, simulation of final winning client policy, and credential/password/private-key/secret values from GPO report evidence.
 - Conditional Access policy simulation/evaluation, sign-in/risk history, or remediation.
 - Role activation event history, access reviews, entitlement workflow execution/history, or governance mutation.
 - Configuration mutation through the collector; the normal Graph provider request boundary is GET-only and exposes no mutation/body request surface.
@@ -272,14 +272,28 @@ Cross-cutting security policy rules:
 - Before persistence, explicit credential-bearing XML element or attribute names are redacted to `[REDACTED]`, including `cpassword`, password/secret/private-key/client-secret forms. Ordinary policy settings such as password-length values are not redacted merely because their setting name contains the word `Password`. This is a fail-closed contract for recognized credential fields, not a claim that arbitrary operator-authored registry/script content can be semantically inspected for every possible secret.
 - Stage2 provenance records `Get-GPOReport`, XML report type, Stage1 `gpos` dependency, persisted-domain targeting, Computer/User evidence selection, credential-field redaction, and effective batch size 1.
 - The offline catalog adds only the normal `execution-input` dependency `stage2/onprem-ad-gpo/gpoReports -> stage1/onprem-ad-gpo/gpos`; raw report payload remains exclusively in the canonical snapshot artifact.
-- Normalized links, inheritance, WMI-filter association, and security-filter/applicability topology are deliberately not owned here. They remain the subsequent Stage3 relationship responsibility (#180), while existing `gpoPermissions` remains canonical for current GPO permission evidence.
+- Applicability topology remains deliberately separate from Stage2 setting evidence. #180 owns the Stage3 link/inheritance/WMI relationships described below, while existing `gpoPermissions` remains canonical for permission/security-filter evidence.
 - GPO backup/import/reconstruction, mutation, RSoP/gpresult, and per-user/per-device client policy-processing telemetry remain outside the product boundary.
+
+### On-prem GPO applicability topology boundary
+
+#180 adds read-only Stage3 relationships that answer where a GPO is linked, what a domain/OU inherits, and whether WMI/security filtering affects applicability without attempting client-side resultant-set simulation.
+
+- `gpoScopeLinks` depends on Stage1 `gpos`. It invokes `Get-GPOReport -Guid <guid> -Domain <persisted-domain> -ReportType Xml` and reads only root-level `LinksTo` nodes. The GPO remains bound by GUID plus persisted domain; display name is descriptive only. Each source GPO emits one wrapper with `linkCount` and `links[]`, preserving source-native target path/name, enabled state, and enforced/`NoOverride` state. A GPO with no direct links emits a successful zero-link wrapper rather than disappearing from evidence.
+- `gpoScopeInheritance` depends on both Stage1 `domains` and `organizationalUnits`. Domain inventory stores DNS identity, so the provider resolves that domain to its distinguished name with `Get-ADDomain` before calling `Get-GPInheritance`. OU inventory already carries a distinguished name. `Get-GPInheritance -Target <domain-or-ou-DN> -Domain <persisted-domain>` supplies `GpoInheritanceBlocked`, direct `GpoLinks`, and provider-ordered effective/applied `InheritedGpoLinks`; one wrapper is persisted per scope with explicit direct/effective counts.
+- `Get-GPInheritance` is intentionally used only for domain and OU targets supported by that cmdlet. Direct root-level `LinksTo` report evidence remains the broader source-native representation for other link targets exposed by Group Policy reporting rather than inventing unsupported inheritance semantics.
+- Normalized link rows preserve stable GPO ID, display name/domain where provided, target, order, enabled state, and enforced state. They do not attempt to collapse link ordering/inheritance into a synthetic final-policy result.
+- `gpoWmiFilterAssociations` depends on Stage1 `gpos` and calls `Get-GPO -Guid <guid> -Domain <persisted-domain>`. A GPO with no filter emits `hasWmiFilter = false`; when a filter exists, the provider-native `Path` is the stable filter identity and `Name`/`Description` are retained as descriptive context. A second WMI-filter inventory is not fabricated.
+- Security filtering remains in canonical `gpoPermissions`. `PermissionLevel = GpoApply` rows are the security-filter evidence; edit/read/custom permission rows continue to describe delegation/ACL context. No duplicate security-filter ACL family is added.
+- Stage3 provenance records concrete cmdlet names and Stage1 dependency family/families. The shared checkpoint/resume seam therefore binds `gpoScopeLinks`/`gpoWmiFilterAssociations` to Stage1 `gpos` and `gpoScopeInheritance` to both Stage1 `domains` and `organizationalUnits`.
+- The catalog adds execution-input descriptors for those dependencies and three relationship contracts: `policy-link` (`gpo.policy -> ad.scope`), `policy-inheritance` (`ad.scope -> gpo.policy`), and `policy-filter` (`gpo.policy -> gpo.wmi-filter`). Existing `gpoPermissions` remains `acl` (`gpo.policy -> ad.security-principal`).
+- The topology is configuration evidence only. GPO link/unlink operations, inheritance mutation, WMI-filter mutation, backup/import/reconstruction, RSoP/gpresult, client event history, per-user/per-device processing telemetry, and claims about the final winning settings on a machine/user remain outside the collector.
 
 ## Inventory-First Gating and Resume Semantics
 
 - Checkpoints are written per stage/section/family.
 - Batch statuses are Succeeded, Failed, InProgress, and Missing.
-- A family checkpoint persists plan version, BatchSize, expected batch count, ordered source fingerprint, per-batch fingerprints, and completion state before batch execution begins.
+- A family checkpoint persists plan version, BatchSize, expected batch count, ordered source fingerprint, per-batch fingerprints, expected batch count, and completion state before batch execution begins.
 - Stage2 and Stage3 reject a required Stage1 family unless its plan is complete, its expected/recorded batch counts agree, every expected batch is Succeeded, and every expected artifact exists.
 - A lone `batch-*.json` file is never sufficient readiness evidence.
 - Stage2 and Stage3 persist their own plans before downstream batch decisions, so refreshed Stage1 source identity cannot silently reuse stale successful downstream numeric batch IDs.
@@ -344,7 +358,7 @@ Snapshot provenance envelope fields:
 
 The current supported snapshot `schemaVersion` is string `1.0`. Persisted snapshots with a missing, non-string, or unsupported version fail closed at both successful-resume reuse and shared downstream snapshot loading.
 
-For on-prem families, sourceName is cmdlet-specific and requestContext includes cmdletNames for concrete execution traceability. `gpoReports` additionally records its source `gpos` dependency, XML report type, evidence-section/redaction choices, and effective one-GPO batch size.
+For on-prem families, sourceName is cmdlet-specific and requestContext includes cmdletNames for concrete execution traceability. `gpoReports` additionally records its source `gpos` dependency, XML report type, evidence-section/redaction choices, and effective one-GPO batch size. GPO topology snapshots additionally record their Stage1 dependency family/families so the direct-link/WMI families remain bound to `gpos` and inheritance remains explicitly bound to both `domains` and `organizationalUnits`.
 
 ## Offline Knowledge Catalog v1
 
@@ -364,7 +378,7 @@ The offline catalog is a justified boundary between provider-specific collection
 
 The stable `catalogId` identifies the v1 catalog for a run. It is not a random GUID or generation timestamp. Regenerating a catalog from unchanged source evidence therefore produces the same identity and deterministic content rather than churn caused by generation time.
 
-`entra-ca`, `entra-governance`, the additive Intune compliance/general-configuration/security-baseline families, opt-in `intune-enrollment`, and the additive on-prem `gpoReports` detail family use the existing v1 stage/kind, artifact-descriptor, dependency, and relationship schema shapes and therefore do not require a catalog schema-version bump.
+`entra-ca`, `entra-governance`, the additive Intune compliance/general-configuration/security-baseline families, opt-in `intune-enrollment`, additive on-prem `gpoReports` detail, and additive GPO topology Stage3 families use the existing v1 stage/kind, artifact-descriptor, dependency, and relationship schema shapes and therefore do not require a catalog schema-version bump.
 
 ### Runtime generation boundary
 
@@ -447,6 +461,9 @@ Current Stage3 execution-input dependencies are:
 | ouAcl | onprem-ad-gpo / organizationalUnits |
 | gpoPermissions | onprem-ad-gpo / gpos |
 | groupMembersOnPrem | onprem-ad-gpo / groups |
+| gpoScopeLinks | onprem-ad-gpo / gpos |
+| gpoScopeInheritance | onprem-ad-gpo / domains and organizationalUnits |
+| gpoWmiFilterAssociations | onprem-ad-gpo / gpos |
 
 No execution-input edge is added from `entra-pim` to `entra-governance`: PIM collection remains valid independently. Offline role-definition resolution is instead provided by stable `roleDefinitionId` plus the shared `entra.directory-role-definition` identity domain when governance evidence is present. Administrative-unit scoped-role resolution uses governance `directoryRoles` as the activated-role ID/role-template bridge and likewise does not change PIM execution requirements.
 
@@ -465,6 +482,9 @@ V1 identity-domain semantics for current relationship families are:
 | domainRootAcl | acl | `ad.domain` | `ad.security-principal` |
 | ouAcl | acl | `ad.organizational-unit` | `ad.security-principal` |
 | gpoPermissions | acl | `gpo.policy` | `ad.security-principal` |
+| gpoScopeLinks | policy-link | `gpo.policy` | `ad.scope` |
+| gpoScopeInheritance | policy-inheritance | `ad.scope` | `gpo.policy` |
+| gpoWmiFilterAssociations | policy-filter | `gpo.policy` | `gpo.wmi-filter` |
 | groupMembers | membership | `entra.group` | `entra.directory-object` |
 | groupMembersOnPrem | membership | `ad.group` | `ad.directory-object` |
 | mobileAppAssignments | assignment | `intune.mobile-app` | `intune.assignment-target` |
@@ -510,7 +530,7 @@ Catalog generation/validation must fail closed rather than rewrite, repair, or s
 
 Catalog arrays use deterministic ordinal ordering and stable relative paths. No generation timestamp is required by v1 because a wall-clock value would create churn without improving source-evidence identity.
 
-The catalog inherits existing credential/privacy boundaries and deliberately copies less provenance than a snapshot: no `requestContext`, Graph token, secret text, raw key material, payload row, or provider response body is permitted in artifact descriptors. Entra credential evidence remains allowlisted. GPO `gpoReports` sanitizes recognized credential-bearing Computer/User XML fields **before** snapshot persistence, while retaining ordinary policy-setting values; the catalog only points to those canonical sanitized snapshots and never copies their XML payload.
+The catalog inherits existing credential/privacy boundaries and deliberately copies less provenance than a snapshot: no `requestContext`, Graph token, secret text, raw key material, payload row, or provider response body is permitted in artifact descriptors. Entra credential evidence remains allowlisted. GPO `gpoReports` sanitizes recognized credential-bearing Computer/User XML fields **before** snapshot persistence, while retaining ordinary policy-setting values; GPO topology snapshots contain relationship/configuration evidence only; the catalog points to those canonical snapshots and never copies their payload rows.
 
 For v1, "offline queryable" means a consumer can discover available evidence, follow inventory/detail/relationship dependencies, understand relationship identity domains, and locate raw JSON without Graph/on-prem access. It does not mean database-backed query execution, embeddings/vector search, LLM prompting, UI, or tenant reconstruction/export/import. The intended package flow is:
 
