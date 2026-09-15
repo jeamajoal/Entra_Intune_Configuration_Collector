@@ -101,7 +101,7 @@ Describe 'GPO scope topology provider evidence' {
     It 'captures direct GPO scope links by persisted GUID/domain and preserves explicit zero-link state' {
         $gpoId = [Guid]'22222222-3333-4444-5555-666666666666'
         $item = [pscustomobject]@{ id = [string]$gpoId; displayName = 'Workstation Policy'; domainId = 'example.com' }
-        $result = @(Collector.Provider.OnPrem\Invoke-CollectorOnPremRelationshipFamily -Family 'gpoScopeLinks' -InventoryItems @($item))[0]
+        $result = @(Invoke-CollectorOnPremRelationshipFamily -Family 'gpoScopeLinks' -InventoryItems @($item))[0]
 
         $global:CollectorTopologyReportCalls.Count | Should -Be 1
         $global:CollectorTopologyReportCalls[0].Guid | Should -Be $gpoId
@@ -118,7 +118,7 @@ Describe 'GPO scope topology provider evidence' {
         $result.links[1].enforced | Should -BeTrue
 
         $global:CollectorTopologyReportXml = '<GPO xmlns="http://www.microsoft.com/GroupPolicy/Settings"><Computer /></GPO>'
-        $empty = @(Collector.Provider.OnPrem\Invoke-CollectorOnPremRelationshipFamily -Family 'gpoScopeLinks' -InventoryItems @($item))[0]
+        $empty = @(Invoke-CollectorOnPremRelationshipFamily -Family 'gpoScopeLinks' -InventoryItems @($item))[0]
         $empty.linkCount | Should -Be 0
         @($empty.links).Count | Should -Be 0
         $empty.PSObject.Properties.Match('_collectorError').Count | Should -Be 0
@@ -134,7 +134,7 @@ Describe 'GPO scope topology provider evidence' {
             inventoryItem = [pscustomobject]@{ id = 'OU=Workstations,DC=example,DC=com'; distinguishedName = 'OU=Workstations,DC=example,DC=com'; domainId = 'example.com' }
         }
 
-        $results = @(Collector.Provider.OnPrem\Invoke-CollectorOnPremRelationshipFamily -Family 'gpoScopeInheritance' -InventoryItems @($domainEnvelope, $ouEnvelope))
+        $results = @(Invoke-CollectorOnPremRelationshipFamily -Family 'gpoScopeInheritance' -InventoryItems @($domainEnvelope, $ouEnvelope))
         $results.Count | Should -Be 2
         $global:CollectorTopologyDomainCalls.Count | Should -Be 1
         $global:CollectorTopologyDomainCalls[0].Identity | Should -Be 'example.com'
@@ -161,7 +161,7 @@ Describe 'GPO scope topology provider evidence' {
         $gpoId = [Guid]'22222222-3333-4444-5555-666666666666'
         $item = [pscustomobject]@{ id = [string]$gpoId; displayName = 'Workstation Policy'; domainId = 'example.com' }
 
-        $withFilter = @(Collector.Provider.OnPrem\Invoke-CollectorOnPremRelationshipFamily -Family 'gpoWmiFilterAssociations' -InventoryItems @($item))[0]
+        $withFilter = @(Invoke-CollectorOnPremRelationshipFamily -Family 'gpoWmiFilterAssociations' -InventoryItems @($item))[0]
         $withFilter.hasWmiFilter | Should -BeTrue
         $withFilter.wmiFilter.path | Should -Match '^MSFT_SomFilter\.ID='
         $withFilter.wmiFilter.name | Should -Be 'Windows 11 only'
@@ -169,7 +169,7 @@ Describe 'GPO scope topology provider evidence' {
         $global:CollectorTopologyGpoCalls[0].Domain | Should -Be 'example.com'
 
         $global:CollectorTopologyReturnWmiFilter = $false
-        $withoutFilter = @(Collector.Provider.OnPrem\Invoke-CollectorOnPremRelationshipFamily -Family 'gpoWmiFilterAssociations' -InventoryItems @($item))[0]
+        $withoutFilter = @(Invoke-CollectorOnPremRelationshipFamily -Family 'gpoWmiFilterAssociations' -InventoryItems @($item))[0]
         $withoutFilter.hasWmiFilter | Should -BeFalse
         $withoutFilter.wmiFilter | Should -BeNullOrEmpty
     }
@@ -177,7 +177,7 @@ Describe 'GPO scope topology provider evidence' {
     It 'keeps GpoApply security-filter evidence inside canonical gpoPermissions' {
         $gpoId = [Guid]'22222222-3333-4444-5555-666666666666'
         $item = [pscustomobject]@{ id = [string]$gpoId; displayName = 'Workstation Policy'; domainId = 'example.com' }
-        $result = @(Collector.Provider.OnPrem\Invoke-CollectorOnPremRelationshipFamily -Family 'gpoPermissions' -InventoryItems @($item))[0]
+        $result = @(Invoke-CollectorOnPremRelationshipFamily -Family 'gpoPermissions' -InventoryItems @($item))[0]
 
         @($result.permissions).Count | Should -Be 2
         @($result.permissions | Where-Object { $_.PermissionLevel -eq 'GpoApply' }).Count | Should -Be 1
