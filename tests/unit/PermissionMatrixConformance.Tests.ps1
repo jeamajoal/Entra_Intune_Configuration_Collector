@@ -132,6 +132,78 @@ BeforeAll {
         return $null
     }
 
+    function Resolve-TestVariableStringValue {
+        param(
+            [Parameter(Mandatory = $true)][string]$VariableName,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Anchor,
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$RootAst,
+            [int]$Depth = 0
+        )
+
+        if ($Depth -gt 8) {
+            return $null
+        }
+
+        $scope = $Anchor
+        while ($null -ne $scope -and $scope -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+            $scope = $scope.Parent
+        }
+        if ($null -eq $scope) {
+            $scope = $RootAst
+        }
+
+        $leftText = ('$' + $VariableName)
+        $assignments = @($scope.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            [string]$node.Left.Extent.Text -ieq $leftText
+        }, $true) | Where-Object {
+            $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset -and [string]$_.Right.Extent.Text -ine $leftText
+        } | Sort-Object { $_.Extent.EndOffset } -Descending)
+
+        foreach ($assignment in $assignments) {
+            $resolvedValue = Resolve-TestStringExpression -Expression $assignment.Right -Anchor $assignment -RootAst $RootAst -Depth ($Depth + 1)
+            if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
+                return [string]$resolvedValue
+            }
+        }
+
+        if ($VariableName -ieq 'section') {
+            $switchValue = Get-TestEnclosingSwitchValue -Anchor $Anchor
+            if (-not [string]::IsNullOrWhiteSpace([string]$switchValue)) {
+                return [string]$switchValue
+            }
+        }
+
+        if ($scope -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $null -ne $scope.Body.ParamBlock) {
+            $parameterMatches = @($scope.Body.ParamBlock.Parameters | Where-Object {
+                [string]$_.Name.VariablePath.UserPath -ieq $VariableName
+            })
+            if ($parameterMatches.Count -gt 0) {
+                $callerValues = @($RootAst.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.CommandAst]
+                }, $true) | Where-Object {
+                    [string]$_.GetCommandName() -ieq [string]$scope.Name -and
+                    ($_.Extent.StartOffset -lt $scope.Extent.StartOffset -or $_.Extent.EndOffset -gt $scope.Extent.EndOffset)
+                } | ForEach-Object {
+                    $argumentExpression = Get-TestCommandParameterExpression -Command $_ -Name $VariableName
+                    if ($null -ne $argumentExpression) {
+                        Resolve-TestStringExpression -Expression $argumentExpression -Anchor $_ -RootAst $RootAst -Depth ($Depth + 1)
+                    }
+                } | Where-Object {
+                    -not [string]::IsNullOrWhiteSpace([string]$_)
+                } | Sort-Object -Unique)
+
+                if ($callerValues.Count -eq 1) {
+                    return [string]$callerValues[0]
+                }
+            }
+        }
+
+        return $null
+    }
+
     function Resolve-TestStringExpression {
         param(
             [Parameter(Mandatory = $true)][System.Management.Automation.Language.Ast]$Expression,
@@ -153,48 +225,14 @@ BeforeAll {
 
         $expressionText = [string]$Expression.Extent.Text
         if ($expressionText -match '^\(\s*[\x27\x22]Graph \{0\}[\x27\x22]\s*-f\s*\$(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)$') {
-            $variableName = [string]$Matches.name
-            $syntheticVariable = $RootAst.Find({
-                param($node)
-                $node -is [System.Management.Automation.Language.VariableExpressionAst] -and [string]$node.VariablePath.UserPath -ieq $variableName
-            }, $true)
-            if ($null -ne $syntheticVariable) {
-                $resolvedValue = Resolve-TestStringExpression -Expression $syntheticVariable -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
-                if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
-                    return ('Graph {0}' -f $resolvedValue)
-                }
+            $resolvedValue = Resolve-TestVariableStringValue -VariableName ([string]$Matches.name) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
+            if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
+                return ('Graph {0}' -f $resolvedValue)
             }
         }
 
         if ($Expression -is [System.Management.Automation.Language.VariableExpressionAst]) {
-            $variableName = [string]$Expression.VariablePath.UserPath
-            $scope = $Anchor
-            while ($null -ne $scope -and $scope -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
-                $scope = $scope.Parent
-            }
-            if ($null -eq $scope) {
-                $scope = $RootAst
-            }
-
-            $leftText = ('$' + $variableName)
-            $assignments = @($scope.FindAll({
-                param($node)
-                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-                [string]$node.Left.Extent.Text -ieq $leftText
-            }, $true) | Where-Object {
-                $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset -and [string]$_.Right.Extent.Text -ine $leftText
-            } | Sort-Object { $_.Extent.EndOffset } -Descending)
-
-            foreach ($assignment in $assignments) {
-                $resolvedValue = Resolve-TestStringExpression -Expression $assignment.Right -Anchor $assignment -RootAst $RootAst -Depth ($Depth + 1)
-                if (-not [string]::IsNullOrWhiteSpace([string]$resolvedValue)) {
-                    return [string]$resolvedValue
-                }
-            }
-
-            if ($variableName -ieq 'section') {
-                return Get-TestEnclosingSwitchValue -Anchor $Anchor
-            }
+            return Resolve-TestVariableStringValue -VariableName ([string]$Expression.VariablePath.UserPath) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
         }
 
         return $null
@@ -219,6 +257,22 @@ BeforeAll {
             return [string]$sectionValues[0]
         }
         return $null
+    }
+
+    function Get-TestAssignedStringValue {
+        param(
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.FunctionDefinitionAst]$FunctionAst,
+            [Parameter(Mandatory = $true)][string]$VariableName
+        )
+
+        return @($FunctionAst.Body.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            [string]$node.Left.Extent.Text -ieq ('$' + $VariableName) -and
+            $node.Right -is [System.Management.Automation.Language.StringConstantExpressionAst]
+        }, $true) | ForEach-Object {
+            [string]$_.Right.Value
+        } | Sort-Object -Unique)
     }
 
     function Get-TestGraphRoute {
@@ -303,6 +357,34 @@ BeforeAll {
             }
 
             $routes += ('{0}|{1}|{2}|{3}' -f $section, $stage, $family, $endpoint)
+        }
+
+        foreach ($functionAst in @($ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
+        }, $true))) {
+            $stage = if ([string]$functionAst.Name -match 'Stage1') {
+                'stage1'
+            }
+            elseif ([string]$functionAst.Name -match 'Stage2') {
+                'stage2'
+            }
+            elseif ([string]$functionAst.Name -match 'Stage3') {
+                'stage3'
+            }
+            else {
+                $null
+            }
+            if ($null -eq $stage) {
+                continue
+            }
+
+            $assignedSections = @(Get-TestAssignedStringValue -FunctionAst $functionAst -VariableName 'section' | Where-Object { $_ -match '^(entra-|intune-)' })
+            $assignedFamilies = @(Get-TestAssignedStringValue -FunctionAst $functionAst -VariableName 'family')
+            $assignedEndpoints = @(Get-TestAssignedStringValue -FunctionAst $functionAst -VariableName 'endpointTemplate' | Where-Object { $_ -match '^/(v1\.0|beta)/' })
+            if ($assignedSections.Count -eq 1 -and $assignedFamilies.Count -eq 1 -and $assignedEndpoints.Count -eq 1) {
+                $routes += ('{0}|{1}|{2}|{3}' -f $assignedSections[0], $stage, $assignedFamilies[0], $assignedEndpoints[0].Replace('{0}', '{id}'))
+            }
         }
 
         return @($routes | Sort-Object -Unique)
@@ -528,9 +610,9 @@ Describe 'Permission matrix conformance' {
         $staleRoute = @($script:matrixGraphRoutes + 'entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute')
 
         { Assert-TestSetEqual -Expected $script:productionGraphRoutes -Actual $swappedFamilyRoutes -Label 'family swap mutation' } |
-            Should -Throw '*Graph route*'
+            Should -Throw '*family swap mutation mismatch*'
         { Assert-TestSetEqual -Expected $script:productionGraphRoutes -Actual $wrongStageRoutes -Label 'stage mutation' } |
-            Should -Throw '*Graph route*'
+            Should -Throw '*stage mutation mismatch*'
         { Assert-TestSetEqual -Expected $script:productionGraphRoutes -Actual $staleRoute -Label 'stale route mutation' } |
             Should -Throw '*Stale: entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute*'
     }
