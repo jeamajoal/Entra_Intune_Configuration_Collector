@@ -265,10 +265,11 @@ BeforeAll {
             [Parameter(Mandatory = $true)][string]$VariableName
         )
 
+        $leftText = ('$' + $VariableName)
         return @($FunctionAst.Body.FindAll({
             param($node)
             $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-            [string]$node.Left.Extent.Text -ieq ('$' + $VariableName) -and
+            [string]$node.Left.Extent.Text -ieq $leftText -and
             $node.Right -is [System.Management.Automation.Language.StringConstantExpressionAst]
         }, $true) | ForEach-Object {
             [string]$_.Right.Value
