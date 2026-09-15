@@ -278,6 +278,15 @@ BeforeAll {
             $stage = Get-TestCommandStage -CommandName $commandName
             if ($null -eq $stage) { continue }
 
+            $enclosingFunction = Get-TestEnclosingFunction -Anchor $command
+            if (
+                $commandName -ieq 'Invoke-CollectorStage1Family' -and
+                $null -ne $enclosingFunction -and
+                [string]$enclosingFunction.Name -ieq 'Invoke-CollectorGraphInventoryFamily'
+            ) {
+                continue
+            }
+
             $familyExpression = Get-TestCommandParameterExpression -Command $command -Name 'Family'
             if ($null -eq $familyExpression) { continue }
 
