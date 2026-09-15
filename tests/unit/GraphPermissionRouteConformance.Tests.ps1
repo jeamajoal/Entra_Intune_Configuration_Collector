@@ -311,6 +311,34 @@ BeforeAll {
                 continue
             }
 
+            $sourceTypeExpression = Get-TestCommandParameterExpression -Command $command -Name 'SourceType'
+            $isGraphRoute = $commandName -match 'Graph'
+            if ($null -ne $sourceTypeExpression) {
+                $sourceType = Resolve-TestRequiredStringExpression -Expression $sourceTypeExpression -Anchor $command -RootAst $ast -Label ('route SourceType for {0}' -f $commandName)
+                if ([string]$sourceType -ine 'Graph') {
+                    continue
+                }
+                $isGraphRoute = $true
+            }
+            elseif (-not $isGraphRoute) {
+                $endpointProbe = Resolve-TestStringExpression -Expression $endpointExpression -Anchor $command -RootAst $ast
+                if ([string]::IsNullOrWhiteSpace([string]$endpointProbe)) {
+                    throw ('Unable to classify route-shaped call {0}; endpoint expression could not be resolved: {1}' -f $commandName, [string]$endpointExpression.Extent.Text)
+                }
+                $probe = [string]$endpointProbe
+                if ($probe.StartsWith('Graph ', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $probe = $probe.Substring(6)
+                }
+                if ($probe -notmatch '^/(v1\.0|beta)/') {
+                    continue
+                }
+                $isGraphRoute = $true
+            }
+
+            if (-not $isGraphRoute) {
+                continue
+            }
+
             $family = Resolve-TestRequiredStringExpression -Expression $familyExpression -Anchor $command -RootAst $ast -Label ('Graph route Family for {0}' -f $commandName)
             $endpoint = Resolve-TestRequiredStringExpression -Expression $endpointExpression -Anchor $command -RootAst $ast -Label ('Graph route endpoint for {0}' -f $commandName)
 
@@ -409,7 +437,7 @@ Describe 'Graph permission route conformance' {
         Assert-TestSetEqual -Expected $script:productionRoutes -Actual $script:matrixRoutes -Label 'Graph route inventory'
     }
 
-    It 'fails closed when a route-shaped call contains an unresolved routing expression' {
+    It 'fails closed when a Graph route-shaped call contains an unresolved routing expression' {
         $fixturePath = Join-Path -Path $TestDrive -ChildPath 'UnresolvedGraphRoute.psm1'
         @'
 $descriptor = [pscustomobject]@{ Family = 'applications' }
@@ -418,6 +446,15 @@ Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family
 
         { Get-TestGraphRoutesFromFile -Path $fixturePath } |
             Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'ignores explicitly derived route-shaped batch calls' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'DerivedBatchRoute.psm1'
+        @'
+Invoke-CollectorStage3BatchLoop -Section 'entra-ca' -Family 'conditionalAccessPolicyReferences' -SourceType 'Derived' -SourceName 'Derived Conditional Access policy references from Stage1 policy inventory'
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        @(Get-TestGraphRoutesFromFile -Path $fixturePath).Count | Should -Be 0
     }
 
     It 'rejects family stage missing and stale route drift even when endpoint membership is preserved' {
