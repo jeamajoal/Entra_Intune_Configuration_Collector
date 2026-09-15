@@ -70,7 +70,7 @@ BeforeAll {
         } | Sort-Object -Unique)
     }
 
-    function Get-TestOptionalPropertyValues {
+    function Get-TestOptionalPropertyValue {
         param(
             [Parameter(Mandatory = $true)][object]$InputObject,
             [Parameter(Mandatory = $true)][string]$Name
@@ -166,8 +166,8 @@ Describe 'Permission matrix conformance' {
             $allPermissions = @()
             $allPermissions += @($permissionProfileEntry.applicationPermissions)
             $allPermissions += @($permissionProfileEntry.delegatedPermissions)
-            $allPermissions += @(Get-TestOptionalPropertyValues -InputObject $permissionProfileEntry -Name 'optionalApplicationPermissions')
-            $allPermissions += @(Get-TestOptionalPropertyValues -InputObject $permissionProfileEntry -Name 'optionalDelegatedPermissions')
+            $allPermissions += @(Get-TestOptionalPropertyValue -InputObject $permissionProfileEntry -Name 'optionalApplicationPermissions')
+            $allPermissions += @(Get-TestOptionalPropertyValue -InputObject $permissionProfileEntry -Name 'optionalDelegatedPermissions')
             foreach ($permission in $allPermissions) {
                 if (-not [string]::IsNullOrWhiteSpace([string]$permission)) {
                     [string]$permission | Should -Not -Match 'ReadWrite'
