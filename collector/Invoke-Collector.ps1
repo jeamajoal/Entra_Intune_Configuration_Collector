@@ -4,6 +4,9 @@ param(
     [AllowEmptyString()]
     [string]$GraphToken,
 
+    [AllowNull()]
+    [System.Management.Automation.PSCredential]$ADCredential,
+
     [Parameter(Mandatory = $true)]
     [string]$OutputRoot,
 
@@ -37,7 +40,23 @@ $orchestratorModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'modules\Coll
 Import-Module -Name $orchestratorModulePath -Force -ErrorAction Stop
 
 try {
-    $result = Start-CollectorRun -GraphToken $GraphToken -OutputRoot $OutputRoot -Stages $Stages -Sections $Sections -Resume:$Resume -ReprocessFailedOnly:$ReprocessFailedOnly -Force:$Force -BatchSize $BatchSize -MaxRetries $MaxRetries -BaseBackoffSeconds $BaseBackoffSeconds -MaxBackoffSeconds $MaxBackoffSeconds -ThrottleMilliseconds $ThrottleMilliseconds
+    $invokeParameters = @{
+        GraphToken = $GraphToken
+        ADCredential = $ADCredential
+        OutputRoot = $OutputRoot
+        Stages = $Stages
+        Sections = $Sections
+        Resume = $Resume
+        ReprocessFailedOnly = $ReprocessFailedOnly
+        Force = $Force
+        BatchSize = $BatchSize
+        MaxRetries = $MaxRetries
+        BaseBackoffSeconds = $BaseBackoffSeconds
+        MaxBackoffSeconds = $MaxBackoffSeconds
+        ThrottleMilliseconds = $ThrottleMilliseconds
+    }
+
+    $result = Start-CollectorRun @invokeParameters
     $result
 }
 catch {
