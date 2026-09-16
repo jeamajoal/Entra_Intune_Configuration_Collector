@@ -88,6 +88,23 @@ BeforeAll {
         return $null
     }
 
+    function Get-TestAssignmentVariableName {
+        param([Parameter(Mandatory = $true)][System.Management.Automation.Language.AssignmentStatementAst]$Assignment)
+
+        if ($Assignment.Left -is [System.Management.Automation.Language.VariableExpressionAst]) {
+            return [string]$Assignment.Left.VariablePath.UserPath
+        }
+
+        $variables = @($Assignment.Left.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.VariableExpressionAst]
+        }, $true))
+        if ($variables.Count -eq 1) {
+            return [string]$variables[0].VariablePath.UserPath
+        }
+        return $null
+    }
+
     function Resolve-TestVariableStringValue {
         param(
             [Parameter(Mandatory = $true)][string]$VariableName,
@@ -105,10 +122,11 @@ BeforeAll {
             $leftText = ('$' + $VariableName)
             $assignments = @($scriptBlock.FindAll({
                 param($node)
-                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-                [string]$node.Left.Extent.Text -ieq $leftText
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst]
             }, $false) | Where-Object {
-                $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset -and [string]$_.Right.Extent.Text -ine $leftText
+                (Get-TestAssignmentVariableName -Assignment $_) -ieq $VariableName -and
+                $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset -and
+                [string]$_.Right.Extent.Text -ine $leftText
             } | Sort-Object { $_.Extent.EndOffset } -Descending)
 
             if ($assignments.Count -gt 0) {
@@ -190,28 +208,45 @@ BeforeAll {
         if ($Expression -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -and @($Expression.NestedExpressions).Count -eq 0) {
             return [string]$Expression.Value
         }
-
-        $stringValues = @($Expression.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
-        }, $true) | ForEach-Object { [string]$_.Value } | Sort-Object -Unique)
-        $variables = @($Expression.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.VariableExpressionAst]
-        }, $true))
-
-        if ($stringValues -contains 'Graph {0}' -and $variables.Count -eq 1) {
-            $resolved = Resolve-TestVariableStringValue -VariableName ([string]$variables[0].VariablePath.UserPath) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
-            if (-not [string]::IsNullOrWhiteSpace([string]$resolved)) {
-                return ('Graph {0}' -f $resolved)
+        if ($Expression -is [System.Management.Automation.Language.VariableExpressionAst]) {
+            return Resolve-TestVariableStringValue -VariableName ([string]$Expression.VariablePath.UserPath) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
+        }
+        if ($Expression -is [System.Management.Automation.Language.CommandExpressionAst]) {
+            return Resolve-TestStringExpression -Expression $Expression.Expression -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
+        }
+        if ($Expression -is [System.Management.Automation.Language.ParenExpressionAst]) {
+            $pipelineElements = @($Expression.Pipeline.PipelineElements)
+            if ($pipelineElements.Count -eq 1 -and $pipelineElements[0] -is [System.Management.Automation.Language.CommandExpressionAst]) {
+                return Resolve-TestStringExpression -Expression $pipelineElements[0].Expression -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
             }
+            return $null
         }
-        if ($variables.Count -eq 1 -and $stringValues.Count -eq 0) {
-            return Resolve-TestVariableStringValue -VariableName ([string]$variables[0].VariablePath.UserPath) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
+        if ($Expression -is [System.Management.Automation.Language.BinaryExpressionAst] -and [string]$Expression.Operator -eq 'Format') {
+            if (
+                $Expression.Left -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                [string]$Expression.Left.Value -ceq 'Graph {0}'
+            ) {
+                $formatVariable = $null
+                if ($Expression.Right -is [System.Management.Automation.Language.VariableExpressionAst]) {
+                    $formatVariable = $Expression.Right
+                }
+                elseif ($Expression.Right -is [System.Management.Automation.Language.ArrayLiteralAst]) {
+                    $elements = @($Expression.Right.Elements)
+                    if ($elements.Count -eq 1 -and $elements[0] -is [System.Management.Automation.Language.VariableExpressionAst]) {
+                        $formatVariable = $elements[0]
+                    }
+                }
+
+                if ($null -ne $formatVariable) {
+                    $resolved = Resolve-TestVariableStringValue -VariableName ([string]$formatVariable.VariablePath.UserPath) -Anchor $Anchor -RootAst $RootAst -Depth ($Depth + 1)
+                    if (-not [string]::IsNullOrWhiteSpace([string]$resolved)) {
+                        return ('Graph {0}' -f $resolved)
+                    }
+                }
+            }
+            return $null
         }
-        if ($variables.Count -eq 0 -and $stringValues.Count -eq 1) {
-            return [string]$stringValues[0]
-        }
+
         return $null
     }
 
@@ -300,14 +335,13 @@ BeforeAll {
 
             $assignments = @($scriptBlock.FindAll({
                 param($node)
-                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-                $node.Left -is [System.Management.Automation.Language.VariableExpressionAst]
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst]
             }, $false))
-            $endpointAssignments = @($assignments | Where-Object { [string]$_.Left.VariablePath.UserPath -ieq 'endpointTemplate' })
+            $endpointAssignments = @($assignments | Where-Object { (Get-TestAssignmentVariableName -Assignment $_) -ieq 'endpointTemplate' })
             if ($endpointAssignments.Count -eq 0) { continue }
 
-            $sectionAssignments = @($assignments | Where-Object { [string]$_.Left.VariablePath.UserPath -ieq 'section' })
-            $familyAssignments = @($assignments | Where-Object { [string]$_.Left.VariablePath.UserPath -ieq 'family' })
+            $sectionAssignments = @($assignments | Where-Object { (Get-TestAssignmentVariableName -Assignment $_) -ieq 'section' })
+            $familyAssignments = @($assignments | Where-Object { (Get-TestAssignmentVariableName -Assignment $_) -ieq 'family' })
             if ($sectionAssignments.Count -ne 1 -or $familyAssignments.Count -ne 1 -or $endpointAssignments.Count -ne 1) {
                 throw ('Unable to resolve custom Graph route declaration in {0}; expected one local section, family, and endpointTemplate assignment.' -f $Path)
             }
@@ -468,6 +502,15 @@ Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family
         { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
     }
 
+    It 'rejects compound routing expressions even when their literal descendants are identical' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'CompoundGraphRoute.psm1'
+        @'
+Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family ('applications' + 'applications') -EndpointTemplate '/v1.0/applications'
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
     It 'rejects splatted recognized route arguments' {
         $fixturePath = Join-Path -Path $TestDrive -ChildPath 'SplattedGraphRoute.psm1'
         @'
@@ -485,6 +528,20 @@ function Invoke-CollectorSyntheticStage1 {
     $descriptor = [pscustomobject]@{ Endpoint = '/v1.0/servicePrincipals' }
     $endpoint = $descriptor.Endpoint
     $callback = { $endpoint = '/v1.0/applications' }
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family 'applications' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint)
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route endpoint*'
+    }
+
+    It 'recognizes typed route assignments before applying latest-assignment fail-closed behavior' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'TypedAssignmentMustResolve.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1 {
+    $endpoint = '/v1.0/applications'
+    $descriptor = [pscustomobject]@{ Endpoint = '/v1.0/servicePrincipals' }
+    [string]$endpoint = $descriptor.Endpoint
     Invoke-CollectorStage1Family -Section 'entra-apps' -Family 'applications' -SourceType 'Graph' -SourceName ('Graph {0}' -f $endpoint)
 }
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
