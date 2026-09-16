@@ -88,7 +88,7 @@ BeforeAll {
         return $null
     }
 
-    function Get-TestAssignmentVariables {
+    function Get-TestAssignmentVariable {
         param([Parameter(Mandatory = $true)][System.Management.Automation.Language.AssignmentStatementAst]$Assignment)
 
         if ($Assignment.Left -is [System.Management.Automation.Language.VariableExpressionAst]) {
@@ -104,7 +104,7 @@ BeforeAll {
     function Get-TestAssignmentVariableName {
         param([Parameter(Mandatory = $true)][System.Management.Automation.Language.AssignmentStatementAst]$Assignment)
 
-        $variables = @(Get-TestAssignmentVariables -Assignment $Assignment)
+        $variables = @(Get-TestAssignmentVariable -Assignment $Assignment)
         if ($variables.Count -eq 1) {
             return [string]$variables[0].VariablePath.UserPath
         }
@@ -118,7 +118,7 @@ BeforeAll {
         )
 
         return @(
-            Get-TestAssignmentVariables -Assignment $Assignment | Where-Object {
+            Get-TestAssignmentVariable -Assignment $Assignment | Where-Object {
                 [string]$_.VariablePath.UserPath -ieq $VariableName
             }
         ).Count -gt 0
@@ -130,7 +130,7 @@ BeforeAll {
         if ([string]$Assignment.Operator -ne 'Equals') {
             return $false
         }
-        if (@(Get-TestAssignmentVariables -Assignment $Assignment).Count -ne 1) {
+        if (@(Get-TestAssignmentVariable -Assignment $Assignment).Count -ne 1) {
             return $false
         }
 
