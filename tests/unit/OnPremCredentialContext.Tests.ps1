@@ -7,13 +7,16 @@ BeforeAll {
     Import-Module -Name $script:securityContextModulePath -Force -ErrorAction Stop
     Import-Module -Name $script:orchestratorModulePath -Force -ErrorAction Stop
 
-    function New-TestADCredential {
+    function Get-TestADCredential {
         param(
-            [string]$UserName = 'EXAMPLE\collector-reader',
-            [string]$Password = 'unit-test-secret-218'
+            [string]$UserName = 'EXAMPLE\collector-reader'
         )
 
-        $securePassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
+        $securePassword = [System.Security.SecureString]::new()
+        foreach ($character in [char[]]'unit-test-secret-218') {
+            $securePassword.AppendChar($character)
+        }
+        $securePassword.MakeReadOnly()
         return [System.Management.Automation.PSCredential]::new($UserName, $securePassword)
     }
 }
@@ -27,10 +30,10 @@ Describe 'Alternate AD credential security context' {
     }
 
     It 'parses DOMAIN user names without persisting or transforming the password' {
-        InModuleScope 'Collector.SecurityContext.OnPrem' {
-            $securePassword = ConvertTo-SecureString -String 'unit-test-secret-218' -AsPlainText -Force
-            $credential = [System.Management.Automation.PSCredential]::new('EXAMPLE\collector-reader', $securePassword)
-            $resolved = Resolve-CollectorADCredentialLogonName -ADCredential $credential
+        $testCredential = Get-TestADCredential
+        InModuleScope 'Collector.SecurityContext.OnPrem' -Parameters @{ TestCredential = $testCredential } {
+            param([System.Management.Automation.PSCredential]$TestCredential)
+            $resolved = Resolve-CollectorADCredentialLogonName -ADCredential $TestCredential
 
             if ([string]$resolved.domain -ne 'EXAMPLE') {
                 throw ('Expected parsed domain EXAMPLE; actual: {0}' -f [string]$resolved.domain)
@@ -42,10 +45,10 @@ Describe 'Alternate AD credential security context' {
     }
 
     It 'passes UPN user names to LogonUser without inventing a domain' {
-        InModuleScope 'Collector.SecurityContext.OnPrem' {
-            $securePassword = ConvertTo-SecureString -String 'unit-test-secret-218' -AsPlainText -Force
-            $credential = [System.Management.Automation.PSCredential]::new('collector-reader@example.com', $securePassword)
-            $resolved = Resolve-CollectorADCredentialLogonName -ADCredential $credential
+        $testCredential = Get-TestADCredential -UserName 'collector-reader@example.com'
+        InModuleScope 'Collector.SecurityContext.OnPrem' -Parameters @{ TestCredential = $testCredential } {
+            param([System.Management.Automation.PSCredential]$TestCredential)
+            $resolved = Resolve-CollectorADCredentialLogonName -ADCredential $TestCredential
 
             if ([string]$resolved.userName -ne 'collector-reader@example.com') {
                 throw ('Expected UPN to remain intact; actual: {0}' -f [string]$resolved.userName)
@@ -57,14 +60,14 @@ Describe 'Alternate AD credential security context' {
     }
 
     It 'fails clearly on a non-Windows platform before native token creation' {
-        InModuleScope 'Collector.SecurityContext.OnPrem' {
+        $testCredential = Get-TestADCredential
+        InModuleScope 'Collector.SecurityContext.OnPrem' -Parameters @{ TestCredential = $testCredential } {
+            param([System.Management.Automation.PSCredential]$TestCredential)
             Mock -CommandName Test-CollectorWindowsPlatform -MockWith { $false }
-            $securePassword = ConvertTo-SecureString -String 'unit-test-secret-218' -AsPlainText -Force
-            $credential = [System.Management.Automation.PSCredential]::new('EXAMPLE\collector-reader', $securePassword)
 
             $threw = $false
             try {
-                New-CollectorADCredentialToken -ADCredential $credential | Out-Null
+                New-CollectorADCredentialToken -ADCredential $TestCredential | Out-Null
             }
             catch {
                 $threw = $true
@@ -80,18 +83,21 @@ Describe 'Alternate AD credential security context' {
     }
 
     It 'disposes the native token after impersonated execution' {
-        InModuleScope 'Collector.SecurityContext.OnPrem' {
+        $testCredential = Get-TestADCredential
+        InModuleScope 'Collector.SecurityContext.OnPrem' -Parameters @{ TestCredential = $testCredential } {
+            param([System.Management.Automation.PSCredential]$TestCredential)
             $script:fakeToken = [Microsoft.Win32.SafeHandles.SafeAccessTokenHandle]::new([IntPtr]::Zero)
             Mock -CommandName New-CollectorADCredentialToken -MockWith { $script:fakeToken }
             Mock -CommandName Invoke-CollectorWindowsImpersonated -MockWith {
-                param($Token, $ScriptBlock)
+                param(
+                    [Microsoft.Win32.SafeHandles.SafeAccessTokenHandle]$Token,
+                    [scriptblock]$ScriptBlock
+                )
                 $null = $Token
                 return @(& $ScriptBlock)
             }
 
-            $securePassword = ConvertTo-SecureString -String 'unit-test-secret-218' -AsPlainText -Force
-            $credential = [System.Management.Automation.PSCredential]::new('EXAMPLE\collector-reader', $securePassword)
-            $result = @(Invoke-CollectorWithADCredential -ADCredential $credential -ScriptBlock { 'impersonated-result' })
+            $result = @(Invoke-CollectorWithADCredential -ADCredential $TestCredential -ScriptBlock { 'impersonated-result' })
 
             if (($result -join ',') -ne 'impersonated-result') {
                 throw ('Unexpected impersonated result: {0}' -f ($result -join ','))
@@ -142,7 +148,10 @@ Describe 'Orchestrator alternate AD credential routing' {
             @()
         }
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorWithADCredential -MockWith {
-            param($ADCredential, $ScriptBlock)
+            param(
+                [System.Management.Automation.PSCredential]$ADCredential,
+                [scriptblock]$ScriptBlock
+            )
             $null = $ADCredential
             return @(& $ScriptBlock)
         }
@@ -155,7 +164,7 @@ Describe 'Orchestrator alternate AD credential routing' {
     }
 
     It 'routes all three on-prem stages through the supplied credential context' {
-        $credential = New-TestADCredential
+        $credential = Get-TestADCredential
         $result = Start-CollectorRun -ADCredential $credential -OutputRoot $script:testRoot -Stages @('Stage1', 'Stage2', 'Stage3') -Sections @('onprem-ad-gpo')
 
         if ($result.status -ne 'Completed') {
@@ -183,7 +192,7 @@ Describe 'Orchestrator alternate AD credential routing' {
     }
 
     It 'keeps Graph-backed stage work outside the alternate AD credential wrapper' {
-        $credential = New-TestADCredential
+        $credential = Get-TestADCredential
         Start-CollectorRun -GraphToken 'graph-test-token' -ADCredential $credential -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-apps', 'onprem-ad-gpo') | Out-Null
 
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 1 -Exactly -Scope It -ParameterFilter {
