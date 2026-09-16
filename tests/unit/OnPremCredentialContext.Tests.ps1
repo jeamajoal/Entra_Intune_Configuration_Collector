@@ -3,6 +3,7 @@ BeforeAll {
     $script:securityContextModulePath = Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.SecurityContext.OnPrem.psm1'
     $script:orchestratorModulePath = Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Orchestrator.psm1'
     $script:entryPointPath = Join-Path -Path $repoRoot -ChildPath 'collector/Invoke-Collector.ps1'
+    $script:permissionMatrixPath = Join-Path -Path $repoRoot -ChildPath 'docs/permissions/permission-matrix.json'
 
     Import-Module -Name $script:securityContextModulePath -Force -ErrorAction Stop
     Import-Module -Name $script:orchestratorModulePath -Force -ErrorAction Stop
@@ -120,6 +121,34 @@ Describe 'Alternate AD credential security context' {
         }
         if ($source -notmatch 'SecureStringToGlobalAllocUnicode' -or $source -notmatch 'ZeroFreeGlobalAllocUnicode') {
             throw 'Expected native password marshaling to use a zeroed transient unmanaged buffer.'
+        }
+    }
+
+    It 'pins the canonical alternate on-prem authentication contract' {
+        $matrix = Get-Content -LiteralPath $script:permissionMatrixPath -Raw | ConvertFrom-Json
+        $providers = @($matrix.providers | Where-Object { [string]$_.id -ceq 'onprem-windows' })
+        if ($providers.Count -ne 1) {
+            throw ('Expected exactly one onprem-windows provider; found {0}.' -f $providers.Count)
+        }
+
+        $provider = $providers[0]
+        if ([string]$provider.authentication -cne 'execution-identity') {
+            throw ('Expected process identity to remain the default on-prem authentication contract; actual: {0}.' -f [string]$provider.authentication)
+        }
+        if ([string]$provider.alternateAuthentication.mode -cne 'windows-netonly-impersonation') {
+            throw 'Permission matrix does not declare the Windows net-only alternate authentication mode.'
+        }
+        if ([string]$provider.alternateAuthentication.credentialInput -cne 'ADCredential') {
+            throw 'Permission matrix does not bind alternate on-prem authentication to ADCredential.'
+        }
+        if ([string]$provider.alternateAuthentication.logonType -cne 'LOGON32_LOGON_NEW_CREDENTIALS') {
+            throw 'Permission matrix does not pin LOGON32_LOGON_NEW_CREDENTIALS.'
+        }
+        if ([string]$provider.alternateAuthentication.logonProvider -cne 'LOGON32_PROVIDER_WINNT50') {
+            throw 'Permission matrix does not pin LOGON32_PROVIDER_WINNT50.'
+        }
+        if ([string]$matrix.onPrem.identityAssumption -notmatch 'ADCredential') {
+            throw 'On-prem identity assumption does not describe the optional ADCredential execution context.'
         }
     }
 }
