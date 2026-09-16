@@ -175,9 +175,7 @@ Describe 'Collector orchestrator execution flow' {
         }
     }
 
-    It 'executes only the selected stage and forwards section-only selection in canonical order' {
-        $script:capturedStage3Sections = @()
-
+    It 'executes only the selected stage and isolates on-prem execution from Graph-backed sections' {
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
             throw 'Stage1 should not be invoked for Stage3-only execution.'
         }
@@ -192,31 +190,42 @@ Describe 'Collector orchestrator execution flow' {
                 [string[]]$Sections
             )
 
-            $script:capturedStage3Sections = @($Sections)
-            return @(
-                [pscustomobject]@{
-                    stage = 'stage3'
-                    section = 'entra-apps'
-                    family = 'groupMembers'
-                    batchCount = 1
-                    succeededBatches = 1
-                    failedBatches = 0
-                    skippedBatches = 0
-                    itemCount = 1
-                    errors = @()
-                },
-                [pscustomobject]@{
-                    stage = 'stage3'
-                    section = 'onprem-ad-gpo'
-                    family = 'groupMembersOnPrem'
-                    batchCount = 1
-                    succeededBatches = 1
-                    failedBatches = 0
-                    skippedBatches = 0
-                    itemCount = 1
-                    errors = @()
+            $sectionKey = @($Sections) -join ','
+            switch ($sectionKey) {
+                'entra-apps' {
+                    return @(
+                        [pscustomobject]@{
+                            stage = 'stage3'
+                            section = 'entra-apps'
+                            family = 'groupMembers'
+                            batchCount = 1
+                            succeededBatches = 1
+                            failedBatches = 0
+                            skippedBatches = 0
+                            itemCount = 1
+                            errors = @()
+                        }
+                    )
                 }
-            )
+                'onprem-ad-gpo' {
+                    return @(
+                        [pscustomobject]@{
+                            stage = 'stage3'
+                            section = 'onprem-ad-gpo'
+                            family = 'groupMembersOnPrem'
+                            batchCount = 1
+                            succeededBatches = 1
+                            failedBatches = 0
+                            skippedBatches = 0
+                            itemCount = 1
+                            errors = @()
+                        }
+                    )
+                }
+                default {
+                    throw ('Unexpected Stage3 section set: {0}' -f $sectionKey)
+                }
+            }
         }
 
         $result = Start-CollectorRun -GraphToken 'token' -OutputRoot $script:testRoot -Stages @('Stage3') -Sections @('onprem-ad-gpo', 'entra-apps')
@@ -224,7 +233,10 @@ Describe 'Collector orchestrator execution flow' {
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage2 -Times 0 -Exactly
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage3 -Times 1 -Exactly -ParameterFilter {
-            @($Sections) -join ',' -eq 'entra-apps,onprem-ad-gpo'
+            @($Sections) -join ',' -eq 'entra-apps'
+        }
+        Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage3 -Times 1 -Exactly -ParameterFilter {
+            @($Sections) -join ',' -eq 'onprem-ad-gpo'
         }
 
         if (@($result.stageResults).Count -ne 2) {

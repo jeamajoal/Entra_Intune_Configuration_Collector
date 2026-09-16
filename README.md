@@ -29,12 +29,12 @@ Prerequisites:
 
 - PowerShell 7+ or Windows PowerShell 5.1.
 - A Microsoft Graph access token with the read permissions required by the selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`, `intune-enrollment`). Application permissions are the recommended unattended-run contract; delegated access can additionally require a supported signed-in-user Entra role. The exact section/stage/family mapping is maintained in [docs/permissions/permission-matrix.json](docs/permissions/permission-matrix.json) and explained in [docs/permissions.md](docs/permissions.md). No Graph token is required for an `onprem-ad-gpo`-only run.
-- Permission names are scoped to a provider/resource, not globally interchangeable. The current `GraphToken` belongs only to provider `microsoft-graph` and resource `https://graph.microsoft.com/`; `onprem-ad-gpo` uses the local Windows/domain execution identity. A future distinct provider such as Defender/MDE must add its own audience/origin/token boundary only when its first real consuming route is implemented.
+- Permission names are scoped to a provider/resource, not globally interchangeable. The current `GraphToken` belongs only to provider `microsoft-graph` and resource `https://graph.microsoft.com/`; `onprem-ad-gpo` uses the local Windows/domain execution identity by default or an optional `ADCredential` for alternate outbound AD/GPO authentication. A future distinct provider such as Defender/MDE must add its own audience/origin/token boundary only when its first real consuming route is implemented.
 - `entra-ca` is deliberately opt-in so existing default runs do not silently acquire new Conditional Access permission dependencies. Current policy/named-location reads use `Policy.Read.All`, authentication-strength reads use `Policy.Read.AuthenticationMethod`, and authentication-context reads use `AuthenticationContext.Read.All`.
 - `entra-governance` is also opt-in. Administrative-unit reads use `AdministrativeUnit.Read.All`; directory-role, role-definition, role-assignment, and administrative-unit scoped-role reads use `RoleManagement.Read.Directory`. Hidden administrative-unit membership can additionally require `Member.Read.Hidden`.
 - `intune-core` requires an active Intune tenant license. Current app reads use `DeviceManagementApps.Read.All`; script inventory/detail uses the dedicated `DeviceManagementScripts.Read.All`; script-assignment, compliance, assignment-filter, Settings Catalog/classic configuration, endpoint-security/security-baseline, settings, and assignment reads use `DeviceManagementConfiguration.Read.All`.
 - `intune-enrollment` is deliberately opt-in because it requires the distinct Microsoft Graph application permission `DeviceManagementServiceConfig.Read.All`. It collects tenant enrollment configuration through v1.0 and Windows Autopilot deployment-profile configuration/assignments through beta; existing default `intune-core` runs therefore do not silently acquire the enrollment service-configuration permission.
-- The `onprem-ad-gpo` section requires the ActiveDirectory and GroupPolicy RSAT modules plus read access to the targeted forest/domain/GPO/ACL data. Current commands are enumerated in the canonical permission matrix; no mutation rights are required.
+- The `onprem-ad-gpo` section requires the ActiveDirectory and GroupPolicy RSAT modules plus read access to the targeted forest/domain/GPO/ACL data. Current commands are enumerated in the canonical permission matrix; no mutation rights are required. When the collector process identity does not have that read access, supply `-ADCredential` with an existing `PSCredential`; the credential is used only for the on-prem stage and is not serialized into run artifacts.
 - For `403 Forbidden` or equivalent authorization errors, verify the token grants/admin consent, delegated user role, Intune licensing, and target visibility **and** confirm that the permission matrix is still current for the failing endpoint. Do not add broad `ReadWrite` scopes solely to make a read-only collector request work.
 
 Run all stages for the legacy default sections:
@@ -90,6 +90,17 @@ Run only the on-prem section without a Graph token:
 	-Sections onprem-ad-gpo
 ```
 
+Run the on-prem section under a different AD/GPO credential context while keeping the collector process identity unchanged:
+
+```powershell
+$ADCredential = Get-Credential
+
+./collector/Invoke-Collector.ps1 `
+	-ADCredential $ADCredential `
+	-OutputRoot ./output `
+	-Sections onprem-ad-gpo
+```
+
 Resume previous run and reprocess failed or missing batches only:
 
 ```powershell
@@ -132,6 +143,7 @@ The intended offline handoff is **collect -> catalog -> validate -> consume/ques
 Collector parameters:
 
 - GraphToken: bearer token used for Graph requests. Required when any Graph-backed section (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`, `intune-enrollment`) is selected; optional for `onprem-ad-gpo`-only execution.
+- ADCredential: optional `PSCredential` used only for `onprem-ad-gpo`. On Windows, the collector applies it as a net-only impersonation context so AD and GroupPolicy network access can use a different domain account while local process/filesystem access remains under the process identity. The credential object/password is never persisted; run metadata records only whether an alternate credential was supplied.
 - OutputRoot (mandatory): root output folder containing per-run artifacts.
 - Stages: All, Stage1, Stage2, Stage3. Default is All.
 - Sections: entra-apps, entra-pim, entra-ca, entra-governance, intune-core, intune-enrollment, onprem-ad-gpo. The legacy default remains `entra-apps,entra-pim,intune-core,onprem-ad-gpo`; `entra-ca`, `entra-governance`, and `intune-enrollment` must be selected explicitly.

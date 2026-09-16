@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.SecurityContext.OnPrem.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
@@ -122,6 +123,7 @@ function New-CollectorInvocationParameters {
 
     [pscustomobject]@{
         graphTokenSupplied = [bool](-not [string]::IsNullOrWhiteSpace($GraphToken))
+        adCredentialSupplied = [bool]$RuntimeOptions.ADCredentialSupplied
         outputRoot = $OutputRoot
         stages = @($Stages)
         sections = @($Sections)
@@ -294,6 +296,9 @@ function Start-CollectorRun {
         [AllowEmptyString()]
         [string]$GraphToken,
 
+        [AllowNull()]
+        [System.Management.Automation.PSCredential]$ADCredential,
+
         [Parameter(Mandatory = $true)]
         [string]$OutputRoot,
 
@@ -346,6 +351,8 @@ function Start-CollectorRun {
         RunId = $run.runId
         RunPath = $run.runPath
         GraphToken = $GraphToken
+        ADCredential = $ADCredential
+        ADCredentialSupplied = [bool]($null -ne $ADCredential)
         Resume = [bool]$Resume
         ReprocessFailedOnly = [bool]$ReprocessFailedOnly
         Force = [bool]$Force
@@ -367,7 +374,8 @@ function Start-CollectorRun {
     $manifest.invocations += $invocation
     $manifestPath = Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest
 
-    $standardSections = @($resolvedSections | Where-Object { $_ -ne 'entra-ca' -and $_ -ne 'entra-governance' -and $_ -ne 'intune-enrollment' })
+    $standardSections = @($resolvedSections | Where-Object { $_ -ne 'entra-ca' -and $_ -ne 'entra-governance' -and $_ -ne 'intune-enrollment' -and $_ -ne 'onprem-ad-gpo' })
+    $includeOnPrem = $resolvedSections -contains 'onprem-ad-gpo'
     $includeConditionalAccess = $resolvedSections -contains 'entra-ca'
     $includeEntraGovernance = $resolvedSections -contains 'entra-governance'
     $includeIntuneCompliance = $resolvedSections -contains 'intune-core'
@@ -382,6 +390,11 @@ function Start-CollectorRun {
                 'Stage1' {
                     if ($standardSections.Count -gt 0) {
                         $stageResults += @(Invoke-CollectorStage1 -Context $context -Sections $standardSections)
+                    }
+                    if ($includeOnPrem) {
+                        $stageResults += @(Invoke-CollectorWithADCredential -ADCredential $context.ADCredential -ScriptBlock {
+                            Invoke-CollectorStage1 -Context $context -Sections @('onprem-ad-gpo')
+                        })
                     }
                     if ($includeConditionalAccess) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage1 -Context $context)
@@ -401,6 +414,11 @@ function Start-CollectorRun {
                     if ($standardSections.Count -gt 0) {
                         $stageResults += @(Invoke-CollectorStage2 -Context $context -Sections $standardSections)
                     }
+                    if ($includeOnPrem) {
+                        $stageResults += @(Invoke-CollectorWithADCredential -ADCredential $context.ADCredential -ScriptBlock {
+                            Invoke-CollectorStage2 -Context $context -Sections @('onprem-ad-gpo')
+                        })
+                    }
                     if ($includeConditionalAccess) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage2 -Context $context)
                     }
@@ -418,6 +436,11 @@ function Start-CollectorRun {
                 'Stage3' {
                     if ($standardSections.Count -gt 0) {
                         $stageResults += @(Invoke-CollectorStage3 -Context $context -Sections $standardSections)
+                    }
+                    if ($includeOnPrem) {
+                        $stageResults += @(Invoke-CollectorWithADCredential -ADCredential $context.ADCredential -ScriptBlock {
+                            Invoke-CollectorStage3 -Context $context -Sections @('onprem-ad-gpo')
+                        })
                     }
                     if ($includeConditionalAccess) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage3 -Context $context)

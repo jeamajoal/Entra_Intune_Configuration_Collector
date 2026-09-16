@@ -23,7 +23,7 @@ Current real providers are intentionally limited to:
 | Provider ID | Ownership | Authentication/resource contract |
 | --- | --- | --- |
 | `microsoft-graph` | Every current Graph-backed Entra/Intune route | OAuth bearer token for `https://graph.microsoft.com/`; absolute HTTP requests remain restricted by the Graph provider to origin `https://graph.microsoft.com`. |
-| `onprem-windows` | Every current AD/GPO cmdlet family | Current Windows/domain execution identity; no OAuth resource/audience and no Graph token. |
+| `onprem-windows` | Every current AD/GPO cmdlet family | Current Windows/domain execution identity by default, or an optional explicit `ADCredential` applied as a Windows net-only impersonation context for the on-prem stage; no OAuth resource/audience and no Graph token. |
 
 The provider registry is governance metadata only. It does not route requests at runtime and does not introduce a generic HTTP/provider abstraction.
 
@@ -81,7 +81,22 @@ For repeatable unattended collection, prefer application permissions with admin 
 - **GroupPolicy (RSAT Group Policy Management Tools):** `Get-GPO`, `Get-GPOReport`, `Get-GPPermission`, `Get-GPInheritance`.
 - **Built-in PowerShell:** `Get-Acl`, `New-PSDrive`, `Remove-PSDrive`.
 
-Run under an identity that can read the targeted forest/domain directory objects, GPO configuration, Group Policy permissions/inheritance, and AD provider ACLs. The collector does not require mutation rights.
+By default, run under an identity that can read the targeted forest/domain directory objects, GPO configuration, Group Policy permissions/inheritance, and AD provider ACLs. The collector does not require mutation rights.
+
+When the collector process identity should remain unchanged but AD/GPO reads need a different domain account, pass a `PSCredential` through `-ADCredential`. The collector applies that credential only around `onprem-ad-gpo` using Windows `LOGON32_LOGON_NEW_CREDENTIALS` / `LOGON32_PROVIDER_WINNT50` semantics (equivalent to a net-only logon for outbound network authentication). This is intentionally section-wide because GroupPolicy cmdlets do not expose a consistent `-Credential` parameter.
+
+Example:
+
+```powershell
+$adCredential = Get-Credential -Message 'Credential used only for onprem-ad-gpo reads'
+
+./collector/Invoke-Collector.ps1 `
+    -GraphToken $GraphToken `
+    -ADCredential $adCredential `
+    -OutputRoot ./output
+```
+
+The live `PSCredential` is not written to manifests, checkpoints, snapshots, or logs. Durable invocation metadata records only `adCredentialSupplied = true|false`. The credential is not applied to Microsoft Graph/Intune provider calls. Supplying `ADCredential` on a non-Windows runtime fails closed because Windows impersonation is required.
 
 ## 403 and authorization failures
 
