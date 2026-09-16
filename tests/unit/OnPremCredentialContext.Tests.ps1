@@ -23,7 +23,7 @@ BeforeAll {
 
 Describe 'Alternate AD credential security context' {
     It 'preserves process-identity behavior when no ADCredential is supplied' {
-        $result = @(Invoke-CollectorWithADCredential -ADCredential $null -ScriptBlock { 'alpha'; 'beta' })
+        $result = @(Collector.SecurityContext.OnPrem\Invoke-CollectorWithADCredential -ADCredential $null -ScriptBlock { 'alpha'; 'beta' })
         if (($result -join ',') -ne 'alpha,beta') {
             throw ('Expected direct scriptblock output when ADCredential is null; actual: {0}' -f ($result -join ','))
         }
