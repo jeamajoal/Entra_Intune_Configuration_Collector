@@ -249,7 +249,7 @@ BeforeAll {
             }
             $callerValues += [string]$resolvedCallerValue
         }
-        $callerValues = @($callerValues | Sort-Object -Unique)
+        $callerValues = @($callerValues | Sort-Object -CaseSensitive -Unique)
 
         if ($callerValues.Count -eq 1) {
             return [string]$callerValues[0]
@@ -343,7 +343,7 @@ BeforeAll {
             if ($sectionExpression -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
                 [string]$sectionExpression.Value
             }
-        } | Where-Object { $_ -match '^(entra-|intune-)' } | Sort-Object -Unique)
+        } | Where-Object { $_ -match '^(entra-|intune-)' } | Sort-Object -CaseSensitive -Unique)
 
         if ($sections.Count -eq 1) {
             return [string]$sections[0]
@@ -491,7 +491,7 @@ BeforeAll {
             $routes += $route
         }
 
-        return @($routes | Sort-Object -Unique)
+        return @($routes | Sort-Object -CaseSensitive -Unique)
     }
 
     function Get-TestGraphRoutesFromFile {
@@ -589,7 +589,7 @@ BeforeAll {
             $routes += $route
         }
 
-        return @($routes | Sort-Object -Unique)
+        return @($routes | Sort-Object -CaseSensitive -Unique)
     }
 
     function Get-TestMatrixGraphRoute {
@@ -603,7 +603,7 @@ BeforeAll {
                 }
             }
         }
-        return @($routes | Sort-Object -Unique)
+        return @($routes | Sort-Object -CaseSensitive -Unique)
     }
 
     function Assert-TestSetEqual {
@@ -613,8 +613,8 @@ BeforeAll {
             [Parameter(Mandatory = $true)][string]$Label
         )
 
-        $expectedSet = @($Expected | Sort-Object -Unique)
-        $actualSet = @($Actual | Sort-Object -Unique)
+        $expectedSet = @($Expected | Sort-Object -CaseSensitive -Unique)
+        $actualSet = @($Actual | Sort-Object -CaseSensitive -Unique)
         $missing = @($expectedSet | Where-Object { $actualSet -cnotcontains $_ })
         $stale = @($actualSet | Where-Object { $expectedSet -cnotcontains $_ })
         if ($missing.Count -gt 0 -or $stale.Count -gt 0) {
@@ -629,7 +629,7 @@ BeforeAll {
         Get-ChildItem -LiteralPath $moduleRoot -Filter '*.psm1' -File | ForEach-Object {
             Get-TestGraphRoutesFromFile -Path $_.FullName
         }
-    ) | Sort-Object -Unique
+    ) | Sort-Object -CaseSensitive -Unique
     $script:matrixRoutes = @(Get-TestMatrixGraphRoute -Matrix $script:matrix)
 }
 
@@ -828,6 +828,21 @@ Invoke-CollectorSyntheticStage1Helper -Family $descriptor.Family
         { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
     }
 
+    It 'treats case-distinct helper caller route values as ambiguous' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'CaseDistinctHelperCallers.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1Helper {
+    param([string]$Family)
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family $Family -SourceType 'Graph' -SourceName 'Graph /v1.0/applications'
+}
+
+Invoke-CollectorSyntheticStage1Helper -Family 'applications'
+Invoke-CollectorSyntheticStage1Helper -Family 'Applications'
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
     It 'does not exclude concrete Graph-named collectors' {
         $fixturePath = Join-Path -Path $TestDrive -ChildPath 'ConcreteGraphNamedCollector.psm1'
         @'
@@ -879,11 +894,13 @@ Invoke-CollectorStage3BatchLoop -Section 'entra-ca' -Family 'conditionalAccessPo
         $caseChangedRoutes = @($script:matrixRoutes | ForEach-Object {
             if ($_ -ceq $applicationStage1) { 'entra-apps|stage1|Applications|/v1.0/applications' } else { $_ }
         })
+        $caseCollisionRoutes = @($script:matrixRoutes + 'entra-apps|stage1|Applications|/v1.0/applications')
 
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $swappedFamilyRoutes -Label 'family swap mutation' } | Should -Throw '*family swap mutation mismatch*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $wrongStageRoutes -Label 'stage mutation' } | Should -Throw '*stage mutation mismatch*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $missingRoute -Label 'missing route mutation' } | Should -Throw '*Missing: entra-apps|stage1|applications|/v1.0/applications*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $staleRoute -Label 'stale route mutation' } | Should -Throw '*Stale: entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $caseChangedRoutes -Label 'case mutation' } | Should -Throw '*case mutation mismatch*Missing: entra-apps|stage1|applications|/v1.0/applications*Stale: entra-apps|stage1|Applications|/v1.0/applications*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $caseCollisionRoutes -Label 'case collision mutation' } | Should -Throw '*case collision mutation mismatch*Stale: entra-apps|stage1|Applications|/v1.0/applications*'
     }
 }
