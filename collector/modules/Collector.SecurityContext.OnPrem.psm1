@@ -126,8 +126,9 @@ function Invoke-CollectorWindowsImpersonated {
     )
 
     $output = [System.Collections.Generic.List[object]]::new()
+    $scriptToInvoke = $ScriptBlock
     $action = [Action]{
-        foreach ($item in @(& $ScriptBlock)) {
+        foreach ($item in @(& $scriptToInvoke)) {
             [void]$output.Add($item)
         }
     }
