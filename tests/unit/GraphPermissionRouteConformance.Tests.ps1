@@ -105,6 +105,33 @@ BeforeAll {
         return $null
     }
 
+    function Test-TestRouteAssignment {
+        param([Parameter(Mandatory = $true)][System.Management.Automation.Language.AssignmentStatementAst]$Assignment)
+
+        if ([string]$Assignment.Operator -ne 'Equals') {
+            return $false
+        }
+
+        $scriptBlock = Get-TestEnclosingScriptBlock -Anchor $Assignment
+        $ancestor = $Assignment.Parent
+        while ($null -ne $ancestor -and $ancestor -ne $scriptBlock) {
+            if (
+                $ancestor -is [System.Management.Automation.Language.IfStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.SwitchStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.ForStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.ForEachStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.WhileStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.DoWhileStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.DoUntilStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.TryStatementAst]
+            ) {
+                return $false
+            }
+            $ancestor = $ancestor.Parent
+        }
+        return $true
+    }
+
     function Resolve-TestVariableStringValue {
         param(
             [Parameter(Mandatory = $true)][string]$VariableName,
@@ -131,6 +158,9 @@ BeforeAll {
 
             if ($assignments.Count -gt 0) {
                 $latestAssignment = $assignments[0]
+                if (-not (Test-TestRouteAssignment -Assignment $latestAssignment)) {
+                    return $null
+                }
                 $resolved = Resolve-TestStringExpression -Expression $latestAssignment.Right -Anchor $latestAssignment -RootAst $RootAst -Depth ($Depth + 1)
                 if ([string]::IsNullOrWhiteSpace([string]$resolved)) {
                     return $null
@@ -293,6 +323,51 @@ BeforeAll {
         return $null
     }
 
+    function Assert-TestKnownGraphRouteBinding {
+        param(
+            [Parameter(Mandatory = $true)][System.Management.Automation.Language.CommandAst]$Command,
+            [Parameter(Mandatory = $true)][string]$CommandName
+        )
+
+        $requiredRoutingParameters = switch ($CommandName) {
+            'Invoke-CollectorGraphInventoryFamily' { @('Section', 'Family', 'Endpoint') }
+            'Invoke-CollectorStage2GraphFamily' { @('Section', 'Family', 'EndpointTemplate') }
+            'Invoke-CollectorStage3GraphPerObjectFamily' { @('Section', 'Family', 'EndpointTemplate') }
+            default { return }
+        }
+
+        $elements = @($Command.CommandElements)
+        for ($index = 1; $index -lt $elements.Count; $index++) {
+            $element = $elements[$index]
+            if ($element -is [System.Management.Automation.Language.CommandParameterAst]) {
+                $parameterName = [string]$element.ParameterName
+                $abbreviatedRoutingParameters = @($requiredRoutingParameters | Where-Object {
+                    $_ -ine $parameterName -and $_.StartsWith($parameterName, [System.StringComparison]::OrdinalIgnoreCase)
+                })
+                if ($abbreviatedRoutingParameters.Count -gt 0) {
+                    throw ('Unable to resolve recognized Graph route command {0}; abbreviated routing parameter -{1} is not supported.' -f $CommandName, $parameterName)
+                }
+
+                if ($null -eq $element.Argument -and $index + 1 -lt $elements.Count -and $elements[$index + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]) {
+                    $index++
+                }
+                continue
+            }
+
+            if ($element -is [System.Management.Automation.Language.VariableExpressionAst] -and $element.Splatted) {
+                continue
+            }
+
+            throw ('Unable to resolve recognized Graph route command {0}; positional arguments are not supported: {1}' -f $CommandName, [string]$element.Extent.Text)
+        }
+
+        foreach ($requiredParameterName in $requiredRoutingParameters) {
+            if ($null -eq (Get-TestCommandParameterExpression -Command $Command -Name $requiredParameterName)) {
+                throw ('Unable to resolve recognized Graph route command {0}; exact named routing parameter -{1} is required.' -f $CommandName, $requiredParameterName)
+            }
+        }
+    }
+
     function ConvertTo-TestGraphRoute {
         param(
             [Parameter(Mandatory = $true)][string]$Section,
@@ -344,6 +419,11 @@ BeforeAll {
             $familyAssignments = @($assignments | Where-Object { (Get-TestAssignmentVariableName -Assignment $_) -ieq 'family' })
             if ($sectionAssignments.Count -ne 1 -or $familyAssignments.Count -ne 1 -or $endpointAssignments.Count -ne 1) {
                 throw ('Unable to resolve custom Graph route declaration in {0}; expected one local section, family, and endpointTemplate assignment.' -f $Path)
+            }
+
+            $routeAssignments = @($sectionAssignments[0], $familyAssignments[0], $endpointAssignments[0])
+            if (@($routeAssignments | Where-Object { -not (Test-TestRouteAssignment -Assignment $_) }).Count -gt 0) {
+                throw ('Unable to resolve custom Graph route declaration in {0}; routing assignments must use plain = outside conditional or loop control flow.' -f $Path)
             }
 
             $enclosingFunction = Get-TestEnclosingFunction -Anchor $endpointAssignments[0]
@@ -398,6 +478,10 @@ BeforeAll {
             })
             if ($splattedArguments.Count -gt 0) {
                 throw ('Unable to resolve recognized Graph route command {0}; splatted arguments are not supported: {1}' -f $commandName, (($splattedArguments | ForEach-Object { [string]$_.Extent.Text }) -join ', '))
+            }
+
+            if ($genericGraphWrappers -contains $commandName) {
+                Assert-TestKnownGraphRouteBinding -Command $command -CommandName $commandName
             }
 
             $familyExpression = Get-TestCommandParameterExpression -Command $command -Name 'Family'
@@ -506,6 +590,52 @@ Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family $descriptor.Family
         $fixturePath = Join-Path -Path $TestDrive -ChildPath 'CompoundGraphRoute.psm1'
         @'
 Invoke-CollectorStage1Synthetic -Section 'entra-apps' -Family ('applications' + 'applications') -EndpointTemplate '/v1.0/applications'
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'rejects compound route assignments instead of reducing them to the right-hand literal' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'CompoundAssignmentRoute.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1 {
+    $family = 'legacy'
+    $family += 'applications'
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family $family -SourceType 'Graph' -SourceName 'Graph /v1.0/applications'
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'rejects positional binding on known Graph route helpers' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'PositionalGraphHelper.psm1'
+        @'
+Invoke-CollectorGraphInventoryFamily $null 'entra-apps' 'applications' '/v1.0/applications'
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*positional arguments are not supported*'
+    }
+
+    It 'rejects abbreviated routing parameters on known Graph route helpers' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'AbbreviatedGraphHelper.psm1'
+        @'
+Invoke-CollectorGraphInventoryFamily -Context $null -Section 'entra-apps' -Fam 'applications' -Endpoint '/v1.0/applications'
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*abbreviated routing parameter -Fam is not supported*'
+    }
+
+    It 'rejects branch-dependent route assignments' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'BranchDependentAssignment.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1 {
+    $family = 'servicePrincipals'
+    if ($useApplications) {
+        $family = 'applications'
+    }
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family $family -SourceType 'Graph' -SourceName 'Graph /v1.0/applications'
+}
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
 
         { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
