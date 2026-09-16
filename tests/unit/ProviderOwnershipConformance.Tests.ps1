@@ -21,11 +21,11 @@ BeforeAll {
             [Parameter(Mandatory = $true)][string]$ProviderId
         )
 
-        $matches = @($Matrix.providers | Where-Object { [string]$_.id -ceq $ProviderId })
-        if ($matches.Count -ne 1) {
-            throw ('Provider {0} must resolve exactly once; found {1}.' -f $ProviderId, $matches.Count)
+        $providerMatches = @($Matrix.providers | Where-Object { [string]$_.id -ceq $ProviderId })
+        if ($providerMatches.Count -ne 1) {
+            throw ('Provider {0} must resolve exactly once; found {1}.' -f $ProviderId, $providerMatches.Count)
         }
-        return $matches[0]
+        return $providerMatches[0]
     }
 
     function Assert-TestProviderContract {
@@ -59,11 +59,11 @@ BeforeAll {
         @($onPremProvider.allowedOrigins) | Should -HaveCount 0
 
         foreach ($profileProperty in @($Matrix.permissionProfiles.PSObject.Properties)) {
-            $profile = $profileProperty.Value
-            $provider = Get-TestProvider -Matrix $Matrix -ProviderId ([string]$profile.providerId)
+            $permissionProfile = $profileProperty.Value
+            $provider = Get-TestProvider -Matrix $Matrix -ProviderId ([string]$permissionProfile.providerId)
             [string]$provider.authentication | Should -Not -BeExactly 'execution-identity'
-            [string]$profile.resourceAudience | Should -Not -BeNullOrEmpty
-            [string]$profile.resourceAudience | Should -BeExactly ([string]$provider.resourceAudience)
+            [string]$permissionProfile.resourceAudience | Should -Not -BeNullOrEmpty
+            [string]$permissionProfile.resourceAudience | Should -BeExactly ([string]$provider.resourceAudience)
         }
 
         foreach ($family in @($Matrix.graphFamilies)) {
