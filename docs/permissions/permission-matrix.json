@@ -5,7 +5,7 @@
   "recommendedTokenMode": "application",
   "providers": [
     {"id":"microsoft-graph","displayName":"Microsoft Graph","kind":"oauth-rest","sourceType":"Graph","authentication":"oauth2-bearer","resourceAudience":"https://graph.microsoft.com/","allowedOrigins":["https://graph.microsoft.com"]},
-    {"id":"onprem-windows","displayName":"Windows / Active Directory / Group Policy","kind":"local-powershell","sourceType":"OnPrem","authentication":"execution-identity","resourceAudience":null,"allowedOrigins":[]}
+    {"id":"onprem-windows","displayName":"Windows / Active Directory / Group Policy","kind":"local-powershell","sourceType":"OnPrem","authentication":"execution-identity","alternateAuthentication":{"mode":"windows-netonly-impersonation","credentialInput":"ADCredential","logonType":"LOGON32_LOGON_NEW_CREDENTIALS","logonProvider":"LOGON32_PROVIDER_WINNT50"},"resourceAudience":null,"allowedOrigins":[]}
   ],
   "sections": ["entra-apps", "entra-pim", "entra-ca", "entra-governance", "intune-core", "intune-enrollment", "onprem-ad-gpo"],
   "graphBackedSections": ["entra-apps", "entra-pim", "entra-ca", "entra-governance", "intune-core", "intune-enrollment"],
@@ -75,7 +75,7 @@
   "onPrem": {
     "providerId": "onprem-windows",
     "section": "onprem-ad-gpo",
-    "identityAssumption": "The execution identity has read access to the targeted forest/domain directory objects, GPO configuration/permissions/inheritance, and ActiveDirectory-provider ACLs. No mutation rights are required.",
+    "identityAssumption": "The effective on-prem execution identity—either the collector process identity or the optional ADCredential net-only outbound identity—has read access to the targeted forest/domain directory objects, GPO configuration/permissions/inheritance, and ActiveDirectory-provider ACLs. No mutation rights are required.",
     "modules": [
       {"name":"ActiveDirectory","installation":"RSAT Active Directory Domain Services and Lightweight Directory Services Tools","commands":["Get-ADForest","Get-ADDomain","Get-ADOrganizationalUnit","Get-ADGroup","Get-ADGroupMember"],"providers":["ActiveDirectory"],"sourceUrls":["https://learn.microsoft.com/en-us/powershell/module/activedirectory/?view=windowsserver2025-ps"]},
       {"name":"GroupPolicy","installation":"RSAT Group Policy Management Tools","commands":["Get-GPO","Get-GPOReport","Get-GPPermission","Get-GPInheritance"],"providers":[],"sourceUrls":["https://learn.microsoft.com/en-us/powershell/module/grouppolicy/?view=windowsserver2025-ps"]},
