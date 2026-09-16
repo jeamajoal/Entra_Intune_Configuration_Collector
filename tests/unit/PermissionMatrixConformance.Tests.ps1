@@ -133,8 +133,8 @@ BeforeAll {
 
 Describe 'Permission matrix conformance' {
     It 'pins the current matrix contract and section vocabulary' {
-        [string]$script:matrix.schemaVersion | Should -Be '1.0'
-        [string]$script:matrix.lastReviewedUtc | Should -Be '2026-09-15'
+        [string]$script:matrix.schemaVersion | Should -Be '1.1'
+        [string]$script:matrix.lastReviewedUtc | Should -Be '2026-09-16'
         [string]$script:matrix.recommendedTokenMode | Should -Be 'application'
         Assert-TestSetEqual -Expected $script:supportedSections -Actual @($script:matrix.sections) -Label 'matrix supported sections'
         Assert-TestSetEqual -Expected $script:graphBackedSections -Actual @($script:matrix.graphBackedSections) -Label 'matrix Graph-backed sections'

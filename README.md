@@ -18,6 +18,7 @@ The implementation is inventory-first and resumable:
 - Unit tests: [tests/unit](tests/unit)
 - Local validation script: [tools/Invoke-LocalValidation.ps1](tools/Invoke-LocalValidation.ps1)
 - Architecture owner document: [docs/architecture/solution-architecture.md](docs/architecture/solution-architecture.md)
+- Provider/audience boundary: [docs/architecture/provider-boundaries.md](docs/architecture/provider-boundaries.md)
 - Permission/dependency guide: [docs/permissions.md](docs/permissions.md)
 - Canonical permission matrix: [docs/permissions/permission-matrix.json](docs/permissions/permission-matrix.json)
 - Repository engineering guardrails: [AGENTS.md](AGENTS.md)
@@ -28,6 +29,7 @@ Prerequisites:
 
 - PowerShell 7+ or Windows PowerShell 5.1.
 - A Microsoft Graph access token with the read permissions required by the selected Graph-backed sections (`entra-apps`, `entra-pim`, `entra-ca`, `entra-governance`, `intune-core`, `intune-enrollment`). Application permissions are the recommended unattended-run contract; delegated access can additionally require a supported signed-in-user Entra role. The exact section/stage/family mapping is maintained in [docs/permissions/permission-matrix.json](docs/permissions/permission-matrix.json) and explained in [docs/permissions.md](docs/permissions.md). No Graph token is required for an `onprem-ad-gpo`-only run.
+- Permission names are scoped to a provider/resource, not globally interchangeable. The current `GraphToken` belongs only to provider `microsoft-graph` and resource `https://graph.microsoft.com/`; `onprem-ad-gpo` uses the local Windows/domain execution identity. A future distinct provider such as Defender/MDE must add its own audience/origin/token boundary only when its first real consuming route is implemented.
 - `entra-ca` is deliberately opt-in so existing default runs do not silently acquire new Conditional Access permission dependencies. Current policy/named-location reads use `Policy.Read.All`, authentication-strength reads use `Policy.Read.AuthenticationMethod`, and authentication-context reads use `AuthenticationContext.Read.All`.
 - `entra-governance` is also opt-in. Administrative-unit reads use `AdministrativeUnit.Read.All`; directory-role, role-definition, role-assignment, and administrative-unit scoped-role reads use `RoleManagement.Read.Directory`. Hidden administrative-unit membership can additionally require `Member.Read.Hidden`.
 - `intune-core` requires an active Intune tenant license. Current app reads use `DeviceManagementApps.Read.All`; script inventory/detail uses the dedicated `DeviceManagementScripts.Read.All`; script-assignment, compliance, assignment-filter, Settings Catalog/classic configuration, endpoint-security/security-baseline, settings, and assignment reads use `DeviceManagementConfiguration.Read.All`.
