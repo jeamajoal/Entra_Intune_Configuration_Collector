@@ -19,12 +19,15 @@ The existing Graph provider remains the runtime authority for origin enforcement
 
 - Provider kind: local PowerShell/Windows execution.
 - Production provenance `sourceType`: `OnPrem`.
-- Authentication boundary: the current Windows/domain execution identity.
+- Authentication boundary: the current Windows/domain execution identity by default, or an explicitly supplied `ADCredential` used only for the `onprem-ad-gpo` stage invocation.
+- Explicit-credential mode: Windows `LOGON32_LOGON_NEW_CREDENTIALS` / `LOGON32_PROVIDER_WINNT50` plus `WindowsIdentity.RunImpersonated`, which preserves the collector's local process/filesystem identity while using the alternate credential for outbound AD/GPO network authentication.
 - OAuth resource/audience: none.
 - Allowed HTTP origin: none.
 - Ownership: every current AD/GPO cmdlet family.
 
-An `onprem-ad-gpo`-only run therefore remains Graph-token independent.
+An `onprem-ad-gpo`-only run therefore remains Graph-token independent. Supplying `ADCredential` does not grant permissions and does not change the Graph provider token/audience boundary. The live `PSCredential` remains in memory only; durable run metadata records only whether an alternate AD credential was supplied and never serializes the credential/password.
+
+The credential context is deliberately applied around the complete on-prem stage invocation rather than passed individually to AD cmdlets. This is required because GroupPolicy cmdlets such as `Get-GPO` and `Get-GPOReport` do not expose a `-Credential` parameter. Scoping the impersonation to `onprem-ad-gpo` also keeps Graph/Intune HTTP outside the alternate Windows network credential context.
 
 ## Provider-aware route contract
 
