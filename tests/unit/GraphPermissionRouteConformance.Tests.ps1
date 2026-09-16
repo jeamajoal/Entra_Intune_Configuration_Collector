@@ -176,8 +176,25 @@ BeforeAll {
                 $_.Extent.EndOffset -lt $Anchor.Extent.StartOffset
             } | Sort-Object { $_.Extent.EndOffset } -Descending)
 
-            if ($assignments.Count -gt 0) {
-                $latestAssignment = $assignments[0]
+            $forEachWrites = @($scriptBlock.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.ForEachStatementAst]
+            }, $false) | Where-Object {
+                $null -ne $_.Variable -and
+                [string]$_.Variable.VariablePath.UserPath -ieq $VariableName -and
+                $_.Variable.Extent.EndOffset -lt $Anchor.Extent.StartOffset
+            } | Sort-Object { $_.Variable.Extent.EndOffset } -Descending)
+
+            $latestAssignment = if ($assignments.Count -gt 0) { $assignments[0] } else { $null }
+            $latestForEachWrite = if ($forEachWrites.Count -gt 0) { $forEachWrites[0] } else { $null }
+            if (
+                $null -ne $latestForEachWrite -and
+                ($null -eq $latestAssignment -or $latestForEachWrite.Variable.Extent.EndOffset -gt $latestAssignment.Extent.EndOffset)
+            ) {
+                return $null
+            }
+
+            if ($null -ne $latestAssignment) {
                 if (-not (Test-TestRouteAssignment -Assignment $latestAssignment)) {
                     return $null
                 }
@@ -598,8 +615,8 @@ BeforeAll {
 
         $expectedSet = @($Expected | Sort-Object -Unique)
         $actualSet = @($Actual | Sort-Object -Unique)
-        $missing = @($expectedSet | Where-Object { $actualSet -notcontains $_ })
-        $stale = @($actualSet | Where-Object { $expectedSet -notcontains $_ })
+        $missing = @($expectedSet | Where-Object { $actualSet -cnotcontains $_ })
+        $stale = @($actualSet | Where-Object { $expectedSet -cnotcontains $_ })
         if ($missing.Count -gt 0 -or $stale.Count -gt 0) {
             $missingText = if ($missing.Count -gt 0) { $missing -join ', ' } else { '<none>' }
             $staleText = if ($stale.Count -gt 0) { $stale -join ', ' } else { '<none>' }
@@ -661,6 +678,20 @@ function Invoke-CollectorSyntheticStage1 {
 function Invoke-CollectorSyntheticStage1 {
     $family = 'legacy'
     $family, $unused = 'applications', 'x'
+    Invoke-CollectorStage1Family -Section 'entra-apps' -Family $family -SourceType 'Graph' -SourceName 'Graph /v1.0/applications'
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'rejects foreach iterator route writes instead of falling back to an older assignment' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'ForEachIteratorRoute.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1 {
+    $family = 'legacy'
+    foreach ($family in @('applications')) {
+    }
     Invoke-CollectorStage1Family -Section 'entra-apps' -Family $family -SourceType 'Graph' -SourceName 'Graph /v1.0/applications'
 }
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
@@ -831,7 +862,7 @@ Invoke-CollectorStage3BatchLoop -Section 'entra-ca' -Family 'conditionalAccessPo
         @(Get-TestGraphRoutesFromFile -Path $fixturePath).Count | Should -Be 0
     }
 
-    It 'rejects family stage missing and stale route drift even when endpoint membership is preserved' {
+    It 'rejects family stage missing stale and case-only route drift even when endpoint membership is preserved' {
         $applicationStage1 = 'entra-apps|stage1|applications|/v1.0/applications'
         $servicePrincipalStage1 = 'entra-apps|stage1|servicePrincipals|/v1.0/servicePrincipals'
 
@@ -845,10 +876,14 @@ Invoke-CollectorStage3BatchLoop -Section 'entra-ca' -Family 'conditionalAccessPo
         })
         $missingRoute = @($script:matrixRoutes | Where-Object { $_ -ne $applicationStage1 })
         $staleRoute = @($script:matrixRoutes + 'entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute')
+        $caseChangedRoutes = @($script:matrixRoutes | ForEach-Object {
+            if ($_ -ceq $applicationStage1) { 'entra-apps|stage1|Applications|/v1.0/applications' } else { $_ }
+        })
 
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $swappedFamilyRoutes -Label 'family swap mutation' } | Should -Throw '*family swap mutation mismatch*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $wrongStageRoutes -Label 'stage mutation' } | Should -Throw '*stage mutation mismatch*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $missingRoute -Label 'missing route mutation' } | Should -Throw '*Missing: entra-apps|stage1|applications|/v1.0/applications*'
         { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $staleRoute -Label 'stale route mutation' } | Should -Throw '*Stale: entra-apps|stage3|applications|/v1.0/stalePermissionMatrixRoute*'
+        { Assert-TestSetEqual -Expected $script:productionRoutes -Actual $caseChangedRoutes -Label 'case mutation' } | Should -Throw '*case mutation mismatch*Missing: entra-apps|stage1|applications|/v1.0/applications*Stale: entra-apps|stage1|Applications|/v1.0/applications*'
     }
 }
