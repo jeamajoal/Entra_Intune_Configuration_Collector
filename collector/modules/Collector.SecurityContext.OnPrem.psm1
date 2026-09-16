@@ -21,6 +21,13 @@ public static class CollectorOnPremNativeMethods
 '@ -ErrorAction Stop
 }
 
+function Test-CollectorWindowsPlatform {
+    [CmdletBinding()]
+    param()
+
+    return [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+}
+
 function Resolve-CollectorADCredentialLogonName {
     [CmdletBinding()]
     param(
@@ -58,7 +65,7 @@ function New-CollectorADCredentialToken {
         [System.Management.Automation.PSCredential]$ADCredential
     )
 
-    if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
+    if (-not (Test-CollectorWindowsPlatform)) {
         throw 'ADCredential is supported only on Windows because onprem-ad-gpo credential isolation requires Windows impersonation.'
     }
 
