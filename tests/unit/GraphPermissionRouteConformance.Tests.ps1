@@ -185,6 +185,21 @@ BeforeAll {
                 $_.Variable.Extent.EndOffset -lt $Anchor.Extent.StartOffset
             } | Sort-Object { $_.Variable.Extent.EndOffset } -Descending)
 
+            $enclosingForEachWrite = @($forEachWrites | Where-Object {
+                $null -ne $_.Body -and
+                $Anchor.Extent.StartOffset -ge $_.Body.Extent.StartOffset -and
+                $Anchor.Extent.EndOffset -le $_.Body.Extent.EndOffset
+            } | Select-Object -First 1)
+            if ($enclosingForEachWrite.Count -gt 0) {
+                if ($VariableName -ieq 'section') {
+                    $switchValue = Get-TestEnclosingSwitchValue -Anchor $Anchor
+                    if (-not [string]::IsNullOrWhiteSpace([string]$switchValue)) {
+                        return [string]$switchValue
+                    }
+                }
+                return $null
+            }
+
             $latestAssignment = if ($assignments.Count -gt 0) { $assignments[0] } else { $null }
             $latestForEachWrite = if ($forEachWrites.Count -gt 0) { $forEachWrites[0] } else { $null }
             if (
@@ -683,6 +698,23 @@ function Invoke-CollectorSyntheticStage1 {
 '@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
 
         { Get-TestGraphRoutesFromFile -Path $fixturePath } | Should -Throw '*Unable to resolve Graph route Family*'
+    }
+
+    It 'resolves a foreach-bound section from its enclosing literal switch clause' {
+        $fixturePath = Join-Path -Path $TestDrive -ChildPath 'ForEachSwitchSectionRoute.psm1'
+        @'
+function Invoke-CollectorSyntheticStage1 {
+    foreach ($section in @('entra-apps')) {
+        switch ($section) {
+            'entra-apps' {
+                Invoke-CollectorGraphInventoryFamily -Context $null -Section $section -Family 'applications' -Endpoint '/v1.0/applications'
+            }
+        }
+    }
+}
+'@ | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+
+        @(Get-TestGraphRoutesFromFile -Path $fixturePath) | Should -Contain 'entra-apps|stage1|applications|/v1.0/applications'
     }
 
     It 'rejects foreach iterator route writes instead of falling back to an older assignment' {
