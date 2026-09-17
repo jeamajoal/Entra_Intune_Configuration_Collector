@@ -40,6 +40,10 @@ Equivalent absolute windows expressed with different offsets normalize to the sa
 
 A historical checkpoint containing successful batches but no bounded observation identity cannot be resumed as a bounded family. It must be recollected without `-Resume` so evidence from an unknown time window is not silently reused.
 
+Bounded families also use `Get-CollectorBoundedBatchExecutionDecision` for resume decisions. It composes with the ordinary batch decision, but before skipping a successful artifact it verifies the persisted bounded snapshot against the checkpoint observation plan. An internally valid artifact from a different observation window is therefore reprocessed instead of being skipped forever.
+
+A bounded observation plan must contain at least one planned batch. A legitimate zero-result query is represented by one explicit empty batch so the run still persists a terminal snapshot that states whether the zero is `available/complete`, unavailable, retention-limited, or another terminal evidence state. A zero-batch bounded plan is rejected because it would have no evidence artifact explaining the outcome.
+
 ## Availability and completeness
 
 Every bounded snapshot carries `evidenceState` together with `observation`. Neither property is valid by itself.
@@ -92,7 +96,7 @@ Snapshot schema version remains `1.0`; bounded metadata is an additive optional 
 
 `Complete-CollectorBoundedCheckpointPlan` additionally verifies that every successful planned artifact contains a valid bounded snapshot whose `planIdentity` matches the checkpoint observation plan.
 
-Offline catalog/package generation continues to use the existing v1 catalog descriptor shape. The raw snapshot and checkpoint remain the source of truth; catalog generation revalidates the snapshot contract and checkpoint terminal state without contacting a provider. An invalid bounded state therefore fails package regeneration instead of being silently indexed.
+Offline catalog/package generation continues to use the existing v1 catalog descriptor shape. The raw snapshot and checkpoint remain the source of truth; catalog generation revalidates the snapshot contract and checkpoint terminal state without contacting a provider. For bounded evidence it also requires checkpoint and snapshot observation presence to agree and requires the snapshot `planIdentity` to match `checkpoint.plan.observation.planIdentity`. An invalid bounded state or valid-but-different observation window therefore fails package regeneration instead of being silently indexed.
 
 The catalog intentionally does not copy `observation`, `evidenceState`, `requestContext`, or payload items into its metadata-only descriptors in this foundation slice. Consumers follow the canonical artifact path to the raw bounded snapshot when temporal evidence details are needed.
 
