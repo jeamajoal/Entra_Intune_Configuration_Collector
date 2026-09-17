@@ -118,7 +118,11 @@ Describe 'Graph authentication section dependency' {
     }
 
     It 'accepts a Graph-backed section with provider-only authentication' {
-        $provider = { param([bool]$ForceRefresh) 'provider-token' }
+        $provider = {
+            param([bool]$ForceRefresh)
+            $null = $ForceRefresh
+            'provider-token'
+        }
         $result = Start-CollectorRun -GraphTokenProvider $provider -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-pim')
 
         if ($result.status -ne 'Completed') {
