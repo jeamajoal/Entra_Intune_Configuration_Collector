@@ -107,7 +107,7 @@ Describe 'Conditional Access offline collection' {
             throw 'Expected entra-ca to resolve as a supported section.'
         }
 
-        { Start-CollectorRun -GraphToken '' -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-ca') } | Should -Throw '*GraphToken is required*entra-ca*'
+        { Start-CollectorRun -GraphToken '' -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-ca') } | Should -Throw '*GraphToken or GraphTokenProvider is required*entra-ca*'
     }
 
     It 'collects Stage1 and Stage2 Conditional Access configuration and derives explicit policy references' {
