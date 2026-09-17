@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Provenance.psm1') -Force -ErrorAction Stop
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Observation.psm1') -Force -ErrorAction Stop
 
 $script:CollectorCatalogStages = @('stage1', 'stage2', 'stage3')
 $script:CollectorCatalogSections = @('entra-apps', 'entra-pim', 'entra-ca', 'entra-governance', 'intune-core', 'intune-enrollment', 'onprem-ad-gpo')
@@ -279,6 +280,11 @@ function Get-CollectorCatalogArtifactSet {
         if ($checkpoint.plan.PSObject.Properties.Match('completed').Count -eq 0 -or -not ($checkpoint.plan.completed -is [bool])) { throw ('Invalid checkpoint plan completion state for {0}/{1}/{2}.' -f $stage, $section, $family) }
         if ($RunStatus -eq 'Completed' -and -not [bool]$checkpoint.plan.completed) { throw ('Completed manifest has incomplete checkpoint plan for {0}/{1}/{2}.' -f $stage, $section, $family) }
 
+        $checkpointHasObservation = $checkpoint.plan.PSObject.Properties.Match('observation').Count -gt 0 -and $null -ne $checkpoint.plan.observation
+        if ($checkpointHasObservation -and -not (Test-CollectorObservationDescriptor -Observation $checkpoint.plan.observation)) {
+            throw ('Checkpoint bounded observation metadata is invalid for {0}/{1}/{2}.' -f $stage, $section, $family)
+        }
+
         $expectedCount = Get-CollectorBatchCountValue -Batch $checkpoint.plan -PropertyName 'expectedBatchCount'
         $planned = @($checkpoint.plan.batches); $recorded = @($checkpoint.batches)
         if ($null -eq $expectedCount -or $expectedCount -lt 1 -or $planned.Count -ne $expectedCount -or $recorded.Count -ne $expectedCount) {
@@ -315,6 +321,14 @@ function Get-CollectorCatalogArtifactSet {
             try { $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json }
             catch { throw ('Catalog generation cannot read snapshot {0}: {1}' -f $snapshotPath, $_.Exception.Message) }
             if (-not (Test-CollectorSnapshotSchemaVersion -Snapshot $snapshot)) { throw ('Malformed snapshot contract for {0}/{1}/{2}/{3}.' -f $stage, $section, $family, $batchId) }
+
+            $snapshotHasObservation = $snapshot.PSObject.Properties.Match('observation').Count -gt 0 -and $null -ne $snapshot.observation
+            if ($checkpointHasObservation -xor $snapshotHasObservation) {
+                throw ('Bounded observation presence mismatch between checkpoint and snapshot for {0}/{1}/{2}/{3}.' -f $stage, $section, $family, $batchId)
+            }
+            if ($checkpointHasObservation -and [string]$snapshot.observation.planIdentity -cne [string]$checkpoint.plan.observation.planIdentity) {
+                throw ('Bounded observation plan identity mismatch for {0}/{1}/{2}/{3}.' -f $stage, $section, $family, $batchId)
+            }
 
             $expectedIdentity = @{ runId = $RunId; stage = $stage; section = $section; family = $family; batchId = $batchId }
             foreach ($name in @('runId', 'stage', 'section', 'family', 'batchId')) {
