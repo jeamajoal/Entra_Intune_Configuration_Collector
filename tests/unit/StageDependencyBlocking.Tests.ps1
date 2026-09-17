@@ -116,7 +116,7 @@ Describe 'Invocation-local dependent stage blocking' {
         }
     }
 
-    It 'blocks only the failed Stage2 section from Stage3' {
+    It 'keeps Stage3 runnable after a Stage2 failure because Stage3 depends on Stage1 evidence' {
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
             param([hashtable]$Context, [string[]]$Sections)
             return @(
@@ -136,19 +136,25 @@ Describe 'Invocation-local dependent stage blocking' {
         }
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage3 -MockWith {
             param([hashtable]$Context, [string[]]$Sections)
-            if ((@($Sections) -join ',') -ne 'entra-pim') {
-                throw ('Expected Stage2 failure to block only entra-apps from Stage3; actual: {0}' -f (@($Sections) -join ','))
+            if ((@($Sections) -join ',') -ne 'entra-apps,entra-pim') {
+                throw ('Expected Stage3 to remain independent of Stage2 detail failure; actual: {0}' -f (@($Sections) -join ','))
             }
-            return @(Get-TestStageResult -Stage 'stage3' -Section 'entra-pim' -Family 'pimRelationshipEdges')
+            return @(
+                Get-TestStageResult -Stage 'stage3' -Section 'entra-apps' -Family 'groupMembers'
+                Get-TestStageResult -Stage 'stage3' -Section 'entra-pim' -Family 'pimRelationshipEdges'
+            )
         }
 
         $result = Start-CollectorRun -GraphToken 'token' -OutputRoot $script:testRoot -Stages @('All') -Sections @('entra-apps', 'entra-pim')
 
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage3 -Times 1 -Exactly -ParameterFilter {
-            (@($Sections) -join ',') -eq 'entra-pim'
+            (@($Sections) -join ',') -eq 'entra-apps,entra-pim'
         }
         if (@($result.failures | Where-Object { $_.stage -eq 'stage2' -and $_.section -eq 'entra-apps' }).Count -ne 1) {
-            throw 'Expected the Stage2 failure to remain returned failure evidence while only its section is blocked downstream.'
+            throw 'Expected the Stage2 failure to remain returned failure evidence while Stage3 still runs from valid Stage1 prerequisites.'
+        }
+        if (@($result.stageResults | Where-Object { $_.stage -eq 'stage3' }).Count -ne 2) {
+            throw 'Expected Stage3 results for both sections despite the Stage2 detail failure.'
         }
     }
 
