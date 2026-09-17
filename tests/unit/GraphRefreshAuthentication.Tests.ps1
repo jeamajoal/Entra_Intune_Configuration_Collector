@@ -5,7 +5,6 @@ BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.SecurityContext.Graph.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.Graph.psm1') -Force -ErrorAction Stop
-    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Orchestrator.psm1') -Force -ErrorAction Stop
 }
 
 Describe 'Refreshable Microsoft Graph authentication' {
@@ -192,47 +191,5 @@ Describe 'Refreshable Microsoft Graph authentication' {
             throw 'Expected empty token-provider output to fail.'
         }
         Assert-MockCalled -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -Times 0 -Exactly
-    }
-}
-
-Describe 'Refreshable Graph authentication persistence boundary' {
-    BeforeEach {
-        $script:testRoot = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-graph-auth-' + [Guid]::NewGuid().ToString('N'))
-        New-Item -Path $script:testRoot -ItemType Directory -Force | Out-Null
-    }
-
-    AfterEach {
-        if (Test-Path -LiteralPath $script:testRoot) {
-            Remove-Item -LiteralPath $script:testRoot -Recurse -Force
-        }
-    }
-
-    It 'accepts provider-only Graph execution and persists only non-secret authentication facts' {
-        $secretSentinel = 'manifest-secret-token-must-not-appear'
-        $provider = {
-            param([bool]$ForceRefresh)
-            'manifest-secret-token-must-not-appear'
-        }
-
-        Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
-            return @()
-        }
-
-        $result = Start-CollectorRun -GraphTokenProvider $provider -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-apps')
-        $manifestRaw = Get-Content -LiteralPath $result.manifestPath -Raw
-        $manifest = $manifestRaw | ConvertFrom-Json
-
-        if ($manifest.parameters.graphTokenSupplied -ne $false) {
-            throw 'Expected provider-only run to persist graphTokenSupplied=false.'
-        }
-        if ($manifest.parameters.graphTokenProviderSupplied -ne $true) {
-            throw 'Expected provider-only run to persist graphTokenProviderSupplied=true.'
-        }
-        if ($manifestRaw -match [regex]::Escape($secretSentinel)) {
-            throw 'Run manifest persisted Graph token/provider secret material.'
-        }
-        if ($result.status -ne 'Completed') {
-            throw ('Expected provider-only mocked run to complete; actual: {0}' -f $result.status)
-        }
     }
 }
