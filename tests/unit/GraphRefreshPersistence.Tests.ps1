@@ -19,6 +19,7 @@ Describe 'Refreshable Graph authentication persistence boundary' {
         $secretSentinel = 'manifest-secret-token-must-not-appear'
         $provider = {
             param([bool]$ForceRefresh)
+            $null = $ForceRefresh
             'manifest-secret-token-must-not-appear'
         }
 
