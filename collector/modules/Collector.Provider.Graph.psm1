@@ -3,6 +3,9 @@ Set-StrictMode -Version Latest
 $retryModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Retry.psm1'
 Import-Module -Name $retryModulePath -Force -ErrorAction Stop
 
+$graphSecurityContextModulePath = Join-Path -Path $PSScriptRoot -ChildPath 'Collector.SecurityContext.Graph.psm1'
+Import-Module -Name $graphSecurityContextModulePath -Force -ErrorAction Stop
+
 $script:GraphBaseUri = [uri]'https://graph.microsoft.com/'
 
 function Get-CollectorGraphHeader {
@@ -56,7 +59,7 @@ function Invoke-CollectorGraphRequest {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$GraphToken,
+        [object]$GraphToken,
 
         [Parameter(Mandatory = $true)]
         [string]$Endpoint,
@@ -73,32 +76,52 @@ function Invoke-CollectorGraphRequest {
     )
 
     $uri = Resolve-CollectorGraphUri -Endpoint $Endpoint -AbsoluteUri:$AbsoluteUri
-    $headers = Get-CollectorGraphHeader -GraphToken $GraphToken
     $effectiveThrottleMilliseconds = $ThrottleMilliseconds
+    $authRefreshAttempted = $false
 
-    $invokeRequest = {
-        if ($effectiveThrottleMilliseconds -gt 0) {
-            Start-Sleep -Milliseconds $effectiveThrottleMilliseconds
+    while ($true) {
+        $resolvedToken = Get-CollectorGraphAccessToken -AuthInput $GraphToken
+        $headers = Get-CollectorGraphHeader -GraphToken $resolvedToken
+
+        $invokeRequest = {
+            if ($effectiveThrottleMilliseconds -gt 0) {
+                Start-Sleep -Milliseconds $effectiveThrottleMilliseconds
+            }
+
+            $requestParams = @{
+                Uri = $uri
+                Method = 'GET'
+                Headers = $headers
+                ErrorAction = 'Stop'
+            }
+
+            Invoke-RestMethod @requestParams
         }
 
-        $requestParams = @{
-            Uri = $uri
-            Method = 'GET'
-            Headers = $headers
-            ErrorAction = 'Stop'
+        try {
+            return Invoke-CollectorRetry -ScriptBlock $invokeRequest -MaxRetries $MaxRetries -BaseBackoffSeconds $BaseBackoffSeconds -MaxBackoffSeconds $MaxBackoffSeconds
         }
+        catch {
+            $retryMetadata = Get-CollectorRetryMetadata -ErrorRecord $_
+            $canRefresh = Test-CollectorGraphRefreshAvailable -AuthInput $GraphToken
+            $isUnauthorized = $retryMetadata.StatusCode -and [int]$retryMetadata.StatusCode -eq 401
 
-        Invoke-RestMethod @requestParams
+            if ($isUnauthorized -and $canRefresh -and -not $authRefreshAttempted) {
+                $null = Get-CollectorGraphAccessToken -AuthInput $GraphToken -ForceRefresh
+                $authRefreshAttempted = $true
+                continue
+            }
+
+            throw
+        }
     }
-
-    Invoke-CollectorRetry -ScriptBlock $invokeRequest -MaxRetries $MaxRetries -BaseBackoffSeconds $BaseBackoffSeconds -MaxBackoffSeconds $MaxBackoffSeconds
 }
 
 function Invoke-CollectorGraphCollection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$GraphToken,
+        [object]$GraphToken,
 
         [Parameter(Mandatory = $true)]
         [string]$Endpoint,
