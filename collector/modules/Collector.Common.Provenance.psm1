@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Common.Observation.psm1') -Force -ErrorAction Stop
+
 $script:CollectorSnapshotSchemaVersion = '1.0'
 $script:CollectorSnapshotIdentityProperties = @('runId', 'stage', 'section', 'family', 'batchId')
 $script:CollectorSnapshotStringProvenanceProperties = @('sourceType', 'sourceName', 'apiVersion')
@@ -66,6 +68,15 @@ function Test-CollectorSnapshotSchemaVersion {
         }
     }
 
+    $hasObservation = $Snapshot.PSObject.Properties.Match('observation').Count -gt 0
+    $hasEvidenceState = $Snapshot.PSObject.Properties.Match('evidenceState').Count -gt 0
+    if ($hasObservation -xor $hasEvidenceState) {
+        return $false
+    }
+    if ($hasObservation -and -not (Test-CollectorBoundedEvidenceContract -Observation $Snapshot.observation -EvidenceState $Snapshot.evidenceState)) {
+        return $false
+    }
+
     return $true
 }
 
@@ -103,6 +114,12 @@ function New-CollectorProvenanceSnapshot {
 
         [hashtable]$RequestContext = @{},
 
+        [AllowNull()]
+        [object]$Observation,
+
+        [AllowNull()]
+        [object]$EvidenceState,
+
         [Parameter(Mandatory = $true)]
         [int]$ItemCount,
 
@@ -111,7 +128,14 @@ function New-CollectorProvenanceSnapshot {
         [object[]]$Items
     )
 
-    [ordered]@{
+    if (($null -eq $Observation) -xor ($null -eq $EvidenceState)) {
+        throw 'Observation and EvidenceState must be supplied together for bounded evidence.'
+    }
+    if ($null -ne $Observation -and -not (Test-CollectorBoundedEvidenceContract -Observation $Observation -EvidenceState $EvidenceState)) {
+        throw 'Observation and EvidenceState do not form a valid bounded-evidence contract.'
+    }
+
+    $snapshot = [ordered]@{
         schemaVersion = $SchemaVersion
         runId = $RunId
         stage = $Stage
@@ -127,6 +151,13 @@ function New-CollectorProvenanceSnapshot {
         itemCount = $ItemCount
         items = @($Items)
     }
+
+    if ($null -ne $Observation) {
+        $snapshot.observation = $Observation
+        $snapshot.evidenceState = $EvidenceState
+    }
+
+    return $snapshot
 }
 
 Export-ModuleMember -Function @(

@@ -31,6 +31,7 @@
         "expectedBatchCount": { "type": "integer", "minimum": 0 },
         "sourceFingerprint": { "type": "string" },
         "completed": { "type": "boolean" },
+        "observation": { "$ref": "#/$defs/observation" },
         "batches": {
           "type": "array",
           "items": {
@@ -118,5 +119,45 @@
     "updatedUtc",
     "plan",
     "batches"
-  ]
+  ],
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "providerAvailable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "startUtc": {"$ref": "#/$defs/nullableString"},
+        "endUtc": {"$ref": "#/$defs/nullableString"},
+        "retentionCaveat": {"$ref": "#/$defs/nullableString"}
+      },
+      "required": ["startUtc", "endUtc", "retentionCaveat"]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {"type": "string", "const": "1.0"},
+        "requested": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "startUtc": {"type": "string"},
+            "endUtc": {"type": "string"}
+          },
+          "required": ["startUtc", "endUtc"]
+        },
+        "eventTimeProperty": {"$ref": "#/$defs/nullableString"},
+        "providerAvailable": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/providerAvailable"}
+          ]
+        },
+        "planIdentity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      },
+      "required": ["schemaVersion", "requested", "eventTimeProperty", "providerAvailable", "planIdentity"]
+    }
+  }
 }

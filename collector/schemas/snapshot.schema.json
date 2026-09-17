@@ -40,6 +40,12 @@
     "requestContext": {
       "type": "object"
     },
+    "observation": {
+      "$ref": "#/$defs/observation"
+    },
+    "evidenceState": {
+      "$ref": "#/$defs/evidenceState"
+    },
     "itemCount": {
       "type": "integer",
       "minimum": 0
@@ -63,5 +69,74 @@
     "requestContext",
     "itemCount",
     "items"
-  ]
+  ],
+  "dependentRequired": {
+    "observation": ["evidenceState"],
+    "evidenceState": ["observation"]
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "providerAvailable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "startUtc": {"$ref": "#/$defs/nullableString"},
+        "endUtc": {"$ref": "#/$defs/nullableString"},
+        "retentionCaveat": {"$ref": "#/$defs/nullableString"}
+      },
+      "required": ["startUtc", "endUtc", "retentionCaveat"]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {"type": "string", "const": "1.0"},
+        "requested": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "startUtc": {"type": "string"},
+            "endUtc": {"type": "string"}
+          },
+          "required": ["startUtc", "endUtc"]
+        },
+        "eventTimeProperty": {"$ref": "#/$defs/nullableString"},
+        "providerAvailable": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/providerAvailable"}
+          ]
+        },
+        "planIdentity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      },
+      "required": ["schemaVersion", "requested", "eventTimeProperty", "providerAvailable", "planIdentity"]
+    },
+    "evidenceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {"type": "string", "const": "1.0"},
+        "availability": {
+          "type": "string",
+          "enum": ["available", "permission-denied", "feature-unavailable", "license-unavailable", "retention-limited", "failed"]
+        },
+        "completeness": {
+          "type": "string",
+          "enum": ["complete", "partial", "unavailable", "failed"]
+        },
+        "detail": {"$ref": "#/$defs/nullableString"}
+      },
+      "required": ["schemaVersion", "availability", "completeness", "detail"],
+      "oneOf": [
+        {"properties": {"availability": {"const": "available"}, "completeness": {"enum": ["complete", "partial"]}}},
+        {"properties": {"availability": {"const": "permission-denied"}, "completeness": {"const": "unavailable"}}},
+        {"properties": {"availability": {"const": "feature-unavailable"}, "completeness": {"const": "unavailable"}}},
+        {"properties": {"availability": {"const": "license-unavailable"}, "completeness": {"const": "unavailable"}}},
+        {"properties": {"availability": {"const": "retention-limited"}, "completeness": {"const": "partial"}}},
+        {"properties": {"availability": {"const": "failed"}, "completeness": {"const": "failed"}}}
+      ]
+    }
+  }
 }
