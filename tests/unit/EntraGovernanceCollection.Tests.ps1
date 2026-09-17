@@ -93,7 +93,7 @@ Describe 'Entra governance offline collection' {
             throw 'Expected entra-governance to resolve as a supported section.'
         }
 
-        { Start-CollectorRun -GraphToken '' -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-governance') } | Should -Throw '*GraphToken is required*entra-governance*'
+        { Start-CollectorRun -GraphToken '' -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-governance') } | Should -Throw '*GraphToken or GraphTokenProvider is required*entra-governance*'
     }
 
     It 'collects administrative boundaries and active role governance with explicit scope domains' {
