@@ -373,12 +373,23 @@ function Test-CollectorBoundedEvidenceContract {
     }
 
     if ([string]$EvidenceState.availability -eq 'available' -and [string]$EvidenceState.completeness -eq 'complete' -and $null -ne $Observation.providerAvailable) {
-        $requestedStart = [DateTimeOffset]::Parse([string]$Observation.requested.startUtc)
-        $requestedEnd = [DateTimeOffset]::Parse([string]$Observation.requested.endUtc)
-        if ($null -ne $Observation.providerAvailable.startUtc -and [DateTimeOffset]::Parse([string]$Observation.providerAvailable.startUtc) -gt $requestedStart) {
-            return $false
+        try {
+            $requestedStart = [DateTimeOffset]::Parse((ConvertTo-CollectorObservationUtcString -Value $Observation.requested.startUtc))
+            $requestedEnd = [DateTimeOffset]::Parse((ConvertTo-CollectorObservationUtcString -Value $Observation.requested.endUtc))
+            if ($null -ne $Observation.providerAvailable.startUtc) {
+                $providerStart = [DateTimeOffset]::Parse((ConvertTo-CollectorObservationUtcString -Value $Observation.providerAvailable.startUtc))
+                if ($providerStart -gt $requestedStart) {
+                    return $false
+                }
+            }
+            if ($null -ne $Observation.providerAvailable.endUtc) {
+                $providerEnd = [DateTimeOffset]::Parse((ConvertTo-CollectorObservationUtcString -Value $Observation.providerAvailable.endUtc))
+                if ($providerEnd -lt $requestedEnd) {
+                    return $false
+                }
+            }
         }
-        if ($null -ne $Observation.providerAvailable.endUtc -and [DateTimeOffset]::Parse([string]$Observation.providerAvailable.endUtc) -lt $requestedEnd) {
+        catch {
             return $false
         }
     }
