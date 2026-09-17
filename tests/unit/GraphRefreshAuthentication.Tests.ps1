@@ -3,8 +3,8 @@ param()
 
 BeforeAll {
     $repoRoot = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
-    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.SecurityContext.Graph.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Provider.Graph.psm1') -Force -ErrorAction Stop
+    Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.SecurityContext.Graph.psm1') -Force -ErrorAction Stop
 }
 
 Describe 'Refreshable Microsoft Graph authentication' {
