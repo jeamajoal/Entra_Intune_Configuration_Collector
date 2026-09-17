@@ -7,7 +7,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.BoundedObservations.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Storage.Catalog.psm1') -Force -ErrorAction Stop
 
-    function New-TestBoundedRun {
+    function Get-TestBoundedRunFixture {
         param([string]$RunId = ('bounded-' + [Guid]::NewGuid().ToString('N')))
         $root = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-bounded-' + [Guid]::NewGuid().ToString('N'))
         $runPath = Join-Path -Path $root -ChildPath $RunId
@@ -15,7 +15,7 @@ BeforeAll {
         return [pscustomobject]@{ root = $root; runPath = $runPath; runId = $RunId }
     }
 
-    function New-TestObservation {
+    function Get-TestObservationFixture {
         param(
             [object]$Start = '2026-09-16T00:00:00Z',
             [object]$End = '2026-09-17T00:00:00Z',
@@ -83,8 +83,8 @@ BeforeAll {
 
 Describe 'Bounded observation descriptor' {
     It 'normalizes equivalent requested windows to the same UTC plan identity' {
-        $offsetWindow = New-TestObservation -Start '2026-09-15T19:00:00-05:00' -End '2026-09-16T19:00:00-05:00'
-        $utcWindow = New-TestObservation -Start '2026-09-16T00:00:00Z' -End '2026-09-17T00:00:00Z'
+        $offsetWindow = Get-TestObservationFixture -Start '2026-09-15T19:00:00-05:00' -End '2026-09-16T19:00:00-05:00'
+        $utcWindow = Get-TestObservationFixture -Start '2026-09-16T00:00:00Z' -End '2026-09-17T00:00:00Z'
 
         if ([string]$offsetWindow.requested.startUtc -ne '2026-09-16T00:00:00.0000000+00:00') {
             throw ('Expected canonical UTC start; actual: {0}' -f [string]$offsetWindow.requested.startUtc)
@@ -95,15 +95,15 @@ Describe 'Bounded observation descriptor' {
     }
 
     It 'rejects ambiguous timestamps without an explicit offset' {
-        { New-TestObservation -Start '2026-09-16T00:00:00' } | Should -Throw '*explicit UTC designator or numeric offset*'
+        { Get-TestObservationFixture -Start '2026-09-16T00:00:00' } | Should -Throw '*explicit UTC designator or numeric offset*'
     }
 
     It 'rejects an inverted requested window' {
-        { New-TestObservation -Start '2026-09-17T00:00:00Z' -End '2026-09-16T00:00:00Z' } | Should -Throw '*earlier than requested observation end*'
+        { Get-TestObservationFixture -Start '2026-09-17T00:00:00Z' -End '2026-09-16T00:00:00Z' } | Should -Throw '*earlier than requested observation end*'
     }
 
     It 'keeps provider availability separate from requested time' {
-        $observation = New-TestObservation -ProviderStart '2026-09-16T06:00:00Z' -ProviderEnd '2026-09-17T00:00:00Z' -RetentionCaveat 'Provider retained only part of the requested interval.'
+        $observation = Get-TestObservationFixture -ProviderStart '2026-09-16T06:00:00Z' -ProviderEnd '2026-09-17T00:00:00Z' -RetentionCaveat 'Provider retained only part of the requested interval.'
         if ([string]$observation.requested.startUtc -eq [string]$observation.providerAvailable.startUtc) {
             throw 'Requested and provider-available boundaries must remain distinct.'
         }
@@ -141,7 +141,7 @@ Describe 'Bounded evidence state vocabulary' {
     }
 
     It 'requires provider evidence for a retention-limited classification' {
-        $observation = New-TestObservation
+        $observation = Get-TestObservationFixture
         $state = New-CollectorEvidenceState -Availability 'retention-limited' -Completeness 'partial'
         if (Test-CollectorBoundedEvidenceContract -Observation $observation -EvidenceState $state) {
             throw 'Retention-limited evidence without a provider window/caveat must fail closed.'
@@ -149,7 +149,7 @@ Describe 'Bounded evidence state vocabulary' {
     }
 
     It 'does not permit complete availability to overclaim a narrower provider window' {
-        $observation = New-TestObservation -ProviderStart '2026-09-16T06:00:00Z' -ProviderEnd '2026-09-17T00:00:00Z'
+        $observation = Get-TestObservationFixture -ProviderStart '2026-09-16T06:00:00Z' -ProviderEnd '2026-09-17T00:00:00Z'
         $state = New-CollectorEvidenceState -Availability 'available' -Completeness 'complete'
         if (Test-CollectorBoundedEvidenceContract -Observation $observation -EvidenceState $state) {
             throw 'Complete evidence must not claim coverage before the provider-available start.'
@@ -170,7 +170,7 @@ Describe 'Bounded provenance compatibility' {
     }
 
     It 'persists an explicit complete zero-result bounded observation' {
-        $observation = New-TestObservation
+        $observation = Get-TestObservationFixture
         $state = New-CollectorEvidenceState -Availability 'available' -Completeness 'complete'
         $snapshot = New-CollectorProvenanceSnapshot -RunId 'bounded-zero' -Stage 'stage1' -Section 'entra-apps' -Family 'applications' -BatchId '0001' -SourceType 'Test' -SourceName 'bounded-zero' -ApiVersion 'test-v1' -RequestContext @{} -Observation $observation -EvidenceState $state -ItemCount 0 -Items @()
         $roundTrip = ($snapshot | ConvertTo-Json -Depth 20 | ConvertFrom-Json)
@@ -183,7 +183,7 @@ Describe 'Bounded provenance compatibility' {
     }
 
     It 'requires observation and evidence state as an atomic pair' {
-        $observation = New-TestObservation
+        $observation = Get-TestObservationFixture
         {
             New-CollectorProvenanceSnapshot -RunId 'bad-pair' -Stage 'stage1' -Section 'entra-apps' -Family 'applications' -BatchId '0001' -SourceType 'Test' -SourceName 'bad-pair' -ApiVersion 'test-v1' -RequestContext @{} -Observation $observation -ItemCount 0 -Items @()
         } | Should -Throw '*must be supplied together*'
@@ -192,7 +192,7 @@ Describe 'Bounded provenance compatibility' {
 
 Describe 'Bounded checkpoint resume identity' {
     BeforeEach {
-        $script:run = New-TestBoundedRun
+        $script:run = Get-TestBoundedRunFixture
     }
 
     AfterEach {
@@ -204,27 +204,27 @@ Describe 'Bounded checkpoint resume identity' {
     It 'accepts a semantically equivalent UTC window on resume' {
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:run.runPath -RunId $script:run.runId -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
         $batches = [object[]]@([object[]]@())
-        $checkpoint = Initialize-CollectorBoundedCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 100 -Observation (New-TestObservation -Start '2026-09-15T19:00:00-05:00' -End '2026-09-16T19:00:00-05:00')
+        $checkpoint = Initialize-CollectorBoundedCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 100 -Observation (Get-TestObservationFixture -Start '2026-09-15T19:00:00-05:00' -End '2026-09-16T19:00:00-05:00')
         Save-CollectorCheckpoint -RunPath $script:run.runPath -Checkpoint $checkpoint | Out-Null
 
         $persisted = Get-CollectorCheckpoint -RunPath $script:run.runPath -RunId $script:run.runId -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
-        { Initialize-CollectorBoundedCheckpointPlan -Checkpoint $persisted -Batches $batches -BatchSize 100 -Observation (New-TestObservation) -Resume | Out-Null } | Should -Not -Throw
+        { Initialize-CollectorBoundedCheckpointPlan -Checkpoint $persisted -Batches $batches -BatchSize 100 -Observation (Get-TestObservationFixture) -Resume | Out-Null } | Should -Not -Throw
     }
 
     It 'fails closed when the requested observation window changes on resume' {
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:run.runPath -RunId $script:run.runId -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
         $batches = [object[]]@([object[]]@())
-        $checkpoint = Initialize-CollectorBoundedCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 100 -Observation (New-TestObservation)
+        $checkpoint = Initialize-CollectorBoundedCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 100 -Observation (Get-TestObservationFixture)
         Save-CollectorCheckpoint -RunPath $script:run.runPath -Checkpoint $checkpoint | Out-Null
 
         $persisted = Get-CollectorCheckpoint -RunPath $script:run.runPath -RunId $script:run.runId -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
         {
-            Initialize-CollectorBoundedCheckpointPlan -Checkpoint $persisted -Batches $batches -BatchSize 100 -Observation (New-TestObservation -Start '2026-09-16T01:00:00Z') -Resume | Out-Null
+            Initialize-CollectorBoundedCheckpointPlan -Checkpoint $persisted -Batches $batches -BatchSize 100 -Observation (Get-TestObservationFixture -Start '2026-09-16T01:00:00Z') -Resume | Out-Null
         } | Should -Throw '*observation-window mismatch*'
     }
 
     It 'marks a terminal retention-limited observation complete without calling it complete evidence' {
-        $observation = New-TestObservation -ProviderStart '2026-09-16T06:00:00Z' -ProviderEnd '2026-09-17T00:00:00Z' -RetentionCaveat 'Six hours precede provider retention.'
+        $observation = Get-TestObservationFixture -ProviderStart '2026-09-16T06:00:00Z' -ProviderEnd '2026-09-17T00:00:00Z' -RetentionCaveat 'Six hours precede provider retention.'
         $state = New-CollectorEvidenceState -Availability 'retention-limited' -Completeness 'partial'
         $result = Add-TestBoundedFamily -Run $script:run -Observation $observation -EvidenceState $state
 
@@ -238,7 +238,7 @@ Describe 'Bounded checkpoint resume identity' {
     }
 
     It 'does not complete a plan when a succeeded batch claims ordinary collector failure evidence' {
-        $observation = New-TestObservation
+        $observation = Get-TestObservationFixture
         $state = New-CollectorEvidenceState -Availability 'failed' -Completeness 'failed'
         $result = Add-TestBoundedFamily -Run $script:run -Observation $observation -EvidenceState $state
         if ([bool]$result.checkpoint.plan.completed) {
@@ -249,7 +249,7 @@ Describe 'Bounded checkpoint resume identity' {
 
 Describe 'Offline package validation of bounded evidence' {
     BeforeEach {
-        $script:run = New-TestBoundedRun
+        $script:run = Get-TestBoundedRunFixture
     }
 
     AfterEach {
@@ -259,7 +259,7 @@ Describe 'Offline package validation of bounded evidence' {
     }
 
     It 'admits a terminal bounded zero-result family through offline catalog generation' {
-        $observation = New-TestObservation
+        $observation = Get-TestObservationFixture
         $state = New-CollectorEvidenceState -Availability 'available' -Completeness 'complete'
         Add-TestBoundedFamily -Run $script:run -Observation $observation -EvidenceState $state | Out-Null
         Write-TestBoundedManifest -Run $script:run
@@ -272,7 +272,7 @@ Describe 'Offline package validation of bounded evidence' {
     }
 
     It 'fails offline catalog regeneration after invalid availability/completeness mutation' {
-        $observation = New-TestObservation
+        $observation = Get-TestObservationFixture
         $state = New-CollectorEvidenceState -Availability 'available' -Completeness 'complete'
         $family = Add-TestBoundedFamily -Run $script:run -Observation $observation -EvidenceState $state
         Write-TestBoundedManifest -Run $script:run
