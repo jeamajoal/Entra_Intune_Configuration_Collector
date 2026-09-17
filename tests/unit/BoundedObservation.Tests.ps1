@@ -42,7 +42,7 @@ BeforeAll {
             [AllowEmptyCollection()] [object[]]$Items = @()
         )
 
-        $batches = [object[]]@([object[]]@($Items))
+        $batches = Split-CollectorItems -Items @($Items) -BatchSize 100
         $checkpoint = Get-CollectorCheckpoint -RunPath $Run.runPath -RunId $Run.runId -Stage 'stage1' -Section 'entra-apps' -Family $Family
         $checkpoint = Initialize-CollectorBoundedCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 100 -Observation $Observation
         $snapshot = New-CollectorProvenanceSnapshot -RunId $Run.runId -Stage 'stage1' -Section 'entra-apps' -Family $Family -BatchId '0001' -SourceType 'Test' -SourceName 'bounded-test' -ApiVersion 'test-v1' -RequestContext @{} -Observation $Observation -EvidenceState $EvidenceState -ItemCount $Items.Count -Items $Items
@@ -174,6 +174,15 @@ Describe 'Bounded provenance compatibility' {
         $state = New-CollectorEvidenceState -Availability 'available' -Completeness 'complete'
         $snapshot = New-CollectorProvenanceSnapshot -RunId 'bounded-zero' -Stage 'stage1' -Section 'entra-apps' -Family 'applications' -BatchId '0001' -SourceType 'Test' -SourceName 'bounded-zero' -ApiVersion 'test-v1' -RequestContext @{} -Observation $observation -EvidenceState $state -ItemCount 0 -Items @()
         $roundTrip = ($snapshot | ConvertTo-Json -Depth 20 | ConvertFrom-Json)
+        if (-not (Test-CollectorObservationDescriptor -Observation $roundTrip.observation)) {
+            throw 'Round-tripped bounded observation descriptor is invalid.'
+        }
+        if (-not (Test-CollectorEvidenceState -EvidenceState $roundTrip.evidenceState)) {
+            throw 'Round-tripped bounded evidence state is invalid.'
+        }
+        if (-not (Test-CollectorBoundedEvidenceContract -Observation $roundTrip.observation -EvidenceState $roundTrip.evidenceState)) {
+            throw 'Round-tripped bounded observation/evidence pair is invalid.'
+        }
         if (-not (Test-CollectorSnapshotSchemaVersion -Snapshot $roundTrip)) {
             throw 'Expected complete zero-result bounded evidence to be schema-valid.'
         }
@@ -203,7 +212,7 @@ Describe 'Bounded checkpoint resume identity' {
 
     It 'accepts a semantically equivalent UTC window on resume' {
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:run.runPath -RunId $script:run.runId -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
-        $batches = [object[]]@([object[]]@())
+        $batches = Split-CollectorItems -Items @() -BatchSize 100
         $checkpoint = Initialize-CollectorBoundedCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 100 -Observation (Get-TestObservationFixture -Start '2026-09-15T19:00:00-05:00' -End '2026-09-16T19:00:00-05:00')
         Save-CollectorCheckpoint -RunPath $script:run.runPath -Checkpoint $checkpoint | Out-Null
 
@@ -213,7 +222,7 @@ Describe 'Bounded checkpoint resume identity' {
 
     It 'fails closed when the requested observation window changes on resume' {
         $checkpoint = Get-CollectorCheckpoint -RunPath $script:run.runPath -RunId $script:run.runId -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
-        $batches = [object[]]@([object[]]@())
+        $batches = Split-CollectorItems -Items @() -BatchSize 100
         $checkpoint = Initialize-CollectorBoundedCheckpointPlan -Checkpoint $checkpoint -Batches $batches -BatchSize 100 -Observation (Get-TestObservationFixture)
         Save-CollectorCheckpoint -RunPath $script:run.runPath -Checkpoint $checkpoint | Out-Null
 
