@@ -476,7 +476,7 @@ function Start-CollectorRun {
                 Save-CollectorManifest -RunPath $run.runPath -Manifest $manifest | Out-Null
             }
 
-            if ($stage -eq 'Stage1' -or $stage -eq 'Stage2') {
+            if ($stage -eq 'Stage1') {
                 foreach ($failedStageResult in @($resultsToPersist | Where-Object { $_.failedBatches -gt 0 })) {
                     $failedSection = [string]$failedStageResult.section
                     if (-not [string]::IsNullOrWhiteSpace($failedSection)) {
