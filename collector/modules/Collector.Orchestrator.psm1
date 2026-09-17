@@ -380,78 +380,80 @@ function Start-CollectorRun {
     $includeEntraGovernance = $resolvedSections -contains 'entra-governance'
     $includeIntuneCompliance = $resolvedSections -contains 'intune-core'
     $includeIntuneEnrollment = $resolvedSections -contains 'intune-enrollment'
+    $blockedSections = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     try {
         foreach ($stage in $resolvedStages) {
             $stageResults = @()
             $context.PartialStageResults.Clear()
+            $eligibleStandardSections = @($standardSections | Where-Object { -not $blockedSections.Contains([string]$_) })
 
             switch ($stage) {
                 'Stage1' {
-                    if ($standardSections.Count -gt 0) {
-                        $stageResults += @(Invoke-CollectorStage1 -Context $context -Sections $standardSections)
+                    if ($eligibleStandardSections.Count -gt 0) {
+                        $stageResults += @(Invoke-CollectorStage1 -Context $context -Sections $eligibleStandardSections)
                     }
-                    if ($includeOnPrem) {
+                    if ($includeOnPrem -and -not $blockedSections.Contains('onprem-ad-gpo')) {
                         $stageResults += @(Invoke-CollectorWithADCredential -ADCredential $context.ADCredential -ScriptBlock {
                             Invoke-CollectorStage1 -Context $context -Sections @('onprem-ad-gpo')
                         })
                     }
-                    if ($includeConditionalAccess) {
+                    if ($includeConditionalAccess -and -not $blockedSections.Contains('entra-ca')) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage1 -Context $context)
                     }
-                    if ($includeEntraGovernance) {
+                    if ($includeEntraGovernance -and -not $blockedSections.Contains('entra-governance')) {
                         $stageResults += @(Invoke-CollectorEntraGovernanceStage1 -Context $context)
                     }
-                    if ($includeIntuneCompliance) {
+                    if ($includeIntuneCompliance -and -not $blockedSections.Contains('intune-core')) {
                         $stageResults += @(Invoke-CollectorIntuneComplianceStage1 -Context $context)
                     }
-                    if ($includeIntuneEnrollment) {
+                    if ($includeIntuneEnrollment -and -not $blockedSections.Contains('intune-enrollment')) {
                         $stageResults += @(Invoke-CollectorIntuneEnrollmentStage1 -Context $context)
                     }
                 }
 
                 'Stage2' {
-                    if ($standardSections.Count -gt 0) {
-                        $stageResults += @(Invoke-CollectorStage2 -Context $context -Sections $standardSections)
+                    if ($eligibleStandardSections.Count -gt 0) {
+                        $stageResults += @(Invoke-CollectorStage2 -Context $context -Sections $eligibleStandardSections)
                     }
-                    if ($includeOnPrem) {
+                    if ($includeOnPrem -and -not $blockedSections.Contains('onprem-ad-gpo')) {
                         $stageResults += @(Invoke-CollectorWithADCredential -ADCredential $context.ADCredential -ScriptBlock {
                             Invoke-CollectorStage2 -Context $context -Sections @('onprem-ad-gpo')
                         })
                     }
-                    if ($includeConditionalAccess) {
+                    if ($includeConditionalAccess -and -not $blockedSections.Contains('entra-ca')) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage2 -Context $context)
                     }
-                    if ($includeEntraGovernance) {
+                    if ($includeEntraGovernance -and -not $blockedSections.Contains('entra-governance')) {
                         $stageResults += @(Invoke-CollectorEntraGovernanceStage2 -Context $context)
                     }
-                    if ($includeIntuneCompliance) {
+                    if ($includeIntuneCompliance -and -not $blockedSections.Contains('intune-core')) {
                         $stageResults += @(Invoke-CollectorIntuneComplianceStage2 -Context $context)
                     }
-                    if ($includeIntuneEnrollment) {
+                    if ($includeIntuneEnrollment -and -not $blockedSections.Contains('intune-enrollment')) {
                         $stageResults += @(Invoke-CollectorIntuneEnrollmentStage2 -Context $context)
                     }
                 }
 
                 'Stage3' {
-                    if ($standardSections.Count -gt 0) {
-                        $stageResults += @(Invoke-CollectorStage3 -Context $context -Sections $standardSections)
+                    if ($eligibleStandardSections.Count -gt 0) {
+                        $stageResults += @(Invoke-CollectorStage3 -Context $context -Sections $eligibleStandardSections)
                     }
-                    if ($includeOnPrem) {
+                    if ($includeOnPrem -and -not $blockedSections.Contains('onprem-ad-gpo')) {
                         $stageResults += @(Invoke-CollectorWithADCredential -ADCredential $context.ADCredential -ScriptBlock {
                             Invoke-CollectorStage3 -Context $context -Sections @('onprem-ad-gpo')
                         })
                     }
-                    if ($includeConditionalAccess) {
+                    if ($includeConditionalAccess -and -not $blockedSections.Contains('entra-ca')) {
                         $stageResults += @(Invoke-CollectorConditionalAccessStage3 -Context $context)
                     }
-                    if ($includeEntraGovernance) {
+                    if ($includeEntraGovernance -and -not $blockedSections.Contains('entra-governance')) {
                         $stageResults += @(Invoke-CollectorEntraGovernanceStage3 -Context $context)
                     }
-                    if ($includeIntuneCompliance) {
+                    if ($includeIntuneCompliance -and -not $blockedSections.Contains('intune-core')) {
                         $stageResults += @(Invoke-CollectorIntuneComplianceStage3 -Context $context)
                     }
-                    if ($includeIntuneEnrollment) {
+                    if ($includeIntuneEnrollment -and -not $blockedSections.Contains('intune-enrollment')) {
                         $stageResults += @(Invoke-CollectorIntuneEnrollmentStage3 -Context $context)
                     }
                 }
@@ -467,6 +469,12 @@ function Start-CollectorRun {
 
             foreach ($stageResult in $resultsToPersist) {
                 Add-CollectorManifestStageResult -Manifest $manifest -Invocation $invocation -StageResult $stageResult
+                if (
+                    $stageResult.failedBatches -gt 0 -and
+                    $script:SupportedSections -contains [string]$stageResult.section
+                ) {
+                    [void]$blockedSections.Add([string]$stageResult.section)
+                }
             }
             $context.PartialStageResults.Clear()
 
