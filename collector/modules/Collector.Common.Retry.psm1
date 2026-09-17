@@ -106,7 +106,9 @@ function Get-CollectorRetryMetadata {
         }
     }
 
-    if (-not $statusCode -and $message -match '\b(429|500|502|503|504)\b') {
+    # 401 is intentionally surfaced as metadata for the Graph authentication boundary,
+    # but it is not part of Invoke-CollectorRetry's transient status-code set.
+    if (-not $statusCode -and $message -match '\b(401|429|500|502|503|504)\b') {
         $statusCode = [int]$Matches[1]
     }
 
