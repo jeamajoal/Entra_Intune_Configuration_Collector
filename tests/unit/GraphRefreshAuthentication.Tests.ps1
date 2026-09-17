@@ -11,13 +11,6 @@ BeforeAll {
 Describe 'Refreshable Microsoft Graph authentication' {
     BeforeEach {
         $script:authorizationHeaders = [System.Collections.Generic.List[string]]::new()
-        $global:CollectorGraphTokenProviderCalls = 0
-        $global:CollectorGraphForcedRefreshCalls = 0
-    }
-
-    AfterEach {
-        Remove-Variable -Name CollectorGraphTokenProviderCalls -Scope Global -ErrorAction SilentlyContinue
-        Remove-Variable -Name CollectorGraphForcedRefreshCalls -Scope Global -ErrorAction SilentlyContinue
     }
 
     It 'keeps static token requests backward compatible and does not retry a 401 without a refresh source' {
@@ -47,14 +40,15 @@ Describe 'Refreshable Microsoft Graph authentication' {
     }
 
     It 'lazily acquires a provider-only token once and reuses it across requests' {
+        $providerState = [pscustomobject]@{ Calls = 0; Forced = 0 }
         $provider = {
             param([bool]$ForceRefresh)
-            $global:CollectorGraphTokenProviderCalls++
+            $providerState.Calls++
             if ($ForceRefresh) {
-                $global:CollectorGraphForcedRefreshCalls++
+                $providerState.Forced++
             }
             'provider-token'
-        }
+        }.GetNewClosure()
         $authState = New-CollectorGraphAuthState -GraphToken $null -GraphTokenProvider $provider
 
         Mock -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -MockWith {
@@ -65,8 +59,8 @@ Describe 'Refreshable Microsoft Graph authentication' {
         Invoke-CollectorGraphRequest -GraphToken $authState -Endpoint '/v1.0/first' -ThrottleMilliseconds 0 -MaxRetries 0 | Out-Null
         Invoke-CollectorGraphRequest -GraphToken $authState -Endpoint '/v1.0/second' -ThrottleMilliseconds 0 -MaxRetries 0 | Out-Null
 
-        if ($global:CollectorGraphTokenProviderCalls -ne 1 -or $global:CollectorGraphForcedRefreshCalls -ne 0) {
-            throw ('Expected one non-forced provider acquisition; calls={0}, forced={1}.' -f $global:CollectorGraphTokenProviderCalls, $global:CollectorGraphForcedRefreshCalls)
+        if ($providerState.Calls -ne 1 -or $providerState.Forced -ne 0) {
+            throw ('Expected one non-forced provider acquisition; calls={0}, forced={1}.' -f $providerState.Calls, $providerState.Forced)
         }
         if (($script:authorizationHeaders -join ',') -ne 'Bearer provider-token,Bearer provider-token') {
             throw ('Expected the provider token to be cached in memory; actual headers: {0}' -f ($script:authorizationHeaders -join ','))
@@ -74,15 +68,16 @@ Describe 'Refreshable Microsoft Graph authentication' {
     }
 
     It 'force-refreshes exactly once after 401 and reuses the replacement token later' {
+        $providerState = [pscustomobject]@{ Calls = 0; Forced = 0 }
         $provider = {
             param([bool]$ForceRefresh)
-            $global:CollectorGraphTokenProviderCalls++
+            $providerState.Calls++
             if (-not $ForceRefresh) {
                 throw 'The static token should be used before a forced refresh is needed.'
             }
-            $global:CollectorGraphForcedRefreshCalls++
+            $providerState.Forced++
             'replacement-token'
-        }
+        }.GetNewClosure()
         $authState = New-CollectorGraphAuthState -GraphToken 'expired-token' -GraphTokenProvider $provider
 
         Mock -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -MockWith {
@@ -97,8 +92,8 @@ Describe 'Refreshable Microsoft Graph authentication' {
         Invoke-CollectorGraphRequest -GraphToken $authState -Endpoint '/v1.0/first' -ThrottleMilliseconds 0 -MaxRetries 0 | Out-Null
         Invoke-CollectorGraphRequest -GraphToken $authState -Endpoint '/v1.0/second' -ThrottleMilliseconds 0 -MaxRetries 0 | Out-Null
 
-        if ($global:CollectorGraphTokenProviderCalls -ne 1 -or $global:CollectorGraphForcedRefreshCalls -ne 1) {
-            throw ('Expected exactly one forced refresh; calls={0}, forced={1}.' -f $global:CollectorGraphTokenProviderCalls, $global:CollectorGraphForcedRefreshCalls)
+        if ($providerState.Calls -ne 1 -or $providerState.Forced -ne 1) {
+            throw ('Expected exactly one forced refresh; calls={0}, forced={1}.' -f $providerState.Calls, $providerState.Forced)
         }
         $expected = 'Bearer expired-token,Bearer replacement-token,Bearer replacement-token'
         if (($script:authorizationHeaders -join ',') -ne $expected) {
@@ -107,14 +102,15 @@ Describe 'Refreshable Microsoft Graph authentication' {
     }
 
     It 'bounds a persistent 401 to one forced refresh for the request' {
+        $providerState = [pscustomobject]@{ Calls = 0; Forced = 0 }
         $provider = {
             param([bool]$ForceRefresh)
-            $global:CollectorGraphTokenProviderCalls++
+            $providerState.Calls++
             if ($ForceRefresh) {
-                $global:CollectorGraphForcedRefreshCalls++
+                $providerState.Forced++
             }
             'replacement-token'
-        }
+        }.GetNewClosure()
         $authState = New-CollectorGraphAuthState -GraphToken 'expired-token' -GraphTokenProvider $provider
 
         Mock -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -MockWith {
@@ -133,8 +129,8 @@ Describe 'Refreshable Microsoft Graph authentication' {
         if (-not $threw) {
             throw 'Expected persistent 401 to fail after the bounded refresh attempt.'
         }
-        if ($global:CollectorGraphTokenProviderCalls -ne 1 -or $global:CollectorGraphForcedRefreshCalls -ne 1) {
-            throw ('Expected one forced refresh on persistent 401; calls={0}, forced={1}.' -f $global:CollectorGraphTokenProviderCalls, $global:CollectorGraphForcedRefreshCalls)
+        if ($providerState.Calls -ne 1 -or $providerState.Forced -ne 1) {
+            throw ('Expected one forced refresh on persistent 401; calls={0}, forced={1}.' -f $providerState.Calls, $providerState.Forced)
         }
         if (($script:authorizationHeaders -join ',') -ne 'Bearer expired-token,Bearer replacement-token') {
             throw ('Expected exactly two HTTP attempts across the auth refresh boundary; actual: {0}' -f ($script:authorizationHeaders -join ','))
