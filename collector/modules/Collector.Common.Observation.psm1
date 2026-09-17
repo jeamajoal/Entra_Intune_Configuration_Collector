@@ -49,6 +49,32 @@ function ConvertTo-CollectorObservationUtcString {
     return $parsed.ToUniversalTime().ToString('o')
 }
 
+function Test-CollectorObservationPersistedUtcValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Value,
+
+        [Parameter(Mandatory = $true)]
+        [string]$CanonicalUtc
+    )
+
+    if ($Value -is [string]) {
+        return ([string]$Value -ceq $CanonicalUtc)
+    }
+
+    if ($Value -is [datetime] -or $Value -is [DateTimeOffset]) {
+        try {
+            return ((ConvertTo-CollectorObservationUtcString -Value $Value) -ceq $CanonicalUtc)
+        }
+        catch {
+            return $false
+        }
+    }
+
+    return $false
+}
+
 function Get-CollectorObservationPlanIdentity {
     [CmdletBinding()]
     param(
@@ -209,7 +235,10 @@ function Test-CollectorObservationDescriptor {
         return $false
     }
 
-    if ([string]$Observation.requested.startUtc -cne $requestedStart -or [string]$Observation.requested.endUtc -cne $requestedEnd) {
+    if (
+        -not (Test-CollectorObservationPersistedUtcValue -Value $Observation.requested.startUtc -CanonicalUtc $requestedStart) -or
+        -not (Test-CollectorObservationPersistedUtcValue -Value $Observation.requested.endUtc -CanonicalUtc $requestedEnd)
+    ) {
         return $false
     }
     if ([DateTimeOffset]::Parse($requestedStart) -ge [DateTimeOffset]::Parse($requestedEnd)) {
@@ -233,14 +262,14 @@ function Test-CollectorObservationDescriptor {
         if ($null -ne $Observation.providerAvailable.startUtc) {
             try { $providerStart = ConvertTo-CollectorObservationUtcString -Value $Observation.providerAvailable.startUtc -Label 'Persisted provider-available observation start' }
             catch { return $false }
-            if ([string]$Observation.providerAvailable.startUtc -cne $providerStart) { return $false }
+            if (-not (Test-CollectorObservationPersistedUtcValue -Value $Observation.providerAvailable.startUtc -CanonicalUtc $providerStart)) { return $false }
         }
 
         $providerEnd = $null
         if ($null -ne $Observation.providerAvailable.endUtc) {
             try { $providerEnd = ConvertTo-CollectorObservationUtcString -Value $Observation.providerAvailable.endUtc -Label 'Persisted provider-available observation end' }
             catch { return $false }
-            if ([string]$Observation.providerAvailable.endUtc -cne $providerEnd) { return $false }
+            if (-not (Test-CollectorObservationPersistedUtcValue -Value $Observation.providerAvailable.endUtc -CanonicalUtc $providerEnd)) { return $false }
         }
 
         if ($null -ne $providerStart -and $null -ne $providerEnd -and [DateTimeOffset]::Parse($providerStart) -ge [DateTimeOffset]::Parse($providerEnd)) {
