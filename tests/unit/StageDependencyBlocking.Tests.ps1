@@ -44,7 +44,7 @@ Describe 'Invocation-local dependent stage blocking' {
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
             param([hashtable]$Context, [string[]]$Sections)
             return @(
-                Get-TestStageResult -Stage 'stage1' -Section 'onprem-ad-gpo' -Family 'domains',
+                Get-TestStageResult -Stage 'stage1' -Section 'onprem-ad-gpo' -Family 'domains'
                 Get-TestStageResult -Stage 'stage1' -Section 'onprem-ad-gpo' -Family 'gpos' -FailedBatches 1 -Errors @('The supplied AD credential could not read the target domain.')
             )
         }
@@ -84,7 +84,7 @@ Describe 'Invocation-local dependent stage blocking' {
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
             param([hashtable]$Context, [string[]]$Sections)
             return @(
-                Get-TestStageResult -Stage 'stage1' -Section 'entra-apps' -Family 'applications' -FailedBatches 1 -Errors @('Application inventory provider failure.'),
+                Get-TestStageResult -Stage 'stage1' -Section 'entra-apps' -Family 'applications' -FailedBatches 1 -Errors @('Application inventory provider failure.')
                 Get-TestStageResult -Stage 'stage1' -Section 'entra-pim' -Family 'roleAssignmentScheduleInstances'
             )
         }
@@ -120,7 +120,7 @@ Describe 'Invocation-local dependent stage blocking' {
         Mock -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -MockWith {
             param([hashtable]$Context, [string[]]$Sections)
             return @(
-                Get-TestStageResult -Stage 'stage1' -Section 'entra-apps' -Family 'applications',
+                Get-TestStageResult -Stage 'stage1' -Section 'entra-apps' -Family 'applications'
                 Get-TestStageResult -Stage 'stage1' -Section 'entra-pim' -Family 'roleAssignmentScheduleInstances'
             )
         }
@@ -130,7 +130,7 @@ Describe 'Invocation-local dependent stage blocking' {
                 throw ('Expected both sections to enter Stage2; actual: {0}' -f (@($Sections) -join ','))
             }
             return @(
-                Get-TestStageResult -Stage 'stage2' -Section 'entra-apps' -Family 'applicationDetails' -FailedBatches 1 -Errors @('Application detail provider failure.'),
+                Get-TestStageResult -Stage 'stage2' -Section 'entra-apps' -Family 'applicationDetails' -FailedBatches 1 -Errors @('Application detail provider failure.')
                 Get-TestStageResult -Stage 'stage2' -Section 'entra-pim' -Family 'roleAssignmentScheduleInstances'
             )
         }
