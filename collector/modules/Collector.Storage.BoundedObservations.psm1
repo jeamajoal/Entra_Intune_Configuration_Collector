@@ -41,6 +41,10 @@ function Initialize-CollectorBoundedCheckpointPlan {
     )
 
     $currentObservation = Get-CollectorObservationPlanDescriptor -Observation $Observation
+    if (@($Batches).Count -lt 1) {
+        throw ('Bounded observation plan for {0}/{1}/{2} requires at least one planned batch. Represent a legitimate zero-result observation with one explicit empty batch so terminal evidence can be persisted.' -f $Checkpoint.stage, $Checkpoint.section, $Checkpoint.family)
+    }
+
     $hasExistingPlan = $Checkpoint.PSObject.Properties.Match('plan').Count -gt 0 -and $null -ne $Checkpoint.plan
 
     if ($Resume -and $hasExistingPlan) {
@@ -105,6 +109,62 @@ function Test-CollectorBoundedSnapshotAgainstPlan {
     return $true
 }
 
+function Get-CollectorBoundedBatchExecutionDecision {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Checkpoint,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BatchId,
+
+        [switch]$Resume,
+
+        [switch]$ReprocessFailedOnly
+    )
+
+    $decision = Get-CollectorBatchExecutionDecision -Checkpoint $Checkpoint -BatchId $BatchId -Resume:$Resume -ReprocessFailedOnly:$ReprocessFailedOnly
+    if ([bool]$decision.ShouldProcess) {
+        return $decision
+    }
+
+    if (
+        $Checkpoint.PSObject.Properties.Match('plan').Count -eq 0 -or
+        $null -eq $Checkpoint.plan -or
+        $Checkpoint.plan.PSObject.Properties.Match('observation').Count -eq 0 -or
+        -not (Test-CollectorObservationDescriptor -Observation $Checkpoint.plan.observation)
+    ) {
+        throw ('Bounded checkpoint plan metadata is missing or invalid for {0}/{1}/{2}.' -f $Checkpoint.stage, $Checkpoint.section, $Checkpoint.family)
+    }
+
+    $existingBatch = Get-CollectorCheckpointBatch -Checkpoint $Checkpoint -BatchId $BatchId
+    if ($null -eq $existingBatch -or [string]::IsNullOrWhiteSpace([string]$existingBatch.artifactPath)) {
+        return [pscustomobject]@{
+            ShouldProcess = $true
+            MarkMissing = $false
+            Reason = 'BoundedArtifactUnavailable'
+        }
+    }
+
+    $snapshot = $null
+    try {
+        $snapshot = Get-Content -LiteralPath $existingBatch.artifactPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        $snapshot = $null
+    }
+
+    if (-not (Test-CollectorBoundedSnapshotAgainstPlan -Snapshot $snapshot -PlanObservation $Checkpoint.plan.observation)) {
+        return [pscustomobject]@{
+            ShouldProcess = $true
+            MarkMissing = $false
+            Reason = 'BoundedSnapshotPlanMismatch'
+        }
+    }
+
+    return $decision
+}
+
 function Complete-CollectorBoundedCheckpointPlan {
     [CmdletBinding()]
     param(
@@ -119,6 +179,11 @@ function Complete-CollectorBoundedCheckpointPlan {
         -not (Test-CollectorObservationDescriptor -Observation $Checkpoint.plan.observation)
     ) {
         throw ('Bounded checkpoint plan metadata is missing or invalid for {0}/{1}/{2}.' -f $Checkpoint.stage, $Checkpoint.section, $Checkpoint.family)
+    }
+
+    if (@($Checkpoint.plan.batches).Count -lt 1) {
+        $Checkpoint.plan.completed = $false
+        return $Checkpoint
     }
 
     $Checkpoint = Complete-CollectorCheckpointPlan -Checkpoint $Checkpoint
@@ -153,5 +218,6 @@ function Complete-CollectorBoundedCheckpointPlan {
 Export-ModuleMember -Function @(
     'Initialize-CollectorBoundedCheckpointPlan',
     'Complete-CollectorBoundedCheckpointPlan',
-    'Test-CollectorBoundedSnapshotAgainstPlan'
+    'Test-CollectorBoundedSnapshotAgainstPlan',
+    'Get-CollectorBoundedBatchExecutionDecision'
 )
