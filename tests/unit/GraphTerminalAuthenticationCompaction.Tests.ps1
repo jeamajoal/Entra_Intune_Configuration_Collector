@@ -7,7 +7,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
     Import-Module -Name (Join-Path -Path $moduleRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 
-    function New-TerminalAuthBatchContext {
+    function Get-TerminalAuthBatchContext {
         param(
             [Parameter(Mandatory = $true)]
             [string]$RunPath
@@ -62,7 +62,7 @@ Describe 'Terminal Graph authentication batch compaction' {
     }
 
     It 'compacts generic Stage2 terminal auth while preserving partial success and source cardinality' {
-        $context = New-TerminalAuthBatchContext -RunPath $script:testRoot
+        $context = Get-TerminalAuthBatchContext -RunPath $script:testRoot
         Initialize-TerminalAuthStage1Fixture -Context $context
 
         Mock -ModuleName 'Collector.Stage2.Details' -CommandName Invoke-CollectorGraphRequest -MockWith {
@@ -108,7 +108,7 @@ Describe 'Terminal Graph authentication batch compaction' {
     }
 
     It 'compacts generic Stage3 terminal auth while preserving partial relationship evidence and source cardinality' {
-        $context = New-TerminalAuthBatchContext -RunPath $script:testRoot
+        $context = Get-TerminalAuthBatchContext -RunPath $script:testRoot
         Initialize-TerminalAuthStage1Fixture -Context $context
 
         Mock -ModuleName 'Collector.Stage3.Relationships' -CommandName Invoke-CollectorGraphCollection -MockWith {
@@ -160,10 +160,10 @@ Describe 'Terminal Graph authentication batch compaction' {
         $enrollmentSource = Get-Content -LiteralPath (Join-Path $moduleRoot 'Collector.Stage.IntuneEnrollment.psm1') -Raw
 
         $configurationSource | Should -Match 'Test-CollectorGraphTerminalAuthenticationError'
-        $configurationSource | Should -Match 'New-CollectorStage2TerminalAuthenticationRemainder'
+        $configurationSource | Should -Match 'Get-CollectorStage2TerminalAuthenticationRemainder'
         $securitySource | Should -Match 'Test-CollectorGraphTerminalAuthenticationError'
-        $securitySource | Should -Match 'New-CollectorStage2TerminalAuthenticationRemainder'
+        $securitySource | Should -Match 'Get-CollectorStage2TerminalAuthenticationRemainder'
         $enrollmentSource | Should -Match 'Test-CollectorGraphTerminalAuthenticationError'
-        $enrollmentSource | Should -Match 'New-CollectorStage3TerminalAuthenticationRemainder'
+        $enrollmentSource | Should -Match 'Get-CollectorStage3TerminalAuthenticationRemainder'
     }
 }
