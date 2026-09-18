@@ -6,7 +6,7 @@ The canonical machine-readable inventory is [`docs/permissions/permission-matrix
 
 ## Operating model
 
-Application permissions are the recommended contract for unattended collection. The collector accepts a bearer token and does not inspect or grant permissions itself. Delegated tokens can also work where Microsoft supports delegated access, but the signed-in user can additionally need a supported Microsoft Entra role even when the OAuth scope is present.
+Application permissions are the recommended contract for unattended collection. The collector accepts either an existing Microsoft Graph bearer through `-GraphToken`, a renewable callback through `-GraphTokenProvider`, or both; it does not inspect or grant permissions itself. For long-running unattended collection, prefer `GraphTokenProvider` so an expired bearer can be replaced during the same run. The callback contract, one-refresh-per-request 401 behavior, and secret boundary are documented in [`docs/graph-authentication.md`](graph-authentication.md). Delegated tokens can also work where Microsoft supports delegated access, but the signed-in user can additionally need a supported Microsoft Entra role even when the OAuth scope is present.
 
 The matrix is a governance artifact, not runtime configuration. Collector modules remain the source of executable behavior; conformance tests force the two surfaces to move together when endpoint, cmdlet, provider, audience, or origin contracts change.
 
@@ -22,7 +22,7 @@ Current real providers are intentionally limited to:
 
 | Provider ID | Ownership | Authentication/resource contract |
 | --- | --- | --- |
-| `microsoft-graph` | Every current Graph-backed Entra/Intune route | OAuth bearer token for `https://graph.microsoft.com/`; absolute HTTP requests remain restricted by the Graph provider to origin `https://graph.microsoft.com`. |
+| `microsoft-graph` | Every current Graph-backed Entra/Intune route | OAuth bearer for `https://graph.microsoft.com/`, supplied as a static `GraphToken`, a renewable `GraphTokenProvider`, or both; absolute HTTP requests remain restricted by the Graph provider to origin `https://graph.microsoft.com/`. |
 | `onprem-windows` | Every current AD/GPO cmdlet family | Current Windows/domain execution identity by default, or an optional explicit `ADCredential` applied as a Windows net-only impersonation context for the on-prem stage; no OAuth resource/audience and no Graph token. |
 
 The provider registry is governance metadata only. It does not route requests at runtime and does not introduce a generic HTTP/provider abstraction.
@@ -97,6 +97,12 @@ $adCredential = Get-Credential -Message 'Credential used only for onprem-ad-gpo 
 ```
 
 The live `PSCredential` is not written to manifests, checkpoints, snapshots, or logs. Durable invocation metadata records only `adCredentialSupplied = true|false`. The credential is not applied to Microsoft Graph/Intune provider calls. Supplying `ADCredential` on a non-Windows runtime fails closed because Windows impersonation is required.
+
+## 401 and authentication renewal
+
+A `401 Unauthorized` during a long Graph-backed run can mean the previously valid bearer expired. Static-token-only runs remain fail-closed because the collector has no authority to mint a replacement token. When `GraphTokenProvider` is supplied, the Graph provider force-refreshes exactly once for that request, retries once with the replacement bearer, and keeps the replacement only in the in-memory authentication state for later requests. A second 401 or provider failure terminates the request; 401 is not added to the generic transient retry policy.
+
+The collector never persists the provider callback or any initial/refreshed bearer. Durable run metadata records only whether `GraphToken` and `GraphTokenProvider` were supplied. See [`docs/graph-authentication.md`](graph-authentication.md) for the callback contract and unattended usage pattern.
 
 ## 403 and authorization failures
 

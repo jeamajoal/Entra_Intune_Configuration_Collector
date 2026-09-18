@@ -3,7 +3,7 @@ BeforeAll {
     Import-Module -Name (Join-Path -Path $repoRoot -ChildPath 'collector/modules/Collector.Orchestrator.psm1') -Force -ErrorAction Stop
 }
 
-Describe 'Graph token section dependency' {
+Describe 'Graph authentication section dependency' {
     BeforeEach {
         $script:testRoot = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('collector-token-dependency-' + [Guid]::NewGuid().ToString('N'))
         New-Item -Path $script:testRoot -ItemType Directory -Force | Out-Null
@@ -22,7 +22,7 @@ Describe 'Graph token section dependency' {
         }
     }
 
-    It 'allows an on-prem-only run without GraphToken and records that no token was supplied' {
+    It 'allows an on-prem-only run without Graph authentication and records that neither input was supplied' {
         $result = Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo')
 
         if ($result.status -ne 'Completed') {
@@ -36,70 +36,73 @@ Describe 'Graph token section dependency' {
         if ([bool]$manifest.parameters.graphTokenSupplied) {
             throw 'Expected on-prem-only manifest to record graphTokenSupplied=false.'
         }
+        if ([bool]$manifest.parameters.graphTokenProviderSupplied) {
+            throw 'Expected on-prem-only manifest to record graphTokenProviderSupplied=false.'
+        }
         if (@($manifest.parameters.sections) -join ',' -ne 'onprem-ad-gpo') {
             throw 'Expected manifest to preserve the on-prem-only section selection.'
         }
     }
 
-    It 'rejects a Graph-backed section without GraphToken before stage execution' {
+    It 'rejects a Graph-backed section without either Graph authentication input before stage execution' {
         $threw = $false
         try {
             Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-apps') | Out-Null
         }
         catch {
             $threw = $true
-            if ($_.Exception.Message -notmatch 'GraphToken is required') {
+            if ($_.Exception.Message -notmatch 'GraphToken or GraphTokenProvider is required' -or $_.Exception.Message -notmatch 'entra-apps') {
                 throw
             }
         }
 
         if (-not $threw) {
-            throw 'Expected Graph-backed execution without a token to fail.'
+            throw 'Expected Graph-backed execution without Graph authentication to fail.'
         }
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly -Scope It
     }
 
-    It 'rejects opt-in Intune enrollment without GraphToken before run state creation' {
+    It 'rejects opt-in Intune enrollment without either Graph authentication input before run state creation' {
         $threw = $false
         try {
             Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('intune-enrollment') | Out-Null
         }
         catch {
             $threw = $true
-            if ($_.Exception.Message -notmatch 'GraphToken is required' -or $_.Exception.Message -notmatch 'intune-enrollment') {
+            if ($_.Exception.Message -notmatch 'GraphToken or GraphTokenProvider is required' -or $_.Exception.Message -notmatch 'intune-enrollment') {
                 throw
             }
         }
 
         if (-not $threw) {
-            throw 'Expected opt-in Intune enrollment execution without a token to fail.'
+            throw 'Expected opt-in Intune enrollment execution without Graph authentication to fail.'
         }
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly -Scope It
         $markerPath = Join-Path -Path $script:testRoot -ChildPath 'current-run.json'
         if (Test-Path -LiteralPath $markerPath) {
-            throw 'Missing GraphToken must fail before enrollment run state is created.'
+            throw 'Missing Graph authentication must fail before enrollment run state is created.'
         }
     }
 
-    It 'rejects mixed on-prem and Graph selection without GraphToken' {
+    It 'rejects mixed on-prem and Graph selection without either Graph authentication input' {
         $threw = $false
         try {
             Start-CollectorRun -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('onprem-ad-gpo', 'intune-core') | Out-Null
         }
         catch {
             $threw = $true
-            if ($_.Exception.Message -notmatch 'GraphToken is required') {
+            if ($_.Exception.Message -notmatch 'GraphToken or GraphTokenProvider is required' -or $_.Exception.Message -notmatch 'intune-core') {
                 throw
             }
         }
 
         if (-not $threw) {
-            throw 'Expected mixed Graph/on-prem execution without a token to fail.'
+            throw 'Expected mixed Graph/on-prem execution without Graph authentication to fail.'
         }
         Assert-MockCalled -ModuleName 'Collector.Orchestrator' -CommandName Invoke-CollectorStage1 -Times 0 -Exactly -Scope It
     }
 
-    It 'preserves Graph-backed execution when a token is supplied' {
+    It 'preserves Graph-backed execution when a static token is supplied' {
         $result = Start-CollectorRun -GraphToken 'test-token' -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-pim')
 
         if ($result.status -ne 'Completed') {
@@ -108,6 +111,29 @@ Describe 'Graph token section dependency' {
         $manifest = Get-Content -LiteralPath $result.manifestPath -Raw | ConvertFrom-Json
         if (-not [bool]$manifest.parameters.graphTokenSupplied) {
             throw 'Expected Graph-backed manifest to record graphTokenSupplied=true.'
+        }
+        if ([bool]$manifest.parameters.graphTokenProviderSupplied) {
+            throw 'Expected static-only Graph run to record graphTokenProviderSupplied=false.'
+        }
+    }
+
+    It 'accepts a Graph-backed section with provider-only authentication' {
+        $provider = {
+            param([bool]$ForceRefresh)
+            $null = $ForceRefresh
+            'provider-token'
+        }
+        $result = Start-CollectorRun -GraphTokenProvider $provider -OutputRoot $script:testRoot -Stages @('Stage1') -Sections @('entra-pim')
+
+        if ($result.status -ne 'Completed') {
+            throw ('Expected Graph-backed run with provider to complete; actual ' + [string]$result.status + '.')
+        }
+        $manifest = Get-Content -LiteralPath $result.manifestPath -Raw | ConvertFrom-Json
+        if ([bool]$manifest.parameters.graphTokenSupplied) {
+            throw 'Expected provider-only Graph run to record graphTokenSupplied=false.'
+        }
+        if (-not [bool]$manifest.parameters.graphTokenProviderSupplied) {
+            throw 'Expected provider-only Graph run to record graphTokenProviderSupplied=true.'
         }
     }
 }

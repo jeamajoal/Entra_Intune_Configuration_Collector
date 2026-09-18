@@ -5,6 +5,9 @@ param(
     [string]$GraphToken,
 
     [AllowNull()]
+    [scriptblock]$GraphTokenProvider,
+
+    [AllowNull()]
     [System.Management.Automation.PSCredential]$ADCredential,
 
     [Parameter(Mandatory = $true)]
@@ -42,6 +45,7 @@ Import-Module -Name $orchestratorModulePath -Force -ErrorAction Stop
 try {
     $invokeParameters = @{
         GraphToken = $GraphToken
+        GraphTokenProvider = $GraphTokenProvider
         ADCredential = $ADCredential
         OutputRoot = $OutputRoot
         Stages = $Stages

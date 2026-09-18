@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Artifacts.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Storage.Checkpoints.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.SecurityContext.OnPrem.psm1') -Force -ErrorAction Stop
+Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.SecurityContext.Graph.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage1.Inventory.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage2.Details.psm1') -Force -ErrorAction Stop
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'Collector.Stage3.Relationships.psm1') -Force -ErrorAction Stop
@@ -81,7 +82,7 @@ function Resolve-CollectorSections {
     return $resolved
 }
 
-function Assert-CollectorGraphTokenForSections {
+function Assert-CollectorGraphAuthenticationForSections {
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'The assertion evaluates the complete selected section set, so the established plural noun reflects the input contract.')]
     param(
@@ -89,13 +90,19 @@ function Assert-CollectorGraphTokenForSections {
         [AllowEmptyString()]
         [string]$GraphToken,
 
+        [AllowNull()]
+        [scriptblock]$GraphTokenProvider,
+
         [Parameter(Mandatory = $true)]
         [string[]]$Sections
     )
 
     $selectedGraphSections = @($Sections | Where-Object { $script:GraphBackedSections -contains $_ })
-    if ($selectedGraphSections.Count -gt 0 -and [string]::IsNullOrWhiteSpace($GraphToken)) {
-        throw ('GraphToken is required when Graph-backed sections are selected: {0}.' -f ($selectedGraphSections -join ', '))
+    $hasStaticToken = -not [string]::IsNullOrWhiteSpace($GraphToken)
+    $hasTokenProvider = $null -ne $GraphTokenProvider
+
+    if ($selectedGraphSections.Count -gt 0 -and -not $hasStaticToken -and -not $hasTokenProvider) {
+        throw ('GraphToken or GraphTokenProvider is required when Graph-backed sections are selected: {0}.' -f ($selectedGraphSections -join ', '))
     }
 }
 
@@ -107,6 +114,9 @@ function New-CollectorInvocationParameters {
         [AllowNull()]
         [AllowEmptyString()]
         [string]$GraphToken,
+
+        [AllowNull()]
+        [scriptblock]$GraphTokenProvider,
 
         [Parameter(Mandatory = $true)]
         [string]$OutputRoot,
@@ -123,6 +133,7 @@ function New-CollectorInvocationParameters {
 
     [pscustomobject]@{
         graphTokenSupplied = [bool](-not [string]::IsNullOrWhiteSpace($GraphToken))
+        graphTokenProviderSupplied = [bool]($null -ne $GraphTokenProvider)
         adCredentialSupplied = [bool]$RuntimeOptions.ADCredentialSupplied
         outputRoot = $OutputRoot
         stages = @($Stages)
@@ -297,6 +308,9 @@ function Start-CollectorRun {
         [string]$GraphToken,
 
         [AllowNull()]
+        [scriptblock]$GraphTokenProvider,
+
+        [AllowNull()]
         [System.Management.Automation.PSCredential]$ADCredential,
 
         [Parameter(Mandatory = $true)]
@@ -344,13 +358,14 @@ function Start-CollectorRun {
 
     $resolvedStages = Resolve-CollectorStages -Stages $Stages
     $resolvedSections = Resolve-CollectorSections -Sections $Sections
-    Assert-CollectorGraphTokenForSections -GraphToken $GraphToken -Sections $resolvedSections
+    Assert-CollectorGraphAuthenticationForSections -GraphToken $GraphToken -GraphTokenProvider $GraphTokenProvider -Sections $resolvedSections
+    $graphAuthState = New-CollectorGraphAuthState -GraphToken $GraphToken -GraphTokenProvider $GraphTokenProvider
     $run = Resolve-CollectorRun -OutputRoot $OutputRoot -Resume:$Resume
 
     $context = @{
         RunId = $run.runId
         RunPath = $run.runPath
-        GraphToken = $GraphToken
+        GraphToken = $graphAuthState
         ADCredential = $ADCredential
         ADCredentialSupplied = [bool]($null -ne $ADCredential)
         Resume = [bool]$Resume
@@ -364,7 +379,7 @@ function Start-CollectorRun {
         PartialStageResults = [System.Collections.Generic.List[object]]::new()
     }
 
-    $parameters = New-CollectorInvocationParameters -GraphToken $GraphToken -OutputRoot $OutputRoot -Stages $resolvedStages -Sections $resolvedSections -RuntimeOptions $context
+    $parameters = New-CollectorInvocationParameters -GraphToken $GraphToken -GraphTokenProvider $GraphTokenProvider -OutputRoot $OutputRoot -Stages $resolvedStages -Sections $resolvedSections -RuntimeOptions $context
     $manifest = Get-CollectorRunManifestForInvocation -RunPath $run.runPath -RunId $run.runId -Parameters $parameters -Resume:$Resume
     $invocation = New-CollectorInvocationRecord -Parameters $parameters
 
