@@ -310,7 +310,7 @@ function Invoke-CollectorIntuneSecurityPagedSettingStage2 {
                         $errorItem[$InnerIdentityProperty] = $itemId
                         $details += [pscustomobject]$errorItem
 
-                        $remainder = @(New-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty $InnerIdentityProperty)
+                        $remainder = @(Get-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty $InnerIdentityProperty)
                         if ($remainder.Count -gt 0) {
                             $details += $remainder
                             $failedCount += $remainder.Count
