@@ -55,6 +55,41 @@ function Resolve-CollectorGraphUri {
     return $resolvedUri.AbsoluteUri
 }
 
+function New-CollectorGraphTerminalAuthenticationException {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    $exception = [System.InvalidOperationException]::new($Message)
+    $exception.Data['CollectorGraphAuthenticationTerminal'] = $true
+    return $exception
+}
+
+function Test-CollectorGraphTerminalAuthenticationError {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$ErrorRecord
+    )
+
+    $exception = if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) {
+        $ErrorRecord.Exception
+    }
+    elseif ($ErrorRecord -is [System.Exception]) {
+        $ErrorRecord
+    }
+    else {
+        $null
+    }
+
+    return (
+        $null -ne $exception -and
+        $exception.Data['CollectorGraphAuthenticationTerminal'] -eq $true
+    )
+}
+
 function Invoke-CollectorGraphRequest {
     [CmdletBinding()]
     param(
@@ -80,7 +115,15 @@ function Invoke-CollectorGraphRequest {
     $authRefreshAttempted = $false
 
     while ($true) {
-        $resolvedToken = Get-CollectorGraphAccessToken -AuthInput $GraphToken
+        try {
+            $resolvedToken = Get-CollectorGraphAccessToken -AuthInput $GraphToken
+        }
+        catch {
+            $terminalMessage = $_.Exception.Message
+            Set-CollectorGraphAuthenticationTerminalState -AuthInput $GraphToken -Message $terminalMessage
+            throw (New-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
+        }
+
         $headers = Get-CollectorGraphHeader -GraphToken $resolvedToken
 
         $invokeRequest = {
@@ -107,9 +150,28 @@ function Invoke-CollectorGraphRequest {
             $isUnauthorized = $retryMetadata.StatusCode -and [int]$retryMetadata.StatusCode -eq 401
 
             if ($isUnauthorized -and $canRefresh -and -not $authRefreshAttempted) {
-                $null = Get-CollectorGraphAccessToken -AuthInput $GraphToken -ForceRefresh
+                try {
+                    $null = Get-CollectorGraphAccessToken -AuthInput $GraphToken -ForceRefresh
+                }
+                catch {
+                    $terminalMessage = $_.Exception.Message
+                    Set-CollectorGraphAuthenticationTerminalState -AuthInput $GraphToken -Message $terminalMessage
+                    throw (New-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
+                }
+
                 $authRefreshAttempted = $true
                 continue
+            }
+
+            if ($isUnauthorized) {
+                $terminalMessage = if ($authRefreshAttempted) {
+                    'Microsoft Graph authentication remained unauthorized (HTTP 401) after one token refresh.'
+                }
+                else {
+                    'Microsoft Graph authentication failed with HTTP 401 and no refresh provider is available.'
+                }
+                Set-CollectorGraphAuthenticationTerminalState -AuthInput $GraphToken -Message $terminalMessage
+                throw (New-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
             }
 
             throw
@@ -181,5 +243,6 @@ function Invoke-CollectorGraphCollection {
 
 Export-ModuleMember -Function @(
     'Invoke-CollectorGraphRequest',
-    'Invoke-CollectorGraphCollection'
+    'Invoke-CollectorGraphCollection',
+    'Test-CollectorGraphTerminalAuthenticationError'
 )
