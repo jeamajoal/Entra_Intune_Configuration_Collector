@@ -216,7 +216,7 @@ function Get-CollectorObjectId {
     return $null
 }
 
-function New-CollectorStage2TerminalAuthenticationRemainder {
+function Get-CollectorStage2TerminalAuthenticationRemainder {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -501,7 +501,7 @@ function Invoke-CollectorStage2GraphFamily {
                         _collectorErrorClass = 'terminal-authentication'
                     }
 
-                    $remainder = @(New-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty 'id')
+                    $remainder = @(Get-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty 'id')
                     if ($remainder.Count -gt 0) {
                         $details += $remainder
                         $failedCount += $remainder.Count
