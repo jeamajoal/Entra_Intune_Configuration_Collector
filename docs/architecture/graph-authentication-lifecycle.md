@@ -18,7 +18,9 @@ A Graph-backed section requires at least one input. On-prem-only execution requi
 The orchestrator creates one `Collector.GraphAuthState` object per invocation. It contains only:
 
 - `currentToken` — the current bearer, initially the supplied static token when present;
-- `tokenProvider` — the supplied callback when present.
+- `tokenProvider` — the supplied callback when present;
+- `terminalFailure` — whether Graph authentication is known unusable for the remainder of the invocation;
+- `terminalMessage` — the sanitized reason retained only in memory.
 
 For compatibility with existing stage code, this state is stored in the runtime context's established `GraphToken` slot and passed opaquely to the Graph provider. Direct provider callers may continue passing a literal token string.
 
@@ -33,9 +35,10 @@ For every Graph request:
 3. Execute the request through the existing transient retry policy, which handles timeout/429/5xx only.
 4. If the request terminates with HTTP 401 and a token provider exists, force-refresh exactly once.
 5. Store the replacement bearer in the shared auth state and retry the Graph request once through the normal transient retry policy.
-6. If that refreshed request also returns 401, fail immediately; do not refresh again for that request.
+6. If that refreshed request also returns 401, mark the shared auth state terminal, clear the current bearer, and fail immediately.
+7. Any later request that sees terminal auth state fails before HTTP or provider callback execution.
 
-A later independent request may force-refresh once if the replacement token eventually expires later in the same long-running invocation.
+A later independent request may still force-refresh once if a previously usable replacement token expires later in the same invocation. That only applies while the auth state has not become terminal.
 
 ## Failure boundaries
 
@@ -45,6 +48,8 @@ Authentication acquisition and authorization are deliberately distinct from tran
 - Provider exceptions are replaced with a generic acquisition error so callback exception text is not copied into durable run evidence.
 - Empty, multi-object, or non-string provider output is rejected before HTTP execution.
 - A static-token-only 401 is not retried as an authentication refresh.
+- Terminal authentication is exposed with a stable exception-data marker so per-object Stage2/Stage3 loops can stop the current batch after the first terminal failure.
+- Those loops preserve prior successes and source cardinality by persisting one terminal error item plus compact terminal-authentication not-attempted placeholders for the batch remainder. The batch remains failed and resumable.
 
 ## Persistence contract
 
