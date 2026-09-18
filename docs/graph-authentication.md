@@ -41,11 +41,13 @@ For a request that returns 401 and has a refresh provider available:
 1. The collector invokes the provider once with `$true`.
 2. The replacement token becomes the in-memory current bearer.
 3. The same Graph request is attempted once with the replacement token.
-4. A second 401 terminates the request. The collector does not enter a refresh loop.
+4. A second 401 marks Graph authentication terminal for the invocation and terminates the request. The collector does not enter a refresh loop.
 
 Timeouts, HTTP 429, and HTTP 5xx continue to use the existing bounded transient retry policy. HTTP 401 is deliberately outside that generic retry set.
 
 A replacement token is shared by later Stage1, Stage2, and Stage3 requests in the same invocation, so the collector does not replay a bearer already known to be expired for every inventory object.
+
+If authentication becomes terminal (provider acquisition/refresh failure, static-token 401 with no refresh source, or a second 401 after refresh), the in-memory auth state clears the current bearer and records only a sanitized terminal condition. Later Graph calls in that invocation fail before HTTP or token-provider execution. Per-object Stage2/Stage3 fan-out batches stop on the first terminal-authentication error, preserve already collected successes, record that failed object once, and represent the remaining source objects with compact `_collectorNotAttemptedReason = 'terminal-authentication'` placeholders. The failed batch remains eligible for deterministic failed-only reprocessing after authentication is repaired.
 
 ## Unattended usage pattern
 
@@ -104,4 +106,4 @@ The following conditions terminate Graph authentication rather than silently ret
 - a second 401 after the single forced refresh attempt;
 - a forced refresh request when no refresh provider exists.
 
-These authentication failures are distinct from retryable timeout, 429, and 5xx conditions.
+These authentication failures are distinct from retryable timeout, 429, and 5xx conditions. Once one occurs on the shared runtime auth state, the invocation does not keep calling Microsoft Graph or the token provider with authentication already proven unusable.
