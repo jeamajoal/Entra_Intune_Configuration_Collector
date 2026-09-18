@@ -222,7 +222,7 @@ function Invoke-CollectorIntuneConfigurationSettingsStage2 {
                             _collectorErrorClass = 'terminal-authentication'
                         }
 
-                        $remainder = @(New-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty 'policyId')
+                        $remainder = @(Get-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty 'policyId')
                         if ($remainder.Count -gt 0) {
                             $details += $remainder
                             $failedCount += $remainder.Count
