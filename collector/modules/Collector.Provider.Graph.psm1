@@ -55,7 +55,7 @@ function Resolve-CollectorGraphUri {
     return $resolvedUri.AbsoluteUri
 }
 
-function New-CollectorGraphTerminalAuthenticationException {
+function Get-CollectorGraphTerminalAuthenticationException {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -121,7 +121,7 @@ function Invoke-CollectorGraphRequest {
         catch {
             $terminalMessage = $_.Exception.Message
             Set-CollectorGraphAuthenticationTerminalState -AuthInput $GraphToken -Message $terminalMessage
-            throw (New-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
+            throw (Get-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
         }
 
         $headers = Get-CollectorGraphHeader -GraphToken $resolvedToken
@@ -156,7 +156,7 @@ function Invoke-CollectorGraphRequest {
                 catch {
                     $terminalMessage = $_.Exception.Message
                     Set-CollectorGraphAuthenticationTerminalState -AuthInput $GraphToken -Message $terminalMessage
-                    throw (New-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
+                    throw (Get-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
                 }
 
                 $authRefreshAttempted = $true
@@ -171,7 +171,7 @@ function Invoke-CollectorGraphRequest {
                     'Microsoft Graph authentication failed with HTTP 401 and no refresh provider is available.'
                 }
                 Set-CollectorGraphAuthenticationTerminalState -AuthInput $GraphToken -Message $terminalMessage
-                throw (New-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
+                throw (Get-CollectorGraphTerminalAuthenticationException -Message $terminalMessage)
             }
 
             throw
