@@ -198,7 +198,8 @@ function Invoke-CollectorIntuneConfigurationSettingsStage2 {
             $details = @()
             $failedCount = 0
             $errors = @()
-            foreach ($inventoryItem in $batchItems) {
+            for ($itemIndex = 0; $itemIndex -lt $batchItems.Count; $itemIndex++) {
+                $inventoryItem = $batchItems[$itemIndex]
                 $policyId = Get-CollectorObjectId -Item $inventoryItem
                 if (-not $policyId) {
                     $failedCount++
@@ -213,6 +214,23 @@ function Invoke-CollectorIntuneConfigurationSettingsStage2 {
                 }
                 catch {
                     $failedCount++
+                    if (Test-CollectorGraphTerminalAuthenticationError -ErrorRecord $_) {
+                        $errors += $_.Exception.Message
+                        $details += [pscustomobject]@{
+                            policyId = $policyId
+                            _collectorError = $_.Exception.Message
+                            _collectorErrorClass = 'terminal-authentication'
+                        }
+
+                        $remainder = @(New-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty 'policyId')
+                        if ($remainder.Count -gt 0) {
+                            $details += $remainder
+                            $failedCount += $remainder.Count
+                            $errors += ('{0} item(s) were not attempted after terminal Microsoft Graph authentication failure.' -f $remainder.Count)
+                        }
+                        break
+                    }
+
                     $errors += $_.Exception.Message
                     $details += [pscustomobject]@{ policyId = $policyId; _collectorError = $_.Exception.Message }
                 }
