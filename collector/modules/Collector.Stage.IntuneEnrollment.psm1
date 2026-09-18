@@ -122,7 +122,8 @@ function Invoke-CollectorIntuneAutopilotAssignmentFamily {
             $failedCount = 0
             $errors = @()
 
-            foreach ($inventoryItem in $batchItems) {
+            for ($itemIndex = 0; $itemIndex -lt $batchItems.Count; $itemIndex++) {
+                $inventoryItem = $batchItems[$itemIndex]
                 $objectId = Get-CollectorObjectId -Item $inventoryItem
                 if (-not $objectId) {
                     $failedCount++
@@ -162,6 +163,23 @@ function Invoke-CollectorIntuneAutopilotAssignmentFamily {
                 }
                 catch {
                     $failedCount++
+                    if (Test-CollectorGraphTerminalAuthenticationError -ErrorRecord $_) {
+                        $errors += $_.Exception.Message
+                        $items += [pscustomobject]@{
+                            parentId = $objectId
+                            _collectorError = $_.Exception.Message
+                            _collectorErrorClass = 'terminal-authentication'
+                        }
+
+                        $remainder = @(Get-CollectorStage3TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1))
+                        if ($remainder.Count -gt 0) {
+                            $items += $remainder
+                            $failedCount += $remainder.Count
+                            $errors += ('{0} item(s) were not attempted after terminal Microsoft Graph authentication failure.' -f $remainder.Count)
+                        }
+                        break
+                    }
+
                     $errors += $_.Exception.Message
                     $items += [pscustomobject]@{
                         parentId = $objectId

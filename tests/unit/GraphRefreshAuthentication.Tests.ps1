@@ -123,11 +123,32 @@ Describe 'Refreshable Microsoft Graph authentication' {
         }
         catch {
             $threw = $true
+            if (-not (Test-CollectorGraphTerminalAuthenticationError -ErrorRecord $_)) {
+                throw 'Expected persistent 401 to surface the terminal-authentication marker.'
+            }
         }
 
         if (-not $threw) {
             throw 'Expected persistent 401 to fail after the bounded refresh attempt.'
         }
+        if (-not (Test-CollectorGraphAuthenticationTerminalState -AuthInput $authState)) {
+            throw 'Expected persistent 401 to poison the shared authentication state.'
+        }
+
+        $secondThrew = $false
+        try {
+            Invoke-CollectorGraphRequest -GraphToken $authState -Endpoint '/v1.0/second' -ThrottleMilliseconds 0 -MaxRetries 5 | Out-Null
+        }
+        catch {
+            $secondThrew = $true
+            if (-not (Test-CollectorGraphTerminalAuthenticationError -ErrorRecord $_)) {
+                throw 'Expected later request to preserve the terminal-authentication marker.'
+            }
+        }
+        if (-not $secondThrew) {
+            throw 'Expected later request to fail before HTTP when authentication is terminal.'
+        }
+
         if ($providerState.Calls -ne 1 -or $providerState.Forced -ne 1) {
             throw ('Expected one forced refresh on persistent 401; calls={0}, forced={1}.' -f $providerState.Calls, $providerState.Forced)
         }
@@ -139,10 +160,13 @@ Describe 'Refreshable Microsoft Graph authentication' {
 
     It 'fails clearly when the token provider throws without leaking the provider error text' {
         $secretSentinel = 'provider-secret-material-must-not-leak'
+        $providerState = [pscustomobject]@{ Calls = 0 }
         $provider = {
             param([bool]$ForceRefresh)
+            $providerState.Calls++
+            $null = $ForceRefresh
             throw 'provider-secret-material-must-not-leak'
-        }
+        }.GetNewClosure()
         $authState = New-CollectorGraphAuthState -GraphToken $null -GraphTokenProvider $provider
 
         Mock -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -MockWith {
@@ -165,6 +189,26 @@ Describe 'Refreshable Microsoft Graph authentication' {
 
         if (-not $threw) {
             throw 'Expected provider exception to fail token acquisition.'
+        }
+        if (-not (Test-CollectorGraphAuthenticationTerminalState -AuthInput $authState)) {
+            throw 'Expected provider acquisition failure to poison the shared authentication state.'
+        }
+
+        try {
+            Invoke-CollectorGraphRequest -GraphToken $authState -Endpoint '/v1.0/second' -ThrottleMilliseconds 0 -MaxRetries 0 | Out-Null
+            throw 'Expected a terminal authentication state to reject later token acquisition.'
+        }
+        catch {
+            if ($_.Exception.Message -eq 'Expected a terminal authentication state to reject later token acquisition.') {
+                throw
+            }
+            if (-not (Test-CollectorGraphTerminalAuthenticationError -ErrorRecord $_)) {
+                throw 'Expected later provider-state failure to preserve the terminal-authentication marker.'
+            }
+        }
+
+        if ($providerState.Calls -ne 1) {
+            throw ('Expected token provider to stop after terminal acquisition failure; actual calls: {0}.' -f $providerState.Calls)
         }
         Assert-MockCalled -ModuleName 'Collector.Provider.Graph' -CommandName Invoke-RestMethod -Times 0 -Exactly
     }

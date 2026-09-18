@@ -216,6 +216,31 @@ function Get-CollectorObjectId {
     return $null
 }
 
+function Get-CollectorStage2TerminalAuthenticationRemainder {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$BatchItems,
+
+        [Parameter(Mandatory = $true)]
+        [int]$StartIndex,
+
+        [Parameter(Mandatory = $true)]
+        [string]$IdentityProperty
+    )
+
+    $placeholders = @()
+    for ($index = $StartIndex; $index -lt $BatchItems.Count; $index++) {
+        $identity = Get-CollectorObjectId -Item $BatchItems[$index]
+        $placeholder = [ordered]@{}
+        $placeholder[$IdentityProperty] = $identity
+        $placeholder._collectorNotAttemptedReason = 'terminal-authentication'
+        $placeholders += [pscustomobject]$placeholder
+    }
+
+    return $placeholders
+}
+
 function Assert-CollectorInventoryFirstForStage2 {
     [CmdletBinding()]
     param(
@@ -444,7 +469,8 @@ function Invoke-CollectorStage2GraphFamily {
         $failedCount = 0
         $errors = @()
 
-        foreach ($inventoryItem in $batchItems) {
+        for ($itemIndex = 0; $itemIndex -lt $batchItems.Count; $itemIndex++) {
+            $inventoryItem = $batchItems[$itemIndex]
             $objectId = Get-CollectorObjectId -Item $inventoryItem
             if (-not $objectId) {
                 $failedCount++
@@ -467,6 +493,23 @@ function Invoke-CollectorStage2GraphFamily {
             }
             catch {
                 $failedCount++
+                if (Test-CollectorGraphTerminalAuthenticationError -ErrorRecord $_) {
+                    $errors += $_.Exception.Message
+                    $details += [pscustomobject]@{
+                        id = $objectId
+                        _collectorError = $_.Exception.Message
+                        _collectorErrorClass = 'terminal-authentication'
+                    }
+
+                    $remainder = @(Get-CollectorStage2TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1) -IdentityProperty 'id')
+                    if ($remainder.Count -gt 0) {
+                        $details += $remainder
+                        $failedCount += $remainder.Count
+                        $errors += ('{0} item(s) were not attempted after terminal Microsoft Graph authentication failure.' -f $remainder.Count)
+                    }
+                    break
+                }
+
                 $errors += $_.Exception.Message
                 $details += [pscustomobject]@{
                     id = $objectId
