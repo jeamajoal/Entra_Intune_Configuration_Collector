@@ -171,7 +171,7 @@ function Invoke-CollectorIntuneAutopilotAssignmentFamily {
                             _collectorErrorClass = 'terminal-authentication'
                         }
 
-                        $remainder = @(New-CollectorStage3TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1))
+                        $remainder = @(Get-CollectorStage3TerminalAuthenticationRemainder -BatchItems $batchItems -StartIndex ($itemIndex + 1))
                         if ($remainder.Count -gt 0) {
                             $items += $remainder
                             $failedCount += $remainder.Count
